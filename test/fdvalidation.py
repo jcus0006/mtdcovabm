@@ -507,7 +507,7 @@ else:
 
                 expectedvals[institutiontype] = len(institutions) * percent
 
-                actualvals[institutiontype] = sum([1 for institution in institutions if institution["insttype"] == institutiontype])
+                actualvals[institutiontype] = sum([1 for institution in institutions if institution["insttypeid"] == institutiontype])
 
                 differencevals[institutiontype] = expectedvals[institutiontype] - actualvals[institutiontype]
 
@@ -1058,7 +1058,7 @@ for fdval in fdvalidations:
     elif fdval.frequencydistributionname == "institutions_type_distribution":
         # simple expected vs actual comparison (institution type based) should suffice
         # consider copying employment_byindustry_distributions case
-        institutions_by_type = [v["insttype"] for v in institutions.values()]
+        institutions_by_type = [v["insttypeid"] for v in institutions]
 
         figureindex += 1
 

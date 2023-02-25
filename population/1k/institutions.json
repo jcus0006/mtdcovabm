@@ -1,7 +1,7 @@
 [
     {
         "member_uids": [],
-        "ltcfid": 0,
+        "ltcfid": null,
         "resident_uids": [
             0,
             1,
@@ -25,9 +25,10 @@
             19
         ],
         "staff_uids": [
-            513,
-            488
+            649,
+            711
         ],
-        "instid": 10
+        "instid": 0,
+        "insttypeid": 10
     }
 ]

@@ -1,7 +1,7 @@
 [
     {
         "member_uids": [],
-        "ltcfid": 0,
+        "ltcfid": null,
         "resident_uids": [
             0,
             1,
@@ -38,11 +38,12 @@
             1499,
             1665
         ],
-        "instid": 10
+        "instid": 0,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 1,
+        "ltcfid": null,
         "resident_uids": [
             28,
             29,
@@ -134,11 +135,12 @@
             1564,
             131
         ],
-        "instid": 10
+        "instid": 1,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 2,
+        "ltcfid": null,
         "resident_uids": [
             108,
             109,
@@ -205,11 +207,12 @@
             2141,
             6387
         ],
-        "instid": 10
+        "instid": 2,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 3,
+        "ltcfid": null,
         "resident_uids": [
             162,
             163,
@@ -304,11 +307,12 @@
             2802,
             4285
         ],
-        "instid": 10
+        "instid": 3,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 4,
+        "ltcfid": null,
         "resident_uids": [
             240,
             241,
@@ -556,11 +560,12 @@
             8169,
             11458
         ],
-        "instid": 10
+        "instid": 4,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 5,
+        "ltcfid": null,
         "resident_uids": [
             456,
             457,
@@ -652,11 +657,12 @@
             2944,
             4414
         ],
-        "instid": 10
+        "instid": 5,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 6,
+        "ltcfid": null,
         "resident_uids": [
             533,
             534,
@@ -701,11 +707,12 @@
             1635,
             9733
         ],
-        "instid": 10
+        "instid": 6,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 7,
+        "ltcfid": null,
         "resident_uids": [
             569,
             570,
@@ -783,11 +790,12 @@
             8574,
             5874
         ],
-        "instid": 10
+        "instid": 7,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 8,
+        "ltcfid": null,
         "resident_uids": [
             635,
             636,
@@ -888,11 +896,12 @@
             2139,
             6120
         ],
-        "instid": 10
+        "instid": 8,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 9,
+        "ltcfid": null,
         "resident_uids": [
             724,
             725,
@@ -1061,11 +1070,12 @@
             1555,
             3739
         ],
-        "instid": 10
+        "instid": 9,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 10,
+        "ltcfid": null,
         "resident_uids": [
             874,
             875,
@@ -1416,11 +1426,12 @@
             9700,
             4266
         ],
-        "instid": 10
+        "instid": 10,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 11,
+        "ltcfid": null,
         "resident_uids": [
             1181,
             1182,
@@ -1559,11 +1570,12 @@
             11335,
             10936
         ],
-        "instid": 10
+        "instid": 11,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 12,
+        "ltcfid": null,
         "resident_uids": [
             1298,
             1299,
@@ -1640,11 +1652,12 @@
             9770,
             8225
         ],
-        "instid": 10
+        "instid": 12,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 13,
+        "ltcfid": null,
         "resident_uids": [
             1363,
             1364,
@@ -1724,11 +1737,12 @@
             12619,
             17136
         ],
-        "instid": 10
+        "instid": 13,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 14,
+        "ltcfid": null,
         "resident_uids": [
             1431,
             1432,
@@ -1909,11 +1923,12 @@
             8482,
             13674
         ],
-        "instid": 10
+        "instid": 14,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 15,
+        "ltcfid": null,
         "resident_uids": [
             1585,
             1586,
@@ -2025,11 +2040,12 @@
             13886,
             14386
         ],
-        "instid": 10
+        "instid": 15,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 16,
+        "ltcfid": null,
         "resident_uids": [
             1684,
             1685,
@@ -2101,11 +2117,12 @@
             10266,
             16469
         ],
-        "instid": 10
+        "instid": 16,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 17,
+        "ltcfid": null,
         "resident_uids": [
             1744,
             1745,
@@ -2209,11 +2226,12 @@
             23927,
             18995
         ],
-        "instid": 10
+        "instid": 17,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 18,
+        "ltcfid": null,
         "resident_uids": [
             1830,
             1831,
@@ -2369,11 +2387,12 @@
             16667,
             14604
         ],
-        "instid": 10
+        "instid": 18,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 19,
+        "ltcfid": null,
         "resident_uids": [
             1967,
             1968,
@@ -2506,11 +2525,12 @@
             26888,
             17550
         ],
-        "instid": 10
+        "instid": 19,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 20,
+        "ltcfid": null,
         "resident_uids": [
             2083,
             2084,
@@ -2821,11 +2841,12 @@
             15614,
             6048
         ],
-        "instid": 10
+        "instid": 20,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 21,
+        "ltcfid": null,
         "resident_uids": [
             2361,
             2362,
@@ -2971,11 +2992,12 @@
             10783,
             11588
         ],
-        "instid": 10
+        "instid": 21,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 22,
+        "ltcfid": null,
         "resident_uids": [
             2492,
             2493,
@@ -3010,11 +3032,12 @@
             12048,
             12231
         ],
-        "instid": 10
+        "instid": 22,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 23,
+        "ltcfid": null,
         "resident_uids": [
             2519,
             2520,
@@ -3160,11 +3183,12 @@
             6658,
             14952
         ],
-        "instid": 10
+        "instid": 23,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 24,
+        "ltcfid": null,
         "resident_uids": [
             2644,
             2645,
@@ -3214,11 +3238,12 @@
             13566,
             7107
         ],
-        "instid": 10
+        "instid": 24,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 25,
+        "ltcfid": null,
         "resident_uids": [
             2685,
             2686,
@@ -3386,11 +3411,12 @@
             18091,
             13120
         ],
-        "instid": 10
+        "instid": 25,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 26,
+        "ltcfid": null,
         "resident_uids": [
             2837,
             2838,
@@ -3748,11 +3774,12 @@
             15478,
             18561
         ],
-        "instid": 10
+        "instid": 26,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 27,
+        "ltcfid": null,
         "resident_uids": [
             3154,
             3155,
@@ -3912,11 +3939,12 @@
             19096,
             18798
         ],
-        "instid": 10
+        "instid": 27,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 28,
+        "ltcfid": null,
         "resident_uids": [
             3293,
             3294,
@@ -4023,11 +4051,12 @@
             13350,
             17044
         ],
-        "instid": 10
+        "instid": 28,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 29,
+        "ltcfid": null,
         "resident_uids": [
             3382,
             3383,
@@ -4074,11 +4103,12 @@
             20448,
             20939
         ],
-        "instid": 10
+        "instid": 29,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 30,
+        "ltcfid": null,
         "resident_uids": [
             3419,
             3420,
@@ -4177,11 +4207,12 @@
             12130,
             19164
         ],
-        "instid": 10
+        "instid": 30,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 31,
+        "ltcfid": null,
         "resident_uids": [
             3506,
             3507,
@@ -4308,11 +4339,12 @@
             22768,
             21698
         ],
-        "instid": 10
+        "instid": 31,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 32,
+        "ltcfid": null,
         "resident_uids": [
             3619,
             3620,
@@ -4400,11 +4432,12 @@
             22531,
             21810
         ],
-        "instid": 10
+        "instid": 32,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 33,
+        "ltcfid": null,
         "resident_uids": [
             3696,
             3697,
@@ -4493,11 +4526,12 @@
             15522,
             21461
         ],
-        "instid": 10
+        "instid": 33,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 34,
+        "ltcfid": null,
         "resident_uids": [
             3772,
             3773,
@@ -4608,11 +4642,12 @@
             12895,
             16175
         ],
-        "instid": 10
+        "instid": 34,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 35,
+        "ltcfid": null,
         "resident_uids": [
             3866,
             3867,
@@ -4759,11 +4794,12 @@
             24450,
             15950
         ],
-        "instid": 10
+        "instid": 35,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 36,
+        "ltcfid": null,
         "resident_uids": [
             3996,
             3997,
@@ -5061,11 +5097,12 @@
             22598,
             16956
         ],
-        "instid": 10
+        "instid": 36,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 37,
+        "ltcfid": null,
         "resident_uids": [
             4264,
             4265,
@@ -5183,11 +5220,12 @@
             20513,
             19864
         ],
-        "instid": 10
+        "instid": 37,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 38,
+        "ltcfid": null,
         "resident_uids": [
             4369,
             4370,
@@ -5752,11 +5790,12 @@
             1459,
             19699
         ],
-        "instid": 10
+        "instid": 38,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 39,
+        "ltcfid": null,
         "resident_uids": [
             4889,
             4890,
@@ -6234,11 +6273,12 @@
             19794,
             23421
         ],
-        "instid": 10
+        "instid": 39,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 40,
+        "ltcfid": null,
         "resident_uids": [
             5322,
             5323,
@@ -6362,11 +6402,12 @@
             22252,
             17690
         ],
-        "instid": 10
+        "instid": 40,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 41,
+        "ltcfid": null,
         "resident_uids": [
             5429,
             5430,
@@ -6450,11 +6491,12 @@
             15770,
             24959
         ],
-        "instid": 10
+        "instid": 41,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 42,
+        "ltcfid": null,
         "resident_uids": [
             5500,
             5501,
@@ -6567,11 +6609,12 @@
             19552,
             27495
         ],
-        "instid": 10
+        "instid": 42,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 43,
+        "ltcfid": null,
         "resident_uids": [
             5596,
             5597,
@@ -6626,11 +6669,12 @@
             23103,
             19778
         ],
-        "instid": 10
+        "instid": 43,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 44,
+        "ltcfid": null,
         "resident_uids": [
             5642,
             5643,
@@ -6739,11 +6783,12 @@
             23078,
             21760
         ],
-        "instid": 10
+        "instid": 44,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 45,
+        "ltcfid": null,
         "resident_uids": [
             5737,
             5738,
@@ -6888,11 +6933,12 @@
             32269,
             23241
         ],
-        "instid": 10
+        "instid": 45,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 46,
+        "ltcfid": null,
         "resident_uids": [
             5864,
             5865,
@@ -6945,11 +6991,12 @@
             17114,
             28231
         ],
-        "instid": 10
+        "instid": 46,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 47,
+        "ltcfid": null,
         "resident_uids": [
             5907,
             5908,
@@ -7034,11 +7081,12 @@
             32901,
             23424
         ],
-        "instid": 10
+        "instid": 47,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 48,
+        "ltcfid": null,
         "resident_uids": [
             5979,
             5980,
@@ -7120,11 +7168,12 @@
             20830,
             19438
         ],
-        "instid": 10
+        "instid": 48,
+        "insttypeid": 10
     },
     {
         "member_uids": [],
-        "ltcfid": 49,
+        "ltcfid": null,
         "resident_uids": [
             6049,
             6050,
@@ -7152,11 +7201,12 @@
             17631,
             19041
         ],
-        "instid": 6
+        "instid": 49,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 50,
+        "ltcfid": null,
         "resident_uids": [
             6070,
             6071,
@@ -7183,11 +7233,12 @@
             24764,
             19700
         ],
-        "instid": 6
+        "instid": 50,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 51,
+        "ltcfid": null,
         "resident_uids": [
             6090,
             6091,
@@ -7229,11 +7280,12 @@
             25994,
             24739
         ],
-        "instid": 6
+        "instid": 51,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 52,
+        "ltcfid": null,
         "resident_uids": [
             6124,
             6125,
@@ -7290,11 +7342,12 @@
             30259,
             31061
         ],
-        "instid": 6
+        "instid": 52,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 53,
+        "ltcfid": null,
         "resident_uids": [
             6172,
             6173,
@@ -7444,11 +7497,12 @@
             24313,
             34761
         ],
-        "instid": 6
+        "instid": 53,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 54,
+        "ltcfid": null,
         "resident_uids": [
             6302,
             6303,
@@ -7565,11 +7619,12 @@
             24770,
             21944
         ],
-        "instid": 6
+        "instid": 54,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 55,
+        "ltcfid": null,
         "resident_uids": [
             6402,
             6403,
@@ -7645,11 +7700,12 @@
             21353,
             21033
         ],
-        "instid": 6
+        "instid": 55,
+        "insttypeid": 6
     },
     {
         "member_uids": [],
-        "ltcfid": 56,
+        "ltcfid": null,
         "resident_uids": [
             6466,
             6467,
@@ -7957,11 +8013,12 @@
             20162,
             25713
         ],
-        "instid": 9
+        "instid": 56,
+        "insttypeid": 9
     },
     {
         "member_uids": [],
-        "ltcfid": 57,
+        "ltcfid": null,
         "resident_uids": [
             6743,
             6744,
@@ -8044,11 +8101,12 @@
             19999,
             39309
         ],
-        "instid": 9
+        "instid": 57,
+        "insttypeid": 9
     },
     {
         "member_uids": [],
-        "ltcfid": 58,
+        "ltcfid": null,
         "resident_uids": [
             6815,
             6816,
@@ -8152,11 +8210,12 @@
             26637,
             14838
         ],
-        "instid": 3
+        "instid": 58,
+        "insttypeid": 3
     },
     {
         "member_uids": [],
-        "ltcfid": 59,
+        "ltcfid": null,
         "resident_uids": [
             6905,
             6906,
@@ -8222,11 +8281,12 @@
             33588,
             28512
         ],
-        "instid": 3
+        "instid": 59,
+        "insttypeid": 3
     },
     {
         "member_uids": [],
-        "ltcfid": 60,
+        "ltcfid": null,
         "resident_uids": [
             6961,
             6962,
@@ -8293,11 +8353,12 @@
             24850,
             32845
         ],
-        "instid": 2
+        "instid": 60,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 61,
+        "ltcfid": null,
         "resident_uids": [
             7017,
             7018,
@@ -8403,11 +8464,12 @@
             33877,
             29317
         ],
-        "instid": 2
+        "instid": 61,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 62,
+        "ltcfid": null,
         "resident_uids": [
             7108,
             7109,
@@ -8534,11 +8596,12 @@
             43998,
             27212
         ],
-        "instid": 2
+        "instid": 62,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 63,
+        "ltcfid": null,
         "resident_uids": [
             7217,
             7218,
@@ -8681,11 +8744,12 @@
             21814,
             32416
         ],
-        "instid": 2
+        "instid": 63,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 64,
+        "ltcfid": null,
         "resident_uids": [
             7337,
             7338,
@@ -8799,11 +8863,12 @@
             26254,
             24231
         ],
-        "instid": 2
+        "instid": 64,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 65,
+        "ltcfid": null,
         "resident_uids": [
             7435,
             7436,
@@ -8906,11 +8971,12 @@
             29199,
             22176
         ],
-        "instid": 2
+        "instid": 65,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 66,
+        "ltcfid": null,
         "resident_uids": [
             7523,
             7524,
@@ -8981,11 +9047,12 @@
             23102,
             30044
         ],
-        "instid": 2
+        "instid": 66,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 67,
+        "ltcfid": null,
         "resident_uids": [
             7583,
             7584,
@@ -9028,11 +9095,12 @@
             23778,
             27357
         ],
-        "instid": 2
+        "instid": 67,
+        "insttypeid": 2
     },
     {
         "member_uids": [],
-        "ltcfid": 68,
+        "ltcfid": null,
         "resident_uids": [
             7618,
             7619,
@@ -9118,11 +9186,12 @@
             27191,
             27782
         ],
-        "instid": 4
+        "instid": 68,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 69,
+        "ltcfid": null,
         "resident_uids": [
             7690,
             7691,
@@ -9192,11 +9261,12 @@
             36401,
             37121
         ],
-        "instid": 4
+        "instid": 69,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 70,
+        "ltcfid": null,
         "resident_uids": [
             7750,
             7751,
@@ -9242,11 +9312,12 @@
             27901,
             22101
         ],
-        "instid": 4
+        "instid": 70,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 71,
+        "ltcfid": null,
         "resident_uids": [
             7787,
             7788,
@@ -9310,11 +9381,12 @@
             22149,
             28365
         ],
-        "instid": 4
+        "instid": 71,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 72,
+        "ltcfid": null,
         "resident_uids": [
             7840,
             7841,
@@ -9346,11 +9418,12 @@
             22919,
             37423
         ],
-        "instid": 4
+        "instid": 72,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 73,
+        "ltcfid": null,
         "resident_uids": [
             7863,
             7864,
@@ -9552,11 +9625,12 @@
             30988,
             32443
         ],
-        "instid": 4
+        "instid": 73,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 74,
+        "ltcfid": null,
         "resident_uids": [
             8038,
             8039,
@@ -9691,11 +9765,12 @@
             29268,
             29114
         ],
-        "instid": 4
+        "instid": 74,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 75,
+        "ltcfid": null,
         "resident_uids": [
             8155,
             8156,
@@ -9871,11 +9946,12 @@
             49986,
             44664
         ],
-        "instid": 4
+        "instid": 75,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 76,
+        "ltcfid": null,
         "resident_uids": [
             8313,
             8314,
@@ -9903,11 +9979,12 @@
             32147,
             30757
         ],
-        "instid": 4
+        "instid": 76,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 77,
+        "ltcfid": null,
         "resident_uids": [
             8334,
             8335,
@@ -9990,11 +10067,12 @@
             29884,
             27946
         ],
-        "instid": 4
+        "instid": 77,
+        "insttypeid": 4
     },
     {
         "member_uids": [],
-        "ltcfid": 78,
+        "ltcfid": null,
         "resident_uids": [
             8405,
             8406,
@@ -10289,11 +10367,12 @@
             28722,
             36734
         ],
-        "instid": 7
+        "instid": 78,
+        "insttypeid": 7
     },
     {
         "member_uids": [],
-        "ltcfid": 79,
+        "ltcfid": null,
         "resident_uids": [
             8675,
             8676,
@@ -10348,11 +10427,12 @@
             29976,
             32574
         ],
-        "instid": 7
+        "instid": 79,
+        "insttypeid": 7
     },
     {
         "member_uids": [],
-        "ltcfid": 80,
+        "ltcfid": null,
         "resident_uids": [
             8719,
             8720,
@@ -10463,11 +10543,12 @@
             33777,
             32310
         ],
-        "instid": 7
+        "instid": 80,
+        "insttypeid": 7
     },
     {
         "member_uids": [],
-        "ltcfid": 81,
+        "ltcfid": null,
         "resident_uids": [
             8814,
             8815,
@@ -10527,11 +10608,12 @@
             22325,
             41734
         ],
-        "instid": 7
+        "instid": 81,
+        "insttypeid": 7
     },
     {
         "member_uids": [],
-        "ltcfid": 82,
+        "ltcfid": null,
         "resident_uids": [
             8865,
             8866,
@@ -11128,11 +11210,12 @@
             33969,
             38047
         ],
-        "instid": 7
+        "instid": 82,
+        "insttypeid": 7
     },
     {
         "member_uids": [],
-        "ltcfid": 83,
+        "ltcfid": null,
         "resident_uids": [
             9403,
             9404,
@@ -11184,11 +11267,12 @@
             40990,
             39195
         ],
-        "instid": 7
+        "instid": 83,
+        "insttypeid": 7
     },
     {
         "member_uids": [],
-        "ltcfid": 84,
+        "ltcfid": null,
         "resident_uids": [
             9446,
             9447,
@@ -11335,11 +11419,12 @@
             35517,
             36858
         ],
-        "instid": 8
+        "instid": 84,
+        "insttypeid": 8
     },
     {
         "member_uids": [],
-        "ltcfid": 85,
+        "ltcfid": null,
         "resident_uids": [
             9573,
             9574,
@@ -11373,6 +11458,7 @@
             29860,
             45486
         ],
-        "instid": 11
+        "instid": 85,
+        "insttypeid": 11
     }
 ]

@@ -51,7 +51,6 @@
             47,
             48
         ],
-        "instypeid": null,
         "insttypeid": 10
     },
     {
@@ -64,7 +63,6 @@
             54,
             55
         ],
-        "instypeid": null,
         "insttypeid": 6
     },
     {
@@ -72,7 +70,6 @@
             56,
             57
         ],
-        "instypeid": null,
         "insttypeid": 9
     },
     {
@@ -80,7 +77,6 @@
             58,
             59
         ],
-        "instypeid": null,
         "insttypeid": 3
     },
     {
@@ -94,7 +90,6 @@
             66,
             67
         ],
-        "instypeid": null,
         "insttypeid": 2
     },
     {
@@ -110,7 +105,6 @@
             76,
             77
         ],
-        "instypeid": null,
         "insttypeid": 4
     },
     {
@@ -122,21 +116,18 @@
             82,
             83
         ],
-        "instypeid": null,
         "insttypeid": 7
     },
     {
         "member_uids": [
             84
         ],
-        "instypeid": null,
         "insttypeid": 8
     },
     {
         "member_uids": [
             85
         ],
-        "instypeid": null,
         "insttypeid": 11
     }
 ]
