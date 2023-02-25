@@ -397,9 +397,9 @@ params = { "cellsize": 100,
            "cellsizespare": 0.1,
            "loadagents": True,
            "loadhouseholds": True,
+            "loadinstitutions": True,
            "loadworkplaces": True,
-           "loadschools": True,
-           "loadinstitutions": True 
+           "loadschools": True
          }
 
 cellindex = 0
@@ -458,6 +458,15 @@ if params["loadhouseholds"]:
 
     households, cells_households = convert_households(households_original)
 
+if params["loadinstitutions"]:
+    institutiontypesfile = open("./population/institutiontypes.json")
+    institutiontypes_original = json.load(institutiontypesfile)
+
+    institutionsfile = open("./population/institutions.json")
+    institutions = json.load(institutionsfile)
+
+    institutiontypes, cells_institutions = split_institutions_by_cellsize(institutions, params["cellsize"], params["cellsizespare"])
+
 if params["loadworkplaces"]:
     workplacesfile = open("./population/workplaces.json")
     workplaces = json.load(workplacesfile)
@@ -476,13 +485,4 @@ if params["loadschools"]:
 
     schooltypes, cells_schools, cells_classrooms = split_schools_by_cellsize(schools, params["cellsize"], params["cellsizespare"])
 
-if params["loadinstitutions"]:
-    institutiontypesfile = open("./population/institutiontypes.json")
-    institutiontypes_original = json.load(institutiontypesfile)
-
-    institutionsfile = open("./population/institutions.json")
-    institutions = json.load(institutionsfile)
-
-    institutiontypes, cells_institutions = split_institutions_by_cellsize(institutions, params["cellsize"], params["cellsizespare"])
-
-    print(len(institutiontypes))
+print(len(agents))
