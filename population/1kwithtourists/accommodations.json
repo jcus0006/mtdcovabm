@@ -1,0 +1,181 @@
+[
+    {
+        "member_uids": [
+            2,
+            5,
+            7,
+            14,
+            15,
+            16,
+            20,
+            22,
+            24,
+            28
+        ],
+        "accomid": 0,
+        "accomtypeid": 1,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            3,
+            4,
+            6,
+            8,
+            13,
+            17,
+            19,
+            21
+        ],
+        "accomid": 0,
+        "accomtypeid": 1,
+        "roomsize": 2
+    },
+    {
+        "member_uids": [
+            1,
+            9,
+            11,
+            12,
+            18,
+            26,
+            27,
+            30
+        ],
+        "accomid": 0,
+        "accomtypeid": 1,
+        "roomsize": 3
+    },
+    {
+        "member_uids": [
+            23,
+            25
+        ],
+        "accomid": 0,
+        "accomtypeid": 1,
+        "roomsize": 4
+    },
+    {
+        "member_uids": [
+            0,
+            10,
+            29
+        ],
+        "accomid": 0,
+        "accomtypeid": 1,
+        "roomsize": 5
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 0,
+        "accomtypeid": 2,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            1,
+            2
+        ],
+        "accomid": 0,
+        "accomtypeid": 2,
+        "roomsize": 2
+    },
+    {
+        "member_uids": [
+            3
+        ],
+        "accomid": 0,
+        "accomtypeid": 2,
+        "roomsize": 7
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 0,
+        "accomtypeid": 3,
+        "roomsize": 2
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 0,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 1,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 2,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 3,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 4,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 5,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 6,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 7,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 8,
+        "accomtypeid": 4,
+        "roomsize": 1
+    },
+    {
+        "member_uids": [
+            0
+        ],
+        "accomid": 9,
+        "accomtypeid": 4,
+        "roomsize": 1
+    }
+]
