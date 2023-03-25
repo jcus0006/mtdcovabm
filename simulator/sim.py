@@ -2,25 +2,35 @@ import json
 import numpy as np
 import math
 from cells import Cells
+from simulator import util
 
 # to establish set of static parameters such as cellsize, but grouped in dict
 
-params = { "cellsize": 10,
-           "cellsizespare": 0.1,
-           "loadagents": True,
-           "loadhouseholds": True,
-           "loadinstitutions": True,
-           "loadworkplaces": True,
-           "loadschools": True
+params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
+            "loadagents": True,
+            "loadhouseholds": True,
+            "loadinstitutions": True,
+            "loadworkplaces": True,
+            "loadschools": True,
+            "loadtourism": True,
+            "religiouscells": True,
+            "year": 2021
          }
 
 cellindex = 0
 cells = {}
 
+cellsfile = open("./data/cells.json")
+cellsparams = json.load(cellsfile)
+
+population_sub_folder = ""
+if len(params["popsubfolder"]) > 0:
+    population_sub_folder = params["popsubfolder"] + "/"
+
 # load agents and all relevant JSON files on each node
 agents = {}
 if params["loadagents"]:
-    agentsfile = open("./population/agents.json")
+    agentsfile = open("./population/" + population_sub_folder + "agents.json")
     agents = json.load(agentsfile)
 
     temp_agents = {int(k): v for k, v in agents.items()}
@@ -74,47 +84,150 @@ if params["loadagents"]:
 cell = Cells(agents, cells, cellindex)
 
 if params["loadhouseholds"]:
-    householdsfile = open("./population/households.json")
+    householdsfile = open("./population/" + population_sub_folder + "households.json")
     households_original = json.load(householdsfile)
 
-    households, cells_households = cell.convert_households(households_original)
+    workplaces = []
+    workplaces_cells_params = []
+
+    if params["loadworkplaces"]:
+        workplacesfile = open("./population/" + population_sub_folder + "workplaces.json")
+        workplaces = json.load(workplacesfile)
+
+        workplaces_cells_params = cellsparams["workplaces"]
+
+    households, cells_households, householdsworkplaces, cells_householdsworkplaces = cell.convert_households(households_original, workplaces, workplaces_cells_params)
 
 if params["loadinstitutions"]:
-    institutiontypesfile = open("./population/institutiontypes.json")
+    institutiontypesfile = open("./population/" + population_sub_folder + "institutiontypes.json")
     institutiontypes_original = json.load(institutiontypesfile)
 
-    institutionsfile = open("./population/institutions.json")
+    institutionsfile = open("./population/" + population_sub_folder + "institutions.json")
     institutions = json.load(institutionsfile)
 
-    institutiontypes, cells_institutions = cell.split_institutions_by_cellsize(institutions, params["cellsize"], params["cellsizespare"])
+    institutions_cells_params = cellsparams["institutions"]
+
+    institutiontypes, cells_institutions = cell.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])    
 
 if params["loadworkplaces"]:
-    workplacesfile = open("./population/workplaces.json")
-    workplaces = json.load(workplacesfile)
+    if len(workplaces) == 0:
+        workplacesfile = open("./population/" + population_sub_folder + "workplaces.json")
+        workplaces = json.load(workplacesfile)
 
-    accommodationsfile = open("./population/accommodations.json")
-    accommodations = json.load(accommodationsfile)
+    if len(workplaces_cells_params) == 0:
+        workplaces_cells_params = cellsparams["workplaces"]
 
-    accommodations_by_id_by_type = {} # to fix here (rooms from same accom id are replacing each other)
-    for accom in accommodations:
-        if accom["accomtypeid"] not in accommodations_by_id_by_type:
-            accommodations_by_id_by_type[accom["accomtypeid"]] = {}
+    hospital_cells_params = cellsparams["hospital"]
+    transport_cells_params = cellsparams["transport"]
+    transport, cells_transport = cell.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
 
-        accoms_by_type = accommodations_by_id_by_type[accom["accomtypeid"]]
-        accoms_by_type[accom["accomid"]] = {"member_uids":accom["member_uids"], "accomtypeid": accom["accomtypeid"], "roomsize": accom["roomsize"]}
+    accommodations = []
+    roomsizes_by_accomid_by_accomtype = {} # {typeid: {accomid: {roomsize: [member_uids]}}} - here member_uids represents room ids
+    rooms_by_accomid_by_accomtype = {} # {typeid: {accomid: {roomid: {"roomsize":1, "member_uids":[]}}}} - here member_uids represents tourist ids
+    accomgroups = None
+
+    if params["loadtourism"]:
+        accommodationsfile = open("./population/" + population_sub_folder + "accommodations.json")
+        accommodations = json.load(accommodationsfile)
+
+        for accom in accommodations:
+            if accom["accomtypeid"] not in roomsizes_by_accomid_by_accomtype:
+                roomsizes_by_accomid_by_accomtype[accom["accomtypeid"]] = {}
+
+            if accom["accomtypeid"] not in rooms_by_accomid_by_accomtype:
+                rooms_by_accomid_by_accomtype[accom["accomtypeid"]] = {}
+
+            roomsizes_accoms_by_type = roomsizes_by_accomid_by_accomtype[accom["accomtypeid"]]
+            rooms_accoms_by_type = rooms_by_accomid_by_accomtype[accom["accomtypeid"]]
+
+            if accom["accomid"] not in roomsizes_accoms_by_type:
+                roomsizes_accoms_by_type[accom["accomid"]] = {}
+
+            if accom["accomid"] not in rooms_accoms_by_type:
+                rooms_accoms_by_type[accom["accomid"]] = {}
+
+            roomsizes_accom_by_id = roomsizes_accoms_by_type[accom["accomid"]]
+            roomsizes_accom_by_id[accom["roomsize"]] = accom["member_uids"] # guaranteed to be only 1 room size
+
+            rooms_accom_by_id = rooms_accoms_by_type[accom["accomid"]]
+
+            for roomid in accom["member_uids"]:
+                rooms_accom_by_id[roomid] = {}
 
     # handle cell splitting (on workplaces & accommodations)
-    industries, cells_industries, cells_accommodations = cell.split_workplaces_by_cellsize(workplaces, accommodations_by_id_by_type, params["cellsize"], params["cellsizespare"])
+    industries, cells_industries, cells_accommodations, rooms_by_accomid_by_accomtype, cells_hospital = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport)
+
+if params["loadtourism"]:
+    touristsfile = open("./population/" + population_sub_folder + "tourists.json")
+    tourists = json.load(touristsfile)
+    tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
+
+    touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
+    touristsgroups = json.load(touristsgroupsfile)
+    touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
+
+    touristsgroupsdaysfile = open("./population/" + population_sub_folder + "touristsgroupsdays.json")
+    touristsgroupsdays = json.load(touristsgroupsdaysfile)
+    touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
+
+    airport_cells_params = cellsparams["airport"]
+
+    cell.create_airport_cell()
+
+    cellindex += 1
 
 if params["loadschools"]:
-    schoolsfile = open("./population/schools.json")
+    schoolsfile = open("./population/" + population_sub_folder + "schools.json")
     schools = json.load(schoolsfile)
+
+    schools_cells_params = cellsparams["schools"]
 
     min_nts_size, max_nts_size, min_classroom_size, max_classroom_size = cell.get_min_max_school_sizes(schools)
 
     print("Min classroom size: " + str(min_classroom_size) + ", Max classroom size: " + str(max_classroom_size))
     print("Min non-teaching staff size: " + str(min_nts_size) + ", Max classroom size: " + str(max_nts_size))
 
-    schooltypes, cells_schools, cells_classrooms = cell.split_schools_by_cellsize(schools, params["cellsize"], params["cellsizespare"])
+    schooltypes, cells_schools, cells_classrooms = cell.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
+
+if params["religiouscells"]:
+    religious_cells_params = cellsparams["religious"]
+
+    churches, cells_churches = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
+
+for day in range(1, 365+1):
+    daystr = util.day_of_year_to_day_of_week(day, params["year"])
+
+    for timestep in range(144):
+        if timestep == 0: 
+            # workout itineraries
+            # assign tourists (this is the first prototype which assumes tourists checkout/in at 00.00
+            # but with itinerary we can generate random timestep at which tourists checkout/in
+            if params["loadtourism"]:
+                tourist_groupids_by_day = touristsgroupsdays[day]
+
+                for tour_group_id in tourist_groupids_by_day:
+                    tourists_group = touristsgroups[tour_group_id]
+
+                    accomtype = tourists_group["accomtype"]
+                    accominfo = tourists_group["accominfo"]
+                    arrivalday = tourists_group["arr"]
+                    departureday = tourists_group["dep"]
+                    purpose = tourists_group["purpose"]
+                    subgroupsmemberids = tourists_group["subgroupsmemberids"]
+
+                    if arrivalday == day or departureday == day:
+                        for accinfoindex, accinfo in enumerate(accominfo):
+                            accomid, roomid, roomsize = accinfo[0], accinfo[1], accinfo[2]
+
+                            subgroupmmembers = subgroupsmemberids[accinfoindex]
+
+                            cellindex = rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
+
+                            if arrivalday == day:
+                                cells[cellindex]["place"]["member_uids"] = subgroupmmembers
+                            else:
+                                cells[cellindex]["place"]["member_uids"] = []
+
+
 
 print(len(agents))

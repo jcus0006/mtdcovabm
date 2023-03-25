@@ -1,48 +1,132 @@
 import numpy as np
 import math
+import copy
+import bisect
+from classes.accomgroup import AccomGroup
+from simulator import util
 
 class Cells:
-    def __init__(self, agents, cells, cellindex):
+    def __init__(self, agents, cells, cellindex, seed=6):
         self.agents = agents
         self.cells = cells
         self.cellindex = cellindex
+        np.random.seed(seed)
 
     # return households which is a dict of dicts, where the key is the household id, and the values are:
     # member_uids representing the residents in the household, reference_uid representing the reference person, and reference_age the reference person age
     # cell splitting is not required in this case, the household is the cell
-    def convert_households(self, households_original):
+    # this method also returns the households to be assigned as employers; the only criteria being used is that the first "household_as_employer_count" where the education is tertiary will be assigned
+    # had more fine-grained data been available in terms of net worth or income, this could have also been used
+    def convert_households(self, households_original, workplaces, workplaces_params):
         households = {}
         householdscells = {}
+        householdsworkplaces = {}
+        householdsworkplacescells = {}
+
+        households_employees_groups = []
+
+        if len(workplaces) > 0:
+            households_as_workplaces_employees_groups = [wp["member_uids"] for wp in workplaces if wp["indid"] == 20]
+            households_as_workplaces_employees = [emp for grp in households_as_workplaces_employees_groups for emp in grp]
+            households_as_workplace_params = workplaces_params[19] # index 0 based
+            min_household_employees, max_household_employees = households_as_workplace_params[1], households_as_workplace_params[2]
+            households_employees_group_sizes = util.random_group_partition(len(households_as_workplaces_employees), min_household_employees, max_household_employees)
+
+            members_start = 0
+            for index, group_size in enumerate(households_employees_group_sizes):
+                members_count = group_size
+
+                members_end = members_start + members_count
+
+                temp_employees = households_as_workplaces_employees[members_start:members_end]
+
+                members_start = members_end
+
+                households_employees_groups.append(temp_employees)
+
+        households_employees_groups_index = 0
 
         for household in households_original:
             member_uids = household["member_uids"]
             hhid = household["hhid"]
             ref_uid = household["reference_uid"]
-            ref_age = household["reference_age"]
+            ref_age = household["reference_age"] 
+            ref_agent = self.agents[ref_uid]
 
-            households[hhid] = { "member_uids": np.array(member_uids), "reference_uid": ref_uid, "reference_age": ref_age}
+            this_hh_employees_uids = []
+            if households_employees_groups_index < len(households_employees_groups) and ref_agent["edu"] == 5:
+                this_hh_employees_uids = households_employees_groups[households_employees_groups_index]
+
+                if len(self.agents) > 0:
+                    for uid in this_hh_employees_uids:
+                        agent = self.agents[uid]
+                        agent["wpid"] = None
+                        agent["hhwpid"] = hhid 
+                        agent["work_cellid"] = self.cellindex
+
+                households_employees_groups_index += 1
+
+            households[hhid] = { "hhid": hhid, "resident_uids": np.array(member_uids), "employees_uids": np.array(this_hh_employees_uids), "reference_uid": ref_uid, "reference_age": ref_age, "visitor_uids": np.array([])}
+            householdsworkplaces[hhid] = households[hhid]
 
             self.cells[self.cellindex] = { "type": "household", "place": households[hhid]}
             householdscells[self.cellindex] = self.cells[self.cellindex]
-
-            self.cellindex += 1
+            householdsworkplacescells[self.cellindex] = self.cells[self.cellindex]
 
             if len(self.agents) > 0:
                 for uid in member_uids:
                     agent = self.agents[uid]
-                    agent["res_cellid"] = hhid
-                    agent["curr_cellid"] = hhid
+                    agent["res_cellid"] = self.cellindex
+                    agent["curr_cellid"] = self.cellindex
 
-        return households, householdscells
+            self.cellindex += 1
+
+        return households, householdsworkplaces, householdscells, householdsworkplacescells
 
     # return industries_by_indid which is a dict of dict of dict of dict with the below format:
     # industries_by_indid (indid) -> workplaces_by_wpid (wpid) -> cells_by_cellid (cellid) -> dict with member_uids key/value pair
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
-    def split_workplaces_by_cellsize(self, workplaces, accommodations, cellsize, cellsizespare):
+    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport):
         industries_by_indid = {}
         workplacescells = {}
+        hospitalcells = {}
         accommodationcells = {}
+        # accomgroups = AccomGroup()
+
+        bus_drivers = []
+
+        if len(transport) > 0:       
+            transportation_employees_groups = [wp["member_uids"] for wp in workplaces if wp["indid"] == 8]
+            transportation_employees = [emp for grp in transportation_employees_groups for emp in grp]
+            transportation_employeers_drivers_pool = [uid for uid in transportation_employees if self.agents[uid]["edu"] != 5]
+
+            bus_count = len(transport)
+            bus_drivers = np.random.choice(transportation_employeers_drivers_pool, bus_count)
+
+        healthcare_workplaces_sizes = {}
+        hospital_ids = []
+
+        # pick the largest one as the main hospital
+        # pick hosp_count - 1, at random, as the other hospitals
+
+        if len(hospital_cells_params) > 0:
+            hosp_cell_size, hosp_cell_size_spare, hosp_count, hosp_beds_per_employee, hosp_avg_beds_per_rooms = hospital_cells_params[0], hospital_cells_params[1], hospital_cells_params[2], hospital_cells_params[3], hospital_cells_params[4]
+
+            healthcare_workplaces = [wp for wp in workplaces if wp["indid"] == 17]
+
+            for wp in healthcare_workplaces:
+                healthcare_workplaces_sizes[wp["wpid"]] = len(wp["member_uids"])
+
+            healthcare_workplaces_sizes = dict(sorted(healthcare_workplaces_sizes.items(), key=lambda item: item[1]))
+
+            healthcare_workplaces_sizes_keys = np.array(list(healthcare_workplaces_sizes.keys()))
+
+            hospital_ids = healthcare_workplaces_sizes_keys[-1:]
+
+            hospital_ids = np.append(hospital_ids, np.random.choice(healthcare_workplaces_sizes_keys, hosp_count-1))
+
+        hospital_id = 0
 
         for workplace in workplaces:
             workplaces_by_wpid = {}
@@ -51,83 +135,125 @@ class Cells:
             employees = workplace["member_uids"]
             wpid = workplace["wpid"]
             indid = workplace["indid"]
-            accomid = workplace["accomid"] if workplace["accomid"] is not None else -1 # -1 if not an accommodation
-            accomtypeid = workplace["accomtypeid"] if workplace["accomtypeid"] is not None else -1 # -1 if not an accommodation
 
-            num_employees = len(employees)
+            is_household = indid == 20
 
-            max_members = int(cellsize * (1 - cellsizespare))
-
-            # If the number of members is less than or equal to "max_members", no splitting needed
-            if len(employees) <= max_members:
-                if accomid == -1:
-                    cells_by_cellid[self.cellindex] = { "member_uids": np.array(employees)}
-                else:
-                    cells_by_cellid[self.cellindex] = { "member_uids": np.array(employees), "accomid": accomid, "accomtypeid": accomtypeid}
-
-                self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
-                workplacescells[self.cellindex] = self.cells[self.cellindex]
-
-                if len(self.agents) > 0:
-                    for uid in employees:
-                        agent = self.agents[uid]
-                        agent["work_cellid"] = self.cellindex   
-            else:
-                # Calculate the number of groups needed, considering spare space
-                cell_counts = self.split_balanced_cells_close_to_x(num_employees, max_members)
-
-                employees = np.array(employees)
-                # np.random.shuffle(employees)
+            if not is_household:
+                accomid = workplace["accomid"] if workplace["accomid"] is not None else -1 # -1 if not an accommodation
+                accomtypeid = workplace["accomtypeid"] if workplace["accomtypeid"] is not None else -1 # -1 if not an accommodation
                 
-                for index, this_cell_count in enumerate(cell_counts):
-                    members_count = this_cell_count
-                    members_start = index * members_count
-                    members_end = members_start + members_count
+                is_accom = accomid > -1
+                is_hospital = wpid in hospital_ids
 
-                    temp_members = employees[members_start:members_end]
+                cellsize, cellsizespare = workplaces_cells_params[indid-1][1], workplaces_cells_params[indid-1][2]
 
-                    if accomid == -1:
-                        cells_by_cellid[self.cellindex] = { "member_uids": np.array(temp_members)}
-                    else:
-                        cells_by_cellid[self.cellindex] = { "member_uids": np.array(temp_members), "accomid": accomid, "accomtypeid": accomtypeid}
+                if is_hospital:
+                    cellsize, cellsizespare = hosp_cell_size, hosp_cell_size_spare
 
-                    self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
+                # print(accomtypeid)
+
+                num_employees = len(employees)
+
+                max_members = int(cellsize * (1 - cellsizespare))
+
+                # start_cell_index = self.cellindex
+
+                # If the number of members is less than or equal to "max_members", no splitting needed
+                if len(employees) <= max_members:
+                    if not is_accom and not is_hospital:
+                        cells_by_cellid[self.cellindex] = { "wpid": wpid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+
+                        self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
+
+                    if is_accom:
+                        cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(employees)}
+
+                        self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
+
+                        accommodationcells[self.cellindex] = self.cells[self.cellindex]
+
+                    if is_hospital:
+                        cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(employees)}
+
+                        self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
+
+                        hospitalcells[self.cellindex] = self.cells[self.cellindex]
+
                     workplacescells[self.cellindex] = self.cells[self.cellindex]
 
                     if len(self.agents) > 0:
-                        for uid in temp_members:
+                        for uid in employees:
                             agent = self.agents[uid]
+                            agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                             agent["work_cellid"] = self.cellindex
+
+                    self.cellindex += 1
+                else:
+                    # Calculate the number of groups needed, considering spare space
+                    cell_sizes = self.split_balanced_cells_close_to_x(num_employees, max_members)
+
+                    employees = np.array(employees)
+                    # np.random.shuffle(employees)
                     
-            self.cellindex += 1
+                    members_start = 0
+                    for index, cell_size in enumerate(cell_sizes):
+                        members_count = cell_size
 
-            if accomid > 0:
-                roomsbysizes = accommodations[accomtypeid][accomid]
-                roomsize = roomsbysizes["roomsize"]
-                roomids = roomsbysizes["member_uids"]
+                        members_end = members_start + members_count
 
-                for roomid in roomids: 
-                    cells_by_cellid[self.cellindex] = { "member_uids": [], "accomid": accomid, "accomtypeid": accomtypeid, "roomid": roomid, "roomsize": roomsize} # member_uids here represents tourists that are not assigned yet
+                        temp_members = employees[members_start:members_end]
 
-                    self.cells[self.cellindex] = { "type": "room", "place": cells_by_cellid[self.cellindex]}
+                        members_start = members_end
 
-                    workplacescells[self.cellindex] = self.cells[self.cellindex]
-                    accommodationcells[self.cellindex] = self.cells[self.cellindex]
+                        if not is_accom and not is_hospital: # normal workplace
+                            cells_by_cellid[self.cellindex] = { "wpid": wpid, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
-                    self.cellindex += 1         
-            
-            # assign cells into wpid
-            workplaces_by_wpid[wpid] = cells_by_cellid
+                            self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
-            # assign workplaces into indid
-            if indid in industries_by_indid:
-                existing_workplaces_by_indid = industries_by_indid[indid]
-                for tempwpid, tempcells in workplaces_by_wpid.items():
-                    existing_workplaces_by_indid[tempwpid] = tempcells
-            else:
-                industries_by_indid[indid] = workplaces_by_wpid
+                        if is_accom:
+                            cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(temp_members)}
 
-        return industries_by_indid, workplacescells, accommodationcells
+                            self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
+
+                            accommodationcells[self.cellindex] = self.cells[self.cellindex]
+
+                        if is_hospital:
+                            cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(temp_members)}
+
+                            self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
+
+                            hospitalcells[self.cellindex] = self.cells[self.cellindex]
+                            
+                        workplacescells[self.cellindex] = self.cells[self.cellindex]
+
+                        if len(self.agents) > 0:
+                            for uid in temp_members:
+                                agent = self.agents[uid]
+                                agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
+                                agent["work_cellid"] = self.cellindex
+                        
+                        self.cellindex += 1
+
+                if is_accom and len(roomsizes_by_accomid_by_accomtype) > 0:
+                    cells_by_cellid, workplacescells, accommodationcells = self.create_accom_rooms(accomid, accomtypeid, cells_by_cellid, workplacescells, accommodationcells, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype)
+
+                if is_hospital:
+                    cells_by_cellid, workplacescells, hospitalcells = self.create_hospital_rooms(hospital_id, num_employees, hosp_beds_per_employee, hosp_avg_beds_per_rooms, cells_by_cellid, workplacescells, hospitalcells)
+
+                    hospital_id += 1
+
+                # assign cells into wpid
+                workplaces_by_wpid[wpid] = cells_by_cellid
+
+                # assign workplaces into indid
+                if indid in industries_by_indid:
+                    existing_workplaces_by_indid = industries_by_indid[indid]
+                    for tempwpid, tempcells in workplaces_by_wpid.items():
+                        existing_workplaces_by_indid[tempwpid] = tempcells
+                else:
+                    industries_by_indid[indid] = workplaces_by_wpid
+
+        return industries_by_indid, workplacescells, accommodationcells, rooms_by_accomid_by_accomtype, hospitalcells
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)
@@ -155,7 +281,7 @@ class Cells:
 
             # If the number of nonteachingstaff is less than or equal to "max_members", no splitting needed
             if len(nonteachingstaff) <= max_members:
-                cells_by_cellid[self.cellindex] = { "clid":-1, "non_teaching_staff_uids" : np.array(nonteachingstaff) }
+                cells_by_cellid[self.cellindex] = { "scid": scid, "non_teaching_staff_uids" : np.array(nonteachingstaff) }
                 
                 self.cells[self.cellindex] = { "type": "school", "place": cells_by_cellid[self.cellindex]}
                 schoolscells[self.cellindex] = self.cells[self.cellindex]
@@ -169,19 +295,22 @@ class Cells:
             else:
                 # Calculate the number of groups needed, considering spare space
 
-                cell_counts = self.split_balanced_cells_close_to_x(num_nonteachingstaff, max_members)
+                cell_sizes = self.split_balanced_cells_close_to_x(num_nonteachingstaff, max_members)
 
                 nonteachingstaff = np.array(nonteachingstaff)
                 # np.random.shuffle(nonteachingstaff)
-                
-                for index, this_cell_count in enumerate(cell_counts):
-                    members_count = this_cell_count
-                    members_start = index * members_count
+
+                members_start = 0
+                for index, cell_size in enumerate(cell_sizes):
+                    members_count = cell_size
+
                     members_end = members_start + members_count
 
                     temp_nonteachingstaff = nonteachingstaff[members_start:members_end]
 
-                    cells_by_cellid[self.cellindex] = { "clid":-1, "non_teaching_staff_uids" : temp_nonteachingstaff }
+                    members_start = members_end
+
+                    cells_by_cellid[self.cellindex] = { "scid": scid, "non_teaching_staff_uids" : np.array(temp_nonteachingstaff) }
 
                     self.cells[self.cellindex] = { "type": "school", "place": cells_by_cellid[self.cellindex]}
                     schoolscells[self.cellindex] = self.cells[self.cellindex]
@@ -198,7 +327,7 @@ class Cells:
                 students = classroom["student_uids"]
                 teachers = classroom["teacher_uids"]
 
-                cells_by_cellid[self.cellindex] = { "clid":clid, "student_uids":np.array(students), "teacher_uids":np.array(teachers)}
+                cells_by_cellid[self.cellindex] = { "scid": scid, "clid":clid, "student_uids":np.array(students), "teacher_uids":np.array(teachers)}
 
                 self.cells[self.cellindex] = { "type": "classroom", "place": cells_by_cellid[self.cellindex]}
                 classroomscells[self.cellindex] = self.cells[self.cellindex]
@@ -254,7 +383,7 @@ class Cells:
 
             # If the number of members is less than or equal to "max_members", no splitting needed
             if num_members <= cellsize:
-                cells_by_cellid[self.cellindex] = { "resident_uids": np.array(residents), "staff_uids": np.array(staff)}
+                cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": np.array(residents), "staff_uids": np.array(staff)}
 
                 self.cells[self.cellindex] = { "type": "institution", "place": cells_by_cellid[self.cellindex]}
                 institutionscells[self.cellindex] = self.cells[self.cellindex]
@@ -274,7 +403,7 @@ class Cells:
             else:
                 # Calculate the number of groups needed, considering spare space
 
-                cell_counts, staff_cell_counts, res_cell_counts = self.split_balanced_cells_staff_residents_close_to_x(num_residents, num_staff, max_members, staff_resident_ratio)
+                cell_sizes, staff_cell_sizes, res_cell_sizes = self.split_balanced_cells_staff_residents_close_to_x(num_residents, num_staff, max_members, staff_resident_ratio)
                 
                 staff = np.array(staff)
                 residents = np.array(residents)
@@ -282,23 +411,26 @@ class Cells:
                 # np.random.shuffle(staff)
                 # np.random.shuffle(residents)
                 
-                for index, this_cell_count in enumerate(cell_counts):
+                staff_start = 0
+                for index, this_cell_count in enumerate(cell_sizes):
 
                     # first assign staff
-                    staff_count = staff_cell_counts[index]
-                    staff_start = index * staff_count
+                    staff_count = staff_cell_sizes[index]
+
                     staff_end = staff_start + staff_count
 
                     temp_staff = staff[staff_start:staff_end]
 
+                    staff_start = staff_end
+                    
                     # then assign residents
-                    resident_count = res_cell_counts[index]
+                    resident_count = res_cell_sizes[index]
                     resident_start = index * resident_count
                     resident_end = resident_start + resident_count
 
                     temp_residents = residents[resident_start:resident_end]
 
-                    cells_by_cellid[self.cellindex] = { "resident_uids": temp_residents, "staff_uids": temp_staff }
+                    cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": temp_residents, "staff_uids": temp_staff }
 
                     self.cells[self.cellindex] = { "type": "institution", "place": cells_by_cellid[self.cellindex]}
                     institutionscells[self.cellindex] = self.cells[self.cellindex]
@@ -328,6 +460,127 @@ class Cells:
                 institutions_by_type[insttypeid] = institutions_by_id
 
         return institutions_by_type, institutionscells
+    
+    def create_airport_cell(self): # this is a single cell
+        airport_cell = {"visitor_uids":[]}
+
+        self.cells[self.cellindex] = {"type":"airport", "place": airport_cell}
+
+        return self.cells[self.cellindex]
+
+    def create_transport_cells(self, buscount, cellsize, cellsizespare, bus_capacities, bus_capacities_dist): 
+        transport_by_id = {}
+        cells_transport = {}
+
+        max_members = int(cellsize * (1 - cellsizespare))
+
+        bus_categories = [i for i in range(0, len(bus_capacities))]
+        sampled_bus_categories = np.random.choice(bus_categories, buscount, p=bus_capacities_dist)
+
+        for busid in range(0, buscount):
+            cells_by_cellid = {}
+
+            sampled_bus_capacity = bus_capacities[sampled_bus_categories[busid]]
+
+            if sampled_bus_capacity <= max_members: 
+                cells_by_cellid[self.cellindex] = {"busid": busid, "driver_uid": -1, "passenger_uids":[], "capacity": sampled_bus_capacity}
+
+                self.cells[self.cellindex] = {"type":"transport", "place": cells_by_cellid[self.cellindex]}
+
+                cells_transport[self.cellindex] = self.cells[self.cellindex]
+
+                self.cellindex += 1
+            else:
+                cell_sizes = self.split_balanced_cells_close_to_x(sampled_bus_capacity, max_members)
+                
+                for index, cell_size in enumerate(cell_sizes):
+                    if index == 0:
+                        cells_by_cellid[self.cellindex] = { "busid": busid, "driver_uid": -1, "passenger_uids":[], "capacity": cell_size }
+                    else:
+                        cells_by_cellid[self.cellindex] = { "busid": busid, "passenger_uids":[], "capacity": cell_size }
+
+                    self.cells[self.cellindex] = { "type": "transport", "place": cells_by_cellid[self.cellindex]}
+
+                    cells_transport[self.cellindex] = self.cells[self.cellindex]
+
+                    self.cellindex += 1
+
+            transport_by_id[busid] = cells_by_cellid
+
+        return transport_by_id, cells_transport
+    
+    def create_accom_rooms(self, accomid, accomtypeid, cells_by_cellid, workplacescells, accommodationcells, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype):
+        roomsbysizes = roomsizes_by_accomid_by_accomtype[accomtypeid][accomid]
+
+        for roomsize, roomids in roomsbysizes.items():
+            for roomid in roomids:                        
+                cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "roomid": roomid, "roomsize": roomsize, "guest_uids": np.array([])} # guest_uids here represents tourists that are not assigned yet
+
+                self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
+
+                workplacescells[self.cellindex] = self.cells[self.cellindex]
+                accommodationcells[self.cellindex] = self.cells[self.cellindex]
+
+                # accomgroups.append(accomtypeid, accomid, roomid, roomsize, self.cellindex)
+                room_by_accomid_by_accomtype = rooms_by_accomid_by_accomtype[accomtypeid][accomid][roomid]
+                room_by_accomid_by_accomtype["roomsize"] = roomsize
+                room_by_accomid_by_accomtype["cellindex"] = self.cellindex
+
+                self.cellindex += 1
+
+        return cells_by_cellid, workplacescells, accommodationcells
+
+    def create_hospital_rooms(self, hospital_id, n_employees, hosp_beds_per_employee, hospitalaveragebedsperroom, cells_by_cellid, workplacescells, hospitalcells): # this is a dynamic cell
+        total_no_beds = round(n_employees * hosp_beds_per_employee)
+        total_no_rooms = round(total_no_beds / hospitalaveragebedsperroom)
+
+        for i in range(0, total_no_rooms):
+            cells_by_cellid[self.cellindex] = {"hospitalid": hospital_id, "staff_uids":np.array([]), "roomid": i, "patient_uids":np.array([])}
+
+            self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
+
+            workplacescells[self.cellindex] = self.cells[self.cellindex]
+            hospitalcells[self.cellindex] = self.cells[self.cellindex]
+
+            self.cellindex += 1
+        
+        return cells_by_cellid, workplacescells, hospitalcells
+
+    def create_religious_cells(self, churchcount, cellsize, cellsizespare, mean_church_capacity, std_dev): # dynamic cell. data for religion as an industry was not available, so created as a form of "dynamic" contact hub       
+        sampled_church_sizes = np.round(np.random.normal(mean_church_capacity, std_dev, churchcount)).astype(int)
+
+        churchcells = {}
+        churches = {}
+
+        for church_id, sampled_size in enumerate(sampled_church_sizes):
+            cells_by_cellid = {}
+
+            max_members = int(cellsize * (1 - cellsizespare))
+
+            if sampled_size <= max_members:
+                cells_by_cellid[self.cellindex] = { "churchid": church_id, "visitor_uids" : [], "capacity": sampled_size }
+                
+                self.cells[self.cellindex] = { "type": "church", "place": cells_by_cellid[self.cellindex]}
+                churchcells[self.cellindex] = self.cells[self.cellindex]
+
+                self.cellindex += 1
+            else:
+                # Calculate the number of groups needed, considering spare space
+
+                cell_sizes = self.split_balanced_cells_close_to_x(sampled_size, max_members)
+                
+                for index, cell_size in enumerate(cell_sizes):
+                    cells_by_cellid[self.cellindex] = { "churchid": church_id, "visitor_uids" : [], "capacity": cell_size }
+
+                    self.cells[self.cellindex] = { "type": "church", "place": cells_by_cellid[self.cellindex]}
+                    churchcells[self.cellindex] = self.cells[self.cellindex]
+
+                    self.cellindex += 1
+
+            # assign cells into scid
+            churches[church_id] = cells_by_cellid
+
+        return churches, churchcells
 
     # takes "n" which is the number of agents to allocate, and "x" which is the max number of agents per cell
     # returns "cells": array of int, whereby its length represents the num of cells, and each value, the num of agents to be assigned
