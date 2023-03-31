@@ -3,10 +3,12 @@ import numpy as np
 import math
 from cells import Cells
 from simulator import util
+from simulator import itinerary
 
 # to establish set of static parameters such as cellsize, but grouped in dict
 
 params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
+            "timestepmins": 10,
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -22,6 +24,9 @@ cells = {}
 
 cellsfile = open("./data/cells.json")
 cellsparams = json.load(cellsfile)
+
+itineraryfile = open("./data/itinerary.json")
+itineraryparams = json.load(itineraryfile)
 
 population_sub_folder = ""
 if len(params["popsubfolder"]) > 0:
@@ -119,6 +124,8 @@ if params["loadworkplaces"]:
 
     hospital_cells_params = cellsparams["hospital"]
     transport_cells_params = cellsparams["transport"]
+    entertainment_acitvity_dist = cellsparams["entertainmentactivitydistribution"]
+
     transport, cells_transport = cell.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
 
     accommodations = []
@@ -155,7 +162,7 @@ if params["loadworkplaces"]:
                 rooms_accom_by_id[roomid] = {}
 
     # handle cell splitting (on workplaces & accommodations)
-    industries, cells_industries, cells_accommodations, rooms_by_accomid_by_accomtype, cells_hospital = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport)
+    industries, cells_industries, cells_accommodations, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport, entertainment_acitvity_dist)
 
 if params["loadtourism"]:
     touristsfile = open("./population/" + population_sub_folder + "tourists.json")
@@ -194,6 +201,9 @@ if params["religiouscells"]:
 
     churches, cells_churches = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
+
+itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment)
+
 for day in range(1, 365+1):
     daystr = util.day_of_year_to_day_of_week(day, params["year"])
 
@@ -227,6 +237,11 @@ for day in range(1, 365+1):
                                 cells[cellindex]["place"]["member_uids"] = subgroupmmembers
                             else:
                                 cells[cellindex]["place"]["member_uids"] = []
+
+            # should be cell based, but for testing purposes, traversing all agents here
+
+            for agent in agents.values():
+                itinerary_util.generate_working_days_for_week(agent)
 
 
 

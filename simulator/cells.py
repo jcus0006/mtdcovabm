@@ -87,11 +87,12 @@ class Cells:
     # industries_by_indid (indid) -> workplaces_by_wpid (wpid) -> cells_by_cellid (cellid) -> dict with member_uids key/value pair
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
-    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport):
+    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport, entertainment_activity_dist):
         industries_by_indid = {}
         workplacescells = {}
         hospitalcells = {}
         accommodationcells = {}
+        entertainmentcells = {}
         # accomgroups = AccomGroup()
 
         bus_drivers = []
@@ -126,6 +127,9 @@ class Cells:
 
             hospital_ids = np.append(hospital_ids, np.random.choice(healthcare_workplaces_sizes_keys, hosp_count-1))
 
+        activity_options = [activity_dist[0] for activity_dist in entertainment_activity_dist]
+        activity_weights = [activity_dist[1] for activity_dist in entertainment_activity_dist]
+
         hospital_id = 0
 
         for workplace in workplaces:
@@ -136,6 +140,7 @@ class Cells:
             wpid = workplace["wpid"]
             indid = workplace["indid"]
 
+            is_entertainment = indid == 18
             is_household = indid == 20
 
             if not is_household:
@@ -160,7 +165,7 @@ class Cells:
 
                 # If the number of members is less than or equal to "max_members", no splitting needed
                 if len(employees) <= max_members:
-                    if not is_accom and not is_hospital:
+                    if not is_accom and not is_hospital and not is_entertainment:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
                         self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
@@ -179,6 +184,21 @@ class Cells:
 
                         hospitalcells[self.cellindex] = self.cells[self.cellindex]
 
+                    sampled_activity = -1
+                    if is_entertainment:
+                        sampled_activity = np.random.choice(activity_options, 1, p=activity_weights)[0]
+
+                        cells_by_cellid[self.cellindex] = { "wpid": wpid, "activityid": sampled_activity, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+
+                        self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
+
+                        if sampled_activity not in entertainmentcells:
+                            entertainmentcells[sampled_activity] = {}
+
+                        entertainmentcells_by_activity = entertainmentcells[sampled_activity]
+
+                        entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
+
                     workplacescells[self.cellindex] = self.cells[self.cellindex]
 
                     if len(self.agents) > 0:
@@ -186,6 +206,7 @@ class Cells:
                             agent = self.agents[uid]
                             agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                             agent["work_cellid"] = self.cellindex
+                            agent["ent_activity"] = sampled_activity
 
                     self.cellindex += 1
                 else:
@@ -205,7 +226,7 @@ class Cells:
 
                         members_start = members_end
 
-                        if not is_accom and not is_hospital: # normal workplace
+                        if not is_accom and not is_hospital and not is_entertainment: # normal workplace
                             cells_by_cellid[self.cellindex] = { "wpid": wpid, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
                             self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
@@ -223,6 +244,21 @@ class Cells:
                             self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
 
                             hospitalcells[self.cellindex] = self.cells[self.cellindex]
+
+                        sampled_activity = -1
+                        if is_entertainment:
+                            sampled_activity = np.random.choice(activity_options, 1, p=activity_weights)[0]
+
+                            cells_by_cellid[self.cellindex] = { "wpid": wpid, "activityid": sampled_activity, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+
+                            self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
+
+                            if sampled_activity not in entertainmentcells:
+                                entertainmentcells[sampled_activity] = {}
+
+                            entertainmentcells_by_activity = entertainmentcells[sampled_activity]
+
+                            entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
                             
                         workplacescells[self.cellindex] = self.cells[self.cellindex]
 
@@ -231,6 +267,7 @@ class Cells:
                                 agent = self.agents[uid]
                                 agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                                 agent["work_cellid"] = self.cellindex
+                                agent["ent_activity"] = sampled_activity
                         
                         self.cellindex += 1
 
@@ -253,7 +290,7 @@ class Cells:
                 else:
                     industries_by_indid[indid] = workplaces_by_wpid
 
-        return industries_by_indid, workplacescells, accommodationcells, rooms_by_accomid_by_accomtype, hospitalcells
+        return industries_by_indid, workplacescells, accommodationcells, rooms_by_accomid_by_accomtype, hospitalcells, entertainmentcells
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)
