@@ -16,7 +16,8 @@ params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "loadschools": True,
             "loadtourism": True,
             "religiouscells": True,
-            "year": 2021
+            "year": 2021,
+            "quickdebug": True
          }
 
 cellindex = 0
@@ -37,6 +38,9 @@ agents = {}
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
     agents = json.load(agentsfile)
+
+    # if params["quickdebug"]:
+    #     agents = {str(i):agents[str(i)] for i in range(1000)}
 
     temp_agents = {int(k): v for k, v in agents.items()}
 
@@ -202,10 +206,14 @@ if params["religiouscells"]:
     churches, cells_churches = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
 
+# this might cause problems when referring to related agents, by household, workplaces etc
+if params["quickdebug"]:
+    agents = {i:agents[i] for i in range(10000)}
+
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment)
 
 for day in range(1, 365+1):
-    daystr = util.day_of_year_to_day_of_week(day, params["year"])
+    weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
     for timestep in range(144):
         if timestep == 0: 
@@ -240,8 +248,13 @@ for day in range(1, 365+1):
 
             # should be cell based, but for testing purposes, traversing all agents here
 
-            for agent in agents.values():
-                itinerary_util.generate_working_days_for_week(agent)
+            if day == 1 or weekdaystr == "Monday":
+
+                for agentid, agent in agents.items():
+                    print("day " + str(day) + ", agent id: " + str(agentid))
+                    itinerary_util.generate_working_days_for_week(agent)
+
+            itinerary_util.generate_itinerary_hh(weekday, agents)
 
 
 

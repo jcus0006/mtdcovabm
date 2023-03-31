@@ -4,7 +4,25 @@ import scipy.stats as stats
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
-    return date.strftime("%A")
+    weekdaystr = date.strftime("%A")
+    weekday = -1
+    match weekdaystr:
+        case "Monday":
+            weekday = 1
+        case "Tuesday":
+            weekday = 2
+        case "Wednesday":
+            weekday = 3
+        case "Thursday":
+            weekday = 4
+        case "Friday":
+            weekday = 5
+        case "Saturday":
+            weekday = 6
+        case "Sunday":
+            weekday = 7
+
+    return weekday, weekdaystr
 
 def sample_gamma(gamma_shape, min, max, k = 1, returnInt = False):
     if min == max:

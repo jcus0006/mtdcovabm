@@ -31,7 +31,7 @@ try:
     range_from_1 = 7
 
     # Generate samples favoring the lower end of the range
-    alpha_low = 2
+    alpha_low = 1
     beta_low = 8
     low_values = np.random.beta(alpha_low, beta_low, n_samples) * range_from_1 + 1
 
