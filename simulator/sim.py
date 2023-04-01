@@ -7,7 +7,7 @@ from simulator import itinerary
 
 # to establish set of static parameters such as cellsize, but grouped in dict
 
-params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
+params = {  "popsubfolder": "", # empty takes root
             "timestepmins": 10,
             "loadagents": True,
             "loadhouseholds": True,
@@ -30,6 +30,10 @@ itineraryfile = open("./data/itinerary.json")
 itineraryparams = json.load(itineraryfile)
 
 population_sub_folder = ""
+
+if params["quickdebug"]:
+    params["popsubfolder"] = "10kagents"
+
 if len(params["popsubfolder"]) > 0:
     population_sub_folder = params["popsubfolder"] + "/"
 
@@ -207,55 +211,53 @@ if params["religiouscells"]:
 
 
 # this might cause problems when referring to related agents, by household, workplaces etc
-if params["quickdebug"]:
-    agents = {i:agents[i] for i in range(10000)}
+# if params["quickdebug"]:
+#     agents = {i:agents[i] for i in range(10_000)}
 
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment)
 
 for day in range(1, 365+1):
     weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
-    for timestep in range(144):
-        if timestep == 0: 
-            # workout itineraries
-            # assign tourists (this is the first prototype which assumes tourists checkout/in at 00.00
-            # but with itinerary we can generate random timestep at which tourists checkout/in
-            if params["loadtourism"]:
-                tourist_groupids_by_day = touristsgroupsdays[day]
+    # workout itineraries
+    # assign tourists (this is the first prototype which assumes tourists checkout/in at 00.00
+    # but with itinerary we can generate random timestep at which tourists checkout/in
+    if params["loadtourism"]:
+        tourist_groupids_by_day = touristsgroupsdays[day]
 
-                for tour_group_id in tourist_groupids_by_day:
-                    tourists_group = touristsgroups[tour_group_id]
+        for tour_group_id in tourist_groupids_by_day:
+            tourists_group = touristsgroups[tour_group_id]
 
-                    accomtype = tourists_group["accomtype"]
-                    accominfo = tourists_group["accominfo"]
-                    arrivalday = tourists_group["arr"]
-                    departureday = tourists_group["dep"]
-                    purpose = tourists_group["purpose"]
-                    subgroupsmemberids = tourists_group["subgroupsmemberids"]
+            accomtype = tourists_group["accomtype"]
+            accominfo = tourists_group["accominfo"]
+            arrivalday = tourists_group["arr"]
+            departureday = tourists_group["dep"]
+            purpose = tourists_group["purpose"]
+            subgroupsmemberids = tourists_group["subgroupsmemberids"]
 
-                    if arrivalday == day or departureday == day:
-                        for accinfoindex, accinfo in enumerate(accominfo):
-                            accomid, roomid, roomsize = accinfo[0], accinfo[1], accinfo[2]
+            if arrivalday == day or departureday == day:
+                for accinfoindex, accinfo in enumerate(accominfo):
+                    accomid, roomid, roomsize = accinfo[0], accinfo[1], accinfo[2]
 
-                            subgroupmmembers = subgroupsmemberids[accinfoindex]
+                    subgroupmmembers = subgroupsmemberids[accinfoindex]
 
-                            cellindex = rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
+                    cellindex = rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
 
-                            if arrivalday == day:
-                                cells[cellindex]["place"]["member_uids"] = subgroupmmembers
-                            else:
-                                cells[cellindex]["place"]["member_uids"] = []
+                    if arrivalday == day:
+                        cells[cellindex]["place"]["member_uids"] = subgroupmmembers
+                    else:
+                        cells[cellindex]["place"]["member_uids"] = []
 
-            # should be cell based, but for testing purposes, traversing all agents here
+    # should be cell based, but for testing purposes, traversing all agents here
 
-            if day == 1 or weekdaystr == "Monday":
+    if day == 1 or weekdaystr == "Monday":
+        for agentid, agent in agents.items():
+            print("day " + str(day) + ", agent id: " + str(agentid))
+            itinerary_util.generate_working_days_for_week(agent)
 
-                for agentid, agent in agents.items():
-                    print("day " + str(day) + ", agent id: " + str(agentid))
-                    itinerary_util.generate_working_days_for_week(agent)
+    itinerary_util.generate_itinerary_hh(day, weekday, agents)
 
-            itinerary_util.generate_itinerary_hh(weekday, agents)
-
-
+    # for timestep in range(144):
+    #     print("timestep " + str(timestep))
 
 print(len(agents))

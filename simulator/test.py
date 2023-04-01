@@ -3,26 +3,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 from simulator import util
 
-# values = []
+# Define the base probability of taking leave for each age group
+age_groups = 16
+leave_probs = np.random.rand(age_groups)
 
-# for i in range(1000):
-#     values.append(util.sample_gamma_reject_out_of_range(5, 1, 7, 2, True, True))
+# Generate the binary outcomes for each day for each person
+num_people = 1000
+num_days = 365
+leave_days = np.zeros((num_people, num_days))
+for i in range(num_people):
+    for j in range(num_days):
+        age_group = np.random.randint(age_groups)
+        leave_prob = leave_probs[age_group]
+        take_leave = np.random.binomial(1, leave_prob)
+        if take_leave:
+            num_leave_days = np.random.poisson(5)  # example mean of 5 leave days
+            # Distribute the leave days into groups of varying sizes
+            leave_days[i, j] = num_leave_days
 
-# Set parameters for beta distribution
-# alpha = 5
-# beta = 1
-# low = 1
-# high = 9
-
-# # Generate 1000 random numbers from beta distribution
-# values = np.random.beta(alpha, beta, size=1000)
-
-# # Rescale to desired range
-# values = values * (high - low) + low
-
-# # Plot histogram of values
-# plt.hist(values, bins=20)
-# plt.show()
+# Visualize the leave days for a sample individual
+import matplotlib.pyplot as plt
+plt.plot(leave_days[0])
+plt.xlabel('Day')
+plt.ylabel('Number of leave days')
+plt.show()
 
 try:
     # Set the number of samples to generate
