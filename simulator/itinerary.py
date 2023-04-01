@@ -425,7 +425,7 @@ class Itinerary:
                         elif action == Action.Home:
                             end_work_ts = timestep
                         elif action == Action.Sleep:
-                            sleep_ts
+                            sleep_ts = timestep
                     
                     # if more than 2 hours between wakeup hour and work
                     wakeup_until_work_ts = work_ts - wakeup_ts
@@ -448,7 +448,7 @@ class Itinerary:
                         if action == Action.WakeUp:
                             wakeup_ts = timestep
                         elif action == Action.Sleep:
-                            sleep_ts
+                            sleep_ts = timestep
 
                     wakeup_until_sleep_ts = sleep_ts - wakeup_ts
                     wakeup_until_sleep_hours = self.get_hour_by_timestep(wakeup_until_sleep_ts)
@@ -465,7 +465,9 @@ class Itinerary:
                         print("to do")
                         # sample activity from activities_by_week_days_distribution X activities_by_agerange_distribution (pre-compute in constructor)
 
-                        # sample numhours from activities_duration_hours, where if sampled value is > then actvities_slot_hours, sampled value becomes activities_slot_hours
+                        # sample numhours from activities_duration_hours, 
+                        # where if sampled value is > then activities_slot_hours, sampled value = activities_slot_hours
+                        # and if activities_slot_hours - sampled value < 1 hour, sampled value = sampled value + (activities_slot_hours - sampled value)
 
             
     def get_timestep_by_hour(self, hr, leeway=-1):
