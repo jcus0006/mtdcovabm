@@ -4,6 +4,8 @@ from enum import IntEnum
 
 class Itinerary:
     def __init__(self, params, timestepmins, cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment):
+        self.cells_agents_timesteps = {} # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
+
         self.params = params
         self.timestepmins = timestepmins
         self.timesteps_in_hour = round(60 / self.timestepmins)
@@ -32,7 +34,48 @@ class Itinerary:
 
         self.age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in self.sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
         self.age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in self.non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
-    
+
+        # Calculate probability of each activity for agent
+        self.activities_by_week_days_by_age_groups = {}
+
+        for age_bracket_index, activity_probs_by_agerange_dist in enumerate(self.activities_by_agerange_distribution):
+            activity_probs_for_agerange = activity_probs_by_agerange_dist[2:]
+
+            activities_by_week_days_for_agerange = []
+
+            for activity_index, activity_prob in enumerate(activity_probs_for_agerange):
+                activity_id = activity_index + 1
+                activity_by_week_days_for_age_range = [activity_id]
+
+                for day in range(1, 8):
+                    prob_product = self.activities_by_week_days_distribution[activity_index][day] * activity_prob
+                    activity_by_week_days_for_age_range.append(prob_product)
+
+                # Normalize probabilities so they sum to 1
+                # total_probability = sum(activity_by_week_days_for_age_range[1:])
+
+                # normalized_activity_by_week_days_for_age_range = []
+                # if total_probability > 0:
+                #     normalized_activity_by_week_days_for_age_range.append(activity_id)
+
+                #     for joint_prob in activity_by_week_days_for_age_range[1:]:
+                #         joint_prob /= total_probability
+                #         normalized_activity_by_week_days_for_age_range.append(joint_prob)
+                # else:
+                #     normalized_activity_by_week_days_for_age_range = activity_by_week_days_for_age_range
+
+                activities_by_week_days_for_agerange.append(activity_by_week_days_for_age_range)
+
+            # remove activity id from 2d matrix
+            sliced_arr = [sublst[1:] for sublst in activities_by_week_days_for_agerange]
+
+            sliced_arr = np.array(sliced_arr)
+
+            # Divide each element by the sum of the column (maintain sum to 1)
+            normalized_arr = sliced_arr / sliced_arr.sum(axis=0)
+
+            self.activities_by_week_days_by_age_groups[age_bracket_index] = normalized_arr
+
     # to be called at the beginning of a new week
     def generate_working_days_for_week(self, agent):
         if agent["empstatus"] == 0: # 0: employed, 1: unemployed, 2: inactive
@@ -291,7 +334,9 @@ class Itinerary:
                             working_hours = working_schedule[weekday]
                             start_work_timestep_with_leeway, end_work_timestep_with_leeway = self.get_timestep_by_hour(working_hours[0], 3), self.get_timestep_by_hour(working_hours[1], 3)
 
+                            # self.cells_agents_timesteps[agent["res_cellid"]] = (agentid, 0, start_work_timestep_with_leeway)
                             agent["itinerary"][start_work_timestep_with_leeway] = (Action.Work, agent["work_cellid"])
+                            # self.cells_agents_timesteps[agent["work_cellid"]] = (agentid, start_work_timestep_with_leeway, end_work_timestep_with_leeway)
                             agent["itinerary"][end_work_timestep_with_leeway] = (Action.Home, agent["res_cellid"])                                   
                         # elif sampled_non_daily_activity == NonDailyActivityEmployed.VacationLocal:
                         #     print("vacation local")
@@ -334,7 +379,9 @@ class Itinerary:
 
                         start_school_timestep, end_school_timestep = self.get_timestep_by_hour(start_school_hour), self.get_timestep_by_hour(end_school_hour)
 
-                        agent["itinerary"][start_school_timestep] = (Action.School, agent["work_cellid"])
+                        # self.cells_agents_timesteps[agent["res_cellid"]] = (agentid, 0, start_school_timestep)
+                        agent["itinerary"][start_school_timestep] = (Action.School, agent["school_cellid"])
+                        # self.cells_agents_timesteps[agent["school_cellid"]] = (agentid, start_school_timestep, end_school_timestep)
                         agent["itinerary"][end_school_timestep] = (Action.Home, agent["res_cellid"])                              
                     # elif sampled_non_daily_activity == NonDailyActivityStudent.Sick:
                     #     print("sick school day - stay home")    
@@ -460,14 +507,92 @@ class Itinerary:
 
                     activities_slot_hours = self.get_hour_by_timestep(activities_slot_ts)
 
+                    next_timestep = timestep_range[0]
                     # repeat until no more hours to fill
                     while activities_slot_hours > 0:
                         print("to do")
                         # sample activity from activities_by_week_days_distribution X activities_by_agerange_distribution (pre-compute in constructor)
 
+                        activities_probs_for_agegroup_and_day = self.activities_by_week_days_by_age_groups[age_bracket_index][:, weekday-1]
+                        activities_indices = np.arange(len(activities_probs_for_agegroup_and_day))
+
+                        sampled_activity_index = np.random.choice(activities_indices, 1, False, p=activities_probs_for_agegroup_and_day)[0]
+                        sampled_activity_id = sampled_activity_index + 1
+
                         # sample numhours from activities_duration_hours, 
-                        # where if sampled value is > then activities_slot_hours, sampled value = activities_slot_hours
-                        # and if activities_slot_hours - sampled value < 1 hour, sampled value = sampled value + (activities_slot_hours - sampled value)
+                        # where if sampled_num_hours is > then activities_slot_hours, sampled_num_hours = activities_slot_hours
+                        # and if activities_slot_hours - sampled_num_hours < 1 hour, sampled_num_hours = sampled_num_hours + (activities_slot_hours - sampled_num_hours)
+
+                        min_hours, max_hours = self.activities_duration_hours[sampled_activity_index][1], self.activities_duration_hours[sampled_activity_index][2]
+
+                        hours_range = np.arange(min_hours, max_hours+1)
+
+                        sampled_num_hours = np.random.choice(hours_range, size=1)[0]
+
+                        if sampled_num_hours > activities_slot_hours:
+                            sampled_num_hours = activities_slot_hours # sampled a larger value than the remaining hours available, hence, go for remaining hours
+                        elif activities_slot_hours - sampled_num_hours < 1:
+                            sampled_num_hours = sampled_num_hours + (activities_slot_hours - sampled_num_hours) # less than an hour would be left after adding activity, hence add it to this activity
+
+                        if sampled_activity_index in list(self.cells_entertainment.keys()): # if this is an entertainment activity
+                            potential_cells = self.cells_entertainment[sampled_activity_index]
+
+                            sampled_cell_id = np.random.choice(list(potential_cells.keys()))
+
+                            agent["itinerary"][next_timestep] = (Action.LocalActivity, sampled_cell_id)
+
+                            next_timestep += self.get_timestep_by_hour(sampled_num_hours)
+                        else:
+                            print("non entertainment. TO CONTINUE HERE")
+
+                        activities_slot_hours -= sampled_num_hours
+                    
+                    agent["itinerary"][next_timestep] = (Action.Home, agent["res_cellid"]) 
+
+
+                start_timesteps = list(agent["itinerary"].keys())
+
+                prev_cell_id = -1
+                for index, curr_ts in enumerate(start_timesteps):
+                    curr_itinerary = agent["itinerary"][curr_ts]
+                    start_ts = curr_ts
+                    curr_action, curr_cell_id = curr_itinerary[0], curr_itinerary[1]
+
+                    if index == 0: # first: guarantees at least 1 iteration
+                        start_ts = 0
+                        end_ts = 144
+                        if len(start_timesteps) > 0:
+                            next_itinerary = start_timesteps[index+1]
+                            end_ts = next_itinerary
+                    elif index == len(start_timesteps) - 1: # last: guarantees at least 2 iterations
+                        # prev_itinerary = start_timesteps[index-1]
+                        # start_ts = prev_itinerary
+                        end_ts = 144
+                    else: # mid: guarantees at least 3 iterations
+                        # prev_itinerary = start_timesteps[index-1]
+                        next_itinerary = start_timesteps[index+1]
+
+                        # start_ts = prev_itinerary
+                        end_ts = next_itinerary
+
+                    agent_cell_timestep_range = (agentid, start_ts, end_ts)
+
+                    if curr_cell_id not in self.cells_agents_timesteps:
+                        self.cells_agents_timesteps[curr_cell_id] = []
+
+                    if prev_cell_id == -1 or prev_cell_id != curr_cell_id:
+                        self.cells_agents_timesteps[curr_cell_id].append(agent_cell_timestep_range)
+                    else:
+                        temp_agent_cell_ts_range = self.cells_agents_timesteps[curr_cell_id][-1]
+                        temp_agent_cell_ts_range = (temp_agent_cell_ts_range[0], temp_agent_cell_ts_range[1], end_ts)
+                        self.cells_agents_timesteps[curr_cell_id][-1] = temp_agent_cell_ts_range
+
+                    prev_cell_id = curr_cell_id
+
+                # if self.cells_agents_timesteps[curr_cell_id][-1][2] != 144: # if still home, end cell range at home
+                #     temp_agent_cell_ts_range = self.cells_agents_timesteps[curr_cell_id][-1]
+                #     temp_agent_cell_ts_range = (temp_agent_cell_ts_range[0], temp_agent_cell_ts_range[1], 144)
+                #     self.cells_agents_timesteps[curr_cell_id[-1]] = temp_agent_cell_ts_range
 
             
     def get_timestep_by_hour(self, hr, leeway=-1):

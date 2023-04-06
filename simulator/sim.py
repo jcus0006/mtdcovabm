@@ -7,7 +7,7 @@ from simulator import itinerary
 
 # to establish set of static parameters such as cellsize, but grouped in dict
 
-params = {  "popsubfolder": "", # empty takes root
+params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "timestepmins": 10,
             "loadagents": True,
             "loadhouseholds": True,
