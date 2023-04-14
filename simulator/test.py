@@ -6,22 +6,149 @@ import powerlaw
 import networkx as nx
 import collections
 
-# Set the parameters for the power law distribution
-exponent = 2.64
-xmin = 10
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.stats as stats
 
-# Generate a power law distribution with the given parameters
-pl_dist = powerlaw.Power_Law(xmin=xmin, parameters=[exponent])
+# # Define parameters
+# mean = 15    # Mean number of contacts per unit time
+# timesteps = 144    # Number of timesteps
+# min_contacts = 1    # Minimum number of contacts per timestep
+# max_contacts = 30   # Maximum number of contacts per timestep
+# n = 1000
 
-# Generate a single sample from the distribution
-sample = np.random.choice(pl_dist.generate_random(1))
+# # Sample from Poisson distribution for each timestep
+# contacts_per_timestep = stats.poisson(mu=mean).rvs(size=n)
 
-# Scale the sample by the number of people in the contact network
-num_people = 100 # Replace with the actual number of people in the contact network
-scaled_sample = sample * num_people
+# # Clip values to fit within the minimum and maximum bounds
+# contacts_per_timestep = np.clip(contacts_per_timestep, min_contacts, max_contacts)
 
-print("Sample:", sample)
-print("Scaled Sample:", scaled_sample)
+# # Plot histogram of the truncated distribution
+# plt.hist(contacts_per_timestep, bins=max_contacts-min_contacts+1, range=[min_contacts-0.5, max_contacts+0.5], density=True)
+
+# # Add vertical line for mean
+# plt.axvline(x=mean, color='r', linestyle='--')
+
+# # Set plot title and labels
+# plt.title("Poisson Distribution with Mean = {}".format(mean))
+# plt.xlabel("Number of Contacts")
+# plt.ylabel("Frequency")
+
+# # Show plot
+# plt.show()
+
+# # Print the resulting contacts per timestep
+# print(contacts_per_timestep)
+
+# # Parameters
+# mean = 15
+# min_val = 3
+# max_val = 30
+# num_samples = 1000
+
+# # Generate Poisson distribution
+# samples = np.random.poisson(mean, size=num_samples)
+
+# # Truncate distribution between min and max values
+# samples = np.clip(samples, min_val, max_val)
+
+# # Plot histogram of the truncated distribution
+# plt.hist(samples, bins=max_val-min_val+1, range=[min_val-0.5, max_val+0.5], density=True)
+
+# # Add vertical line for mean
+# plt.axvline(x=mean, color='r', linestyle='--')
+
+# # Set plot title and labels
+# plt.title("Poisson Distribution with Mean = {}".format(mean))
+# plt.xlabel("Number of Contacts")
+# plt.ylabel("Frequency")
+
+# # Show plot
+# plt.show()
+
+
+# Define the number of nodes in the graph
+# num_nodes = 50
+
+# # Define the power law distribution parameters for max number of contacts
+# alpha = 2.0
+# xmin = 0
+# xmax = 1
+
+# # Define the time range limits
+# min_time = 1
+# max_time = 144
+
+# # Create the graph object
+# G = nx.Graph()
+
+# # Add nodes to the graph with max number of contacts sampled from power law distribution
+# for i in range(num_nodes):
+#     max_contacts = int(nx.utils.powerlaw_sequence(1, alpha, seed=i)[0])
+#     G.add_node(i, max_contacts=max_contacts)
+
+# # normalize to sum to 1
+# max_contacts_arr = [G.nodes[i]['max_contacts'] for i in range(len(G.nodes))]
+# sum_max_contacts = sum(max_contacts_arr)
+
+# for i in range(num_nodes):
+#     G.nodes[i]['max_contacts'] /= sum_max_contacts
+
+# # Add edges to the graph with potential direct contacts and timerange labels
+# for i in range(num_nodes):
+#     for j in range(i+1, num_nodes):
+#         # Calculate the probability of an edge between nodes i and j based on the power law distribution
+#         prob = 1.0 / ((i+1)**alpha + (j+1)**alpha - 2)
+#         if random.random() < prob:
+#             # Add the edge with a timerange label between min_time and max_time
+#             timerange = random.randint(min_time, max_time)
+#             G.add_edge(i, j, timerange=timerange, direct_contact=False)
+
+# # Set a maximum number of direct contact edges per node for each time step
+# for time_step in range(min_time, max_time+1):
+#     for i in range(num_nodes):
+#         max_contacts = G.nodes[i]['max_contacts']
+#         potential_contacts = [j for j in G.neighbors(i) if G[i][j]['timerange'] == time_step and not G[i][j]['direct_contact']]
+#         num_potential_contacts = len(potential_contacts)
+#         if num_potential_contacts > 0:
+#             # Compute the actual number of direct contacts for the node at the current time step
+#             sampled_value = random.random()
+#             num_direct_contacts = int(sampled_value * num_potential_contacts * max_contacts)
+#             num_direct_contacts = min(num_direct_contacts, max_contacts)  # Enforce the maximum number of contacts
+#             # Set the direct contact edges for the node at the current time step
+#             for j in random.sample(potential_contacts, num_direct_contacts):
+#                 G[i][j]['direct_contact'] = True
+
+# # Print the graph information
+# print(nx.info(G))
+
+# Define the parameters of the distribution
+alpha = 2.64
+xmin = 4
+
+# Create the power law distribution
+dist = powerlaw.Power_Law(xmin=xmin, parameters=[alpha])
+
+# Generate 1000 samples from the distribution
+samples = dist.generate_random(1000)
+
+# Create a figure with two subplots
+fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+# Plot the probability density function (PDF) of the data
+ax[0].set_title('PDF')
+powerlaw.plot_pdf(samples, ax=ax[0], color='b')
+ax[0].set_xlabel('Value')
+ax[0].set_ylabel('Probability Density')
+
+# Plot the complementary cumulative distribution function (CCDF) of the data
+ax[1].set_title('CCDF')
+powerlaw.plot_ccdf(samples, ax=ax[1], color='r')
+ax[1].set_xlabel('Value')
+ax[1].set_ylabel('Complementary CDF')
+
+# Display the plot
+plt.show()
 
 # n = 1  # number of nodes in the graph
 # m = 2  # number of edges each new node connects to

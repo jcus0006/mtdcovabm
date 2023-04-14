@@ -1,6 +1,7 @@
 import json
 import numpy as np
 import math
+import time
 from cells import Cells
 from simulator import util
 from simulator import itinerary
@@ -29,6 +30,11 @@ cellsparams = json.load(cellsfile)
 itineraryfile = open("./data/itinerary.json")
 itineraryparams = json.load(itineraryfile)
 
+sleeping_hours_by_age_groups = itineraryparams["sleeping_hours_by_age_groups"]
+non_daily_activities_employed_distribution = itineraryparams["non_daily_activities_employed_distribution"]
+age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
+age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
+
 population_sub_folder = ""
 
 if params["quickdebug"]:
@@ -39,6 +45,7 @@ if len(params["popsubfolder"]) > 0:
 
 # load agents and all relevant JSON files on each node
 agents = {}
+agents_ids_by_ages = {}
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
     agents = json.load(agentsfile)
@@ -54,6 +61,21 @@ if params["loadagents"]:
         agent["work_cellid"] = -1
         agent["school_cellid"] = -1
         agent["inst_cellid"] = -1
+
+        age = agent["age"]
+        agents_ids_by_ages[agent_uid] = agent["age"]
+
+        agent["age_bracket_index"] = -1
+        for i, ab in enumerate(age_brackets):
+            if age >= ab[0] and age <= ab[1]:
+                agent["age_bracket_index"] = i
+                break
+        
+        agent["working_age_bracket_index"] = -1
+        for i, ab in enumerate(age_brackets_workingages):
+            if age >= ab[0] and age <= ab[1]:
+                agent["working_age_bracket_index"] = i
+                break
 
     agents = temp_agents
 
@@ -121,6 +143,48 @@ if params["loadinstitutions"]:
     institutions_cells_params = cellsparams["institutions"]
 
     institutiontypes, cells_institutions = cell.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])    
+
+hh_insts = []
+if params["loadhouseholds"]:
+    for hh in households.values():
+        hh_inst = {"resident_uids": hh["resident_uids"]}
+        hh_insts.append(hh_inst)
+
+if params["loadinstitutions"]:
+    for inst in institutions:
+        hh_inst = {"resident_uids": inst["resident_uids"]}
+        hh_insts.append(hh_inst)
+
+if hh_insts is not None:
+    for hh_inst in hh_insts:
+        for agentid in hh_inst["resident_uids"]:
+            agent = agents[agentid]
+
+            if agent["age"] < 15: # assign parent/guardian at random
+                other_resident_ages_by_uids = {uid:agents[uid]["age"] for uid in hh_inst["resident_uids"] if uid != agentid}
+
+                other_resident_uids = list(other_resident_ages_by_uids.keys())
+
+                other_resident_ages = list(other_resident_ages_by_uids.values())
+
+                other_resident_uids_indices = np.arange(len(other_resident_uids))
+
+                # give preference to agents with a difference in age of between 15 and 40 years (from kid in iteration)
+                other_resident_uids_guardian_pool = np.array([other_resident_uids[i] for i in range(len(other_resident_uids_indices)) if other_resident_ages[i] - agent["age"] >= 15 and other_resident_ages[i] - agent["age"] <= 40])
+
+                # if none found, settle for any agent of 15 years or older
+                if len(other_resident_uids_guardian_pool) == 0:
+                    other_resident_uids_guardian_pool = np.array([other_resident_uids[i] for i in range(len(other_resident_uids_indices)) if other_resident_ages[i] >= 15])
+
+                other_resident_uids_guardian_pool_indices = np.arange(len(other_resident_uids_guardian_pool))
+                sampled_index  = np.random.choice(other_resident_uids_guardian_pool_indices, size=1)[0]
+                sampled_uid = other_resident_uids_guardian_pool[sampled_index]
+            
+                if sampled_uid is not None:
+                    agent["guardian_id"] = sampled_uid
+                else:
+                    print("big problem")
+
 
 if params["loadworkplaces"]:
     if len(workplaces) == 0:
@@ -207,15 +271,15 @@ if params["loadschools"]:
 if params["religiouscells"]:
     religious_cells_params = cellsparams["religious"]
 
-    churches, cells_churches = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
+    churches, cells_religious = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
 
 # this might cause problems when referring to related agents, by household, workplaces etc
 # if params["quickdebug"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
-itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment)
-
+itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households)
+sum_time_taken = 0
 for day in range(1, 365+1):
     weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
@@ -255,9 +319,19 @@ for day in range(1, 365+1):
             print("day " + str(day) + ", agent id: " + str(agentid))
             itinerary_util.generate_working_days_for_week(agent)
 
-    itinerary_util.generate_itinerary_hh(day, weekday, agents)
+    itinerary_util.cells_agents_timesteps = {}
 
-    # for timestep in range(144):
+    print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
+    start = time.time()
+    for hh_inst in hh_insts:
+        itinerary_util.generate_itinerary_hh(day, weekday, agents, agents_ids_by_ages, hh_inst["resident_uids"])
+
+    time_taken = time.time() - start
+    sum_time_taken += time_taken
+    avg_time_taken = sum_time_taken / day
+    print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+
+    # for timestep in range(144): # 0 - 143
     #     print("timestep " + str(timestep))
 
 print(len(agents))
