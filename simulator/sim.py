@@ -35,6 +35,11 @@ non_daily_activities_employed_distribution = itineraryparams["non_daily_activiti
 age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
 age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
 
+contactnetworkfile = open("./data/itinerary.json")
+contactnetworkparams = json.load(contactnetworkfile)
+
+sociability_rate_distribution = contactnetworkparams["sociabilityratedistribution"]
+sociability_rate_options = np.arange(len(sociability_rate_distribution))
 population_sub_folder = ""
 
 if params["quickdebug"]:
@@ -76,6 +81,8 @@ if params["loadagents"]:
             if age >= ab[0] and age <= ab[1]:
                 agent["working_age_bracket_index"] = i
                 break
+
+        agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
 
     agents = temp_agents
 
