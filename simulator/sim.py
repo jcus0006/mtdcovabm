@@ -2,9 +2,14 @@ import json
 import numpy as np
 import math
 import time
+import powerlaw
+import matplotlib.pyplot as plt
+import random
 from cells import Cells
 from simulator import util
 from simulator import itinerary
+from simulator import contactnetwork
+from contactnetwork import SEIRState
 
 # to establish set of static parameters such as cellsize, but grouped in dict
 
@@ -18,8 +23,11 @@ params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "loadtourism": True,
             "religiouscells": True,
             "year": 2021,
-            "quickdebug": True
+            "quickdebug": True,
+            "visualise": False
          }
+
+figure_count = 0
 
 cellindex = 0
 cells = {}
@@ -35,11 +43,18 @@ non_daily_activities_employed_distribution = itineraryparams["non_daily_activiti
 age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
 age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
 
-contactnetworkfile = open("./data/itinerary.json")
+contactnetworkfile = open("./data/contactnetwork.json")
 contactnetworkparams = json.load(contactnetworkfile)
 
-sociability_rate_distribution = contactnetworkparams["sociabilityratedistribution"]
-sociability_rate_options = np.arange(len(sociability_rate_distribution))
+sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
+sociability_rate_min, sociability_rate_max = sociability_rate_min_max[0], sociability_rate_min_max[1]
+powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
+# sociability_rate_options = np.arange(len(sociability_rate_distribution))
+
+epidemiologyfile = open("./data/epidemiology.json")
+epidemiologyparams = json.load(epidemiologyfile)
+initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
+
 population_sub_folder = ""
 
 if params["quickdebug"]:
@@ -51,14 +66,20 @@ if len(params["popsubfolder"]) > 0:
 # load agents and all relevant JSON files on each node
 agents = {}
 agents_ids_by_ages = {}
+agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
+agents_seir_state = [] # 1: susceptible, 2: exposed, 3: infected, 4: recovered
+
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
     agents = json.load(agentsfile)
+
+    n = len(agents)
 
     # if params["quickdebug"]:
     #     agents = {str(i):agents[str(i)] for i in range(1000)}
 
     temp_agents = {int(k): v for k, v in agents.items()}
+    agents_seir_state = np.array([SEIRState(0) for i in range(len(agents))])
 
     for agent_uid, agent in temp_agents.items():
         agent["curr_cellid"] = -1
@@ -74,6 +95,9 @@ if params["loadagents"]:
         for i, ab in enumerate(age_brackets):
             if age >= ab[0] and age <= ab[1]:
                 agent["age_bracket_index"] = i
+                
+                agents_ids_by_agebrackets[i].append(agent_uid)
+
                 break
         
         agent["working_age_bracket_index"] = -1
@@ -82,13 +106,67 @@ if params["loadagents"]:
                 agent["working_age_bracket_index"] = i
                 break
 
-        agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
+        # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
+
+    for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
+        powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]
+
+        exponent, xmin = powerlaw_dist_params[2], powerlaw_dist_params[3]
+        # exponent, xmin = 2.64, 4.0
+        dist = powerlaw.Power_Law(xmin=xmin, parameters=[exponent])
+
+        agents_contact_propensity = dist.generate_random(len(agents_ids_in_bracket))
+
+        min_arr = np.min(agents_contact_propensity)
+        max_arr = np.max(agents_contact_propensity)
+
+        normalized_arr = (agents_contact_propensity - min_arr) / (max_arr - min_arr) * (sociability_rate_max - sociability_rate_min) + sociability_rate_min
+
+        if params["visualise"]:
+            figure_count += 1
+            plt.figure(figure_count)
+            bins = np.logspace(np.log10(min(agents_contact_propensity)), np.log10(max(agents_contact_propensity)), 50)
+            plt.hist(agents_contact_propensity, bins=bins, density=True)
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.xlabel('Value')
+            plt.ylabel('Frequency')
+            plt.show(block=False)
+
+        for index, agent_id in enumerate(agents_ids_in_bracket):
+            agent = temp_agents[agent_id]
+
+            agent["soc_rate"] = normalized_arr[index]
+
+        for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
+            seirid = seirindex + 1
+
+            total_to_assign_this_state = round(n * seirstate_percent)
+
+            seirstate = SEIRState(seirid)
+
+            undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
+
+            if len(undefined_indices) > 0:
+                undefined_indices = np.array(undefined_indices)
+
+            this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
+
+            agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
+
+        undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
+
+        for index in undefined_indices:
+            random_state = random.randint(1, 4)
+
+            random_seir_state = SEIRState(random_state)
+
+            agents_seir_state[index] = random_seir_state
+
 
     agents = temp_agents
 
     temp_agents = None
-
-    n = len(agents)
 
     maleagents = {k:v for k, v in agents.items() if v["gender"] == 0}
     femaleagents = {k:v for k, v in agents.items() if v["gender"] == 1}
@@ -286,6 +364,7 @@ if params["religiouscells"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households)
+contactnetwork_util = contactnetwork.ContactNetwork(agents, cells, itinerary_util.cells_agents_timesteps, contactnetworkparams)
 sum_time_taken = 0
 for day in range(1, 365+1):
     weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
@@ -327,6 +406,7 @@ for day in range(1, 365+1):
             itinerary_util.generate_working_days_for_week(agent)
 
     itinerary_util.cells_agents_timesteps = {}
+    contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
 
     print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
     start = time.time()
@@ -338,6 +418,9 @@ for day in range(1, 365+1):
     avg_time_taken = sum_time_taken / day
     print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
+    for cellid in cells.keys():
+        contactnetwork_util.simulate_contact_network(cellid)
+    
     # for timestep in range(144): # 0 - 143
     #     print("timestep " + str(timestep))
 

@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 131, in simulate_contact_network
+    direct_contacts_ids = np.random.choice(potential_contacts, size=degree, replace=False)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "mtrand.pyx", line 984, in numpy.random.mtrand.RandomState.choice
+ValueError: Cannot take a larger sample than population when 'replace=False'

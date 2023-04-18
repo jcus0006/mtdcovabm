@@ -439,7 +439,7 @@ class Itinerary:
                                     agent["itinerary_nextday"][start_work_timestep_with_leeway - 143] = (Action.Work, agent["work_cellid"])  
 
                                 # self.cells_agents_timesteps[agent["work_cellid"]] = (agentid, start_work_timestep_with_leeway, end_work_timestep_with_leeway)
-                                if end_work_timestep_with_leeway > start_work_timestep_with_leeway:
+                                if end_work_timestep_with_leeway <= 143 and end_work_timestep_with_leeway > start_work_timestep_with_leeway:
                                     agent["itinerary"][end_work_timestep_with_leeway] = (Action.Home, agent["res_cellid"])
                                 else:
                                     end_work_next_day = True
@@ -771,7 +771,7 @@ class Itinerary:
                             if timestep >= home_ts and timestep < sleep_ts:
                                 agent["itinerary"][timestep] = (action, cellid)               
 
-                start_timesteps = list(agent["itinerary"].keys())
+                start_timesteps = sorted(list(agent["itinerary"].keys()))
 
                 prev_cell_id = -1
                 for index, curr_ts in enumerate(start_timesteps):
@@ -803,10 +803,16 @@ class Itinerary:
 
                     if prev_cell_id == -1 or prev_cell_id != curr_cell_id:
                         self.cells_agents_timesteps[curr_cell_id].append(agent_cell_timestep_range)
+
+                        if agent_cell_timestep_range[1] > agent_cell_timestep_range[2]:
+                            print("problemos")
                     else:
                         temp_agent_cell_ts_range = self.cells_agents_timesteps[curr_cell_id][-1]
                         temp_agent_cell_ts_range = (temp_agent_cell_ts_range[0], temp_agent_cell_ts_range[1], end_ts)
                         self.cells_agents_timesteps[curr_cell_id][-1] = temp_agent_cell_ts_range
+
+                        if temp_agent_cell_ts_range[1] > temp_agent_cell_ts_range[2]:
+                            print("problemos")
 
                     prev_cell_id = curr_cell_id
 
