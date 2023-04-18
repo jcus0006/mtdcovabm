@@ -9,8 +9,9 @@ from enum import IntEnum
 import traceback
 
 class ContactNetwork:
-    def __init__(self, agents, cells, cells_agents_timesteps, contactnetworkparams):
+    def __init__(self, agents, agents_seir_state, cells, cells_agents_timesteps, contactnetworkparams):
         self.agents = agents
+        self.agents_seir_state = agents_seir_state
         self.cells = cells
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
         self.contactnetworkparams = contactnetworkparams
@@ -19,7 +20,7 @@ class ContactNetwork:
     def simulate_contact_network(self, cellid):
         agents_directcontacts = self.generate_contact_network(cellid)
 
-
+        self.simulate_direct_contacts(agents_directcontacts)
 
     def generate_contact_network(self, cellid): # to create class and initialise stuff in init
         print("generating contact network for cell " + str(cellid))
@@ -153,7 +154,8 @@ class ContactNetwork:
 
                 return agents_directcontacts
                       
-                    
+    def simulate_direct_contacts(self, agents_directcontacts):
+        return None # to do (start by getting all infected agents from agents_seir_state)
 
     def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid):
         cell = self.cells[cellid]

@@ -138,31 +138,30 @@ if params["loadagents"]:
 
             agent["soc_rate"] = normalized_arr[index]
 
-        for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
-            seirid = seirindex + 1
+    for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
+        seirid = seirindex + 1
 
-            total_to_assign_this_state = round(n * seirstate_percent)
+        total_to_assign_this_state = round(n * seirstate_percent)
 
-            seirstate = SEIRState(seirid)
-
-            undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
-
-            if len(undefined_indices) > 0:
-                undefined_indices = np.array(undefined_indices)
-
-            this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
-
-            agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
+        seirstate = SEIRState(seirid)
 
         undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
 
-        for index in undefined_indices:
-            random_state = random.randint(1, 4)
+        if len(undefined_indices) > 0:
+            undefined_indices = np.array(undefined_indices)
 
-            random_seir_state = SEIRState(random_state)
+        this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
 
-            agents_seir_state[index] = random_seir_state
+        agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
 
+    undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
+
+    for index in undefined_indices:
+        random_state = random.randint(1, 4)
+
+        random_seir_state = SEIRState(random_state)
+
+        agents_seir_state[index] = random_seir_state
 
     agents = temp_agents
 
@@ -364,7 +363,7 @@ if params["religiouscells"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households)
-contactnetwork_util = contactnetwork.ContactNetwork(agents, cells, itinerary_util.cells_agents_timesteps, contactnetworkparams)
+contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, cells, itinerary_util.cells_agents_timesteps, contactnetworkparams)
 sum_time_taken = 0
 for day in range(1, 365+1):
     weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
