@@ -6,16 +6,34 @@ import powerlaw
 from copy import copy
 from copy import deepcopy
 from enum import IntEnum
+from simulator import util
 import traceback
 
 class ContactNetwork:
-    def __init__(self, agents, agents_seir_state, cells, cells_agents_timesteps, contactnetworkparams):
+    def __init__(self, agents, agents_seir_state, agents_latent_period, agents_infectious_period, agents_immune_period, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams):
         self.agents = agents
         self.agents_seir_state = agents_seir_state
+        self.agents_latent_period = agents_latent_period
+        self.agents_infectious_period = agents_infectious_period
+        self.agents_immune_period = agents_immune_period
+        # self.agents_infected_ids = [agent_id for agent_id, seir_state in enumerate(self.agents_seir_state) if seir_state == SEIRState.Infectious]
         self.cells = cells
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
         self.contactnetworkparams = contactnetworkparams
+        self.epidemiologyparams = epidemiologyparams
         self.ageactivitycontactmatrix = np.array(self.contactnetworkparams["ageactivitycontactmatrix"])
+        latentperioddistributionparams = epidemiologyparams["latentperiodistributionparameters"]
+        infectiousperioddistributionparams = epidemiologyparams["infectiousperioddistributionparameters"]
+        immunityperioduniformrange = epidemiologyparams["immunityperioduniformrange"]
+        latentperiodmean, latentperiodstd = latentperioddistributionparams[0], latentperioddistributionparams[1]
+        self.latentperiodshapeparam = (latentperiodmean / latentperiodstd)**2 # shape = mean / std ^ 2
+        self.latentperiodscaleparam = (latentperiodstd)**2 / latentperiodmean
+        infectiousperiodmean, infectiousperiodstd = infectiousperioddistributionparams[0], infectiousperioddistributionparams[1]
+        self.infectiousperiodshapeparam = (infectiousperiodmean / infectiousperiodstd)**2 # shape = mean / std ^ 2
+        self.infectiousperiodscaleparam = (infectiousperiodstd)**2 / infectiousperiodmean
+        self.immunityperiodmin, self.immunityperiodmax = immunityperioduniformrange[0], immunityperioduniformrange[1]
+        self.indoorinfectionprobability = epidemiologyparams["indoorinfectionprobability"]
+        self.outdoorinfectionprobability = epidemiologyparams["outdoorinfectionprobability"]
 
     def simulate_contact_network(self, cellid):
         agents_directcontacts = self.generate_contact_network(cellid)
@@ -152,10 +170,49 @@ class ContactNetwork:
 
                 # print("direct contacts: " + str(agents_directcontacts))
 
-                return agents_directcontacts
+        return agents_directcontacts
                       
     def simulate_direct_contacts(self, agents_directcontacts):
-        return None # to do (start by getting all infected agents from agents_seir_state)
+        for pairid, timesteps in agents_directcontacts.items():
+            primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
+
+            primary_agent_state, secondary_agent_state = self.agents_seir_state[primary_agent_id], self.agents_seir_state[secondary_agent_id]
+            if ((primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible) or
+                (primary_agent_state == SEIRState.Susceptible and secondary_agent_state == SEIRState.Infectious)): # XOR (only 1 infected, not both, 1 susceptible, not both)  
+                indoor = False # method to get indoor/outdoor
+
+                contact_duration = 0
+                for start_timestep, end_timestep in timesteps:
+                    contact_duration += (end_timestep - start_timestep) + 1 # ensures that if overlapping range is the same, it is considered 1 timestep
+
+                infection_multiplier = max(1, math.log(contact_duration))
+
+                infection_probability = 0
+                if indoor:
+                    infection_probability = self.indoorinfectionprobability * infection_multiplier
+                else:
+                    infection_probability = self.outdoorinfectionprobability * infection_multiplier
+
+                rand = random.random()
+                if rand < infection_probability:
+                    if primary_agent_state == SEIRState.Susceptible:
+                        exposed_agent_id = primary_agent_id
+                    else:
+                        exposed_agent_id = secondary_agent_id
+                    
+                    self.agents_seir_state[exposed_agent_id] = SEIRState.Exposed
+
+                    latent_duration = round(np.random.gamma(self.latentperiodshapeparam, self.latentperiodscaleparam, size=1)[0])
+                    self.agents_latent_period[exposed_agent_id] = latent_duration
+
+                    infectious_duration = round(np.random.gamma(self.infectiousperiodshapeparam, self.infectiousperiodscaleparam, size=1)[0])
+                    self.agents_infectious_period[exposed_agent_id] = infectious_duration
+
+                    immune_duration = round(np.random.uniform(self.immunityperiodmin, self.immunityperiodmax, size=1)[0])
+                    self.agents_immune_period[exposed_agent_id] = immune_duration
+
+                    # log, exposed for latent_duration, infectious for infectious_duration, immune for immune_duration
+                    print("agent exposed. latent period of " + str(latent_duration) + " days, infectious period of " + str(infectious_duration) + " days, immune duration of " + str(immune_duration) + " days")
 
     def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid):
         cell = self.cells[cellid]
@@ -265,8 +322,9 @@ class ContactNetwork:
 
 class SEIRState(IntEnum):
     Undefined = 0
-    Susceptible = 1
-    Exposed = 2
-    Infected = 3
-    Recovered = 4
+    Susceptible = 1 # not infected, susceptible to become infected
+    Exposed = 2 # exposed to the virus, but within the latent period
+    Infectious = 3 # post-latent period, infectious, for an infective period
+    Recovered = 4 # recovered, immune for an immunte period
+    Deceased = 5 # deceased
 

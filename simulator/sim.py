@@ -67,7 +67,10 @@ if len(params["popsubfolder"]) > 0:
 agents = {}
 agents_ids_by_ages = {}
 agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
-agents_seir_state = [] # 1: susceptible, 2: exposed, 3: infected, 4: recovered
+agents_seir_state = [] # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
+agents_latent_period = {}
+agents_infectious_period = {}
+agents_immune_period = {}
 
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
@@ -363,8 +366,9 @@ if params["religiouscells"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households)
-contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, cells, itinerary_util.cells_agents_timesteps, contactnetworkparams)
-sum_time_taken = 0
+contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_latent_period, agents_infectious_period, agents_immune_period, cells, itinerary_util.cells_agents_timesteps, contactnetworkparams, epidemiologyparams)
+itinerary_sum_time_taken = 0
+contactnetwork_sum_time_taken = 0
 for day in range(1, 365+1):
     weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
@@ -413,14 +417,18 @@ for day in range(1, 365+1):
         itinerary_util.generate_itinerary_hh(day, weekday, agents, agents_ids_by_ages, hh_inst["resident_uids"])
 
     time_taken = time.time() - start
-    sum_time_taken += time_taken
-    avg_time_taken = sum_time_taken / day
+    itinerary_sum_time_taken += time_taken
+    avg_time_taken = itinerary_sum_time_taken / day
     print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
+    print("generate contact network for " + str(len(cells.keys())) + " cells")
+    start = time.time()
     for cellid in cells.keys():
         contactnetwork_util.simulate_contact_network(cellid)
-    
-    # for timestep in range(144): # 0 - 143
-    #     print("timestep " + str(timestep))
+
+    time_taken = time.time() - start
+    contactnetwork_sum_time_taken += time_taken
+    avg_time_taken = contactnetwork_sum_time_taken / day
+    print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
 print(len(agents))

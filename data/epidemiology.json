@@ -1,5 +1,8 @@
 {
-	"initialseirstatedistribution": [0.8,0.1,0.05,0.05],
+	"initialseirstatedistribution": [0.8,0.1,0.05, 0.05],
+	"latentperiodistributionparameters": [6, 2],
+	"infectiousperioddistributionparameters": [7, 3],
+	"immunityperioduniformrange": [30, 90],
 	"indoorinfectionprobability": 0.01,
 	"outdoorinfectionprobability": 0.02
 }
