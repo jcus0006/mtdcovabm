@@ -1,44 +1,29 @@
 import numpy as np
 import math
-import random
-import json
-import powerlaw
 from copy import copy
 from copy import deepcopy
-from enum import IntEnum
-from simulator import util
-import traceback
+from simulator.epidemiology import Epidemiology
+import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, agents, agents_seir_state, agents_latent_period, agents_infectious_period, agents_immune_period, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams):
+    def __init__(self, agents, agents_seir_state, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, visualise=False, maintain_directcontacts_count=False):
         self.agents = agents
-        self.agents_seir_state = agents_seir_state
-        self.agents_latent_period = agents_latent_period
-        self.agents_infectious_period = agents_infectious_period
-        self.agents_immune_period = agents_immune_period
-        # self.agents_infected_ids = [agent_id for agent_id, seir_state in enumerate(self.agents_seir_state) if seir_state == SEIRState.Infectious]
+
         self.cells = cells
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
         self.contactnetworkparams = contactnetworkparams
-        self.epidemiologyparams = epidemiologyparams
         self.ageactivitycontactmatrix = np.array(self.contactnetworkparams["ageactivitycontactmatrix"])
-        latentperioddistributionparams = epidemiologyparams["latentperiodistributionparameters"]
-        infectiousperioddistributionparams = epidemiologyparams["infectiousperioddistributionparameters"]
-        immunityperioduniformrange = epidemiologyparams["immunityperioduniformrange"]
-        latentperiodmean, latentperiodstd = latentperioddistributionparams[0], latentperioddistributionparams[1]
-        self.latentperiodshapeparam = (latentperiodmean / latentperiodstd)**2 # shape = mean / std ^ 2
-        self.latentperiodscaleparam = (latentperiodstd)**2 / latentperiodmean
-        infectiousperiodmean, infectiousperiodstd = infectiousperioddistributionparams[0], infectiousperioddistributionparams[1]
-        self.infectiousperiodshapeparam = (infectiousperiodmean / infectiousperiodstd)**2 # shape = mean / std ^ 2
-        self.infectiousperiodscaleparam = (infectiousperiodstd)**2 / infectiousperiodmean
-        self.immunityperiodmin, self.immunityperiodmax = immunityperioduniformrange[0], immunityperioduniformrange[1]
-        self.indoorinfectionprobability = epidemiologyparams["indoorinfectionprobability"]
-        self.outdoorinfectionprobability = epidemiologyparams["outdoorinfectionprobability"]
 
-    def simulate_contact_network(self, cellid):
-        agents_directcontacts = self.generate_contact_network(cellid)
+        self.visualise = visualise
+        self.maintain_directcontacts_count = maintain_directcontacts_count
+        self.figurecount = 0
 
-        self.simulate_direct_contacts(agents_directcontacts)
+        self.epi_util = Epidemiology(epidemiologyparams, agents, agents_seir_state, agents_infection_type, agents_infection_severity)
+
+    def simulate_contact_network(self, cellid, day):
+        agents_directcontacts, cell = self.generate_contact_network(cellid)
+
+        self.epi_util.simulate_direct_contacts(agents_directcontacts, cell, day)
 
     def generate_contact_network(self, cellid): # to create class and initialise stuff in init
         print("generating contact network for cell " + str(cellid))
@@ -48,12 +33,16 @@ class ContactNetwork:
         agents_potentialcontacts_count = {} # {agentid: total_num_of_potential_contats}
         agents_potentialcontacts = {} # {(agentid1, agentid2) : [ (start_ts1, end_ts1), (start_ts2, end_ts2) ]}
         agents_directcontacts = {}
+        agents_directcontacts_count = {}
         population_per_timestep = [0 for i in range(144)]
 
+        cell = None
         if cellid in self.cells_agents_timesteps:
+            cell = self.cells[cellid]
+
             cell_agents_timesteps = self.cells_agents_timesteps[cellid]
 
-            ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid)
+            ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"])
             
             agents_timesteps_sum = 0
 
@@ -97,7 +86,15 @@ class ContactNetwork:
                             agents_potentialcontacts[pair_key].append(overlapping_range)
 
             if len(agents_potentialcontacts) > 0:
-                population_per_timestep_no_zeros = np.array([pop_per_ts for pop_per_ts in population_per_timestep if pop_per_ts > 0])
+                if self.visualise and len(agents_ids) > 500:
+                    self.figurecount += 1
+                    plt.figure(self.figurecount)
+                    plt.hist(agents_potentialcontacts_count.values(), bins=10)
+                    plt.xlabel("Potential Contacts")
+                    plt.ylabel("Count")
+                    plt.show(block=False)
+            
+                # population_per_timestep_no_zeros = np.array([pop_per_ts for pop_per_ts in population_per_timestep if pop_per_ts > 0])
 
                 # n = round(np.median(population_per_timestep_no_zeros)) # max/median population during the day (if using median remove 0s as they would be outliers and take middle value)      
                 n = len(agents_ids)
@@ -139,6 +136,14 @@ class ContactNetwork:
 
                     agents_degrees[i] = degree
 
+                if self.visualise and len(agents_ids) > 500:
+                    self.figurecount += 1
+                    plt.figure(self.figurecount)
+                    plt.hist(agents_degrees, bins=10)
+                    plt.xlabel("Expected Direct Contacts")
+                    plt.ylabel("Count")
+                    plt.show(block=False)
+
                 agents_degrees_backup = copy(agents_degrees) # these are final degrees, to save. agents_degrees will be deducted from below.
                 agents_potentialcontacts_backup = deepcopy(agents_potentialcontacts)
 
@@ -151,72 +156,37 @@ class ContactNetwork:
                     degree = agents_degrees[i]
 
                     if degree > 0:
-                        potential_contacts = self.get_all_potentialcontacts_ids(agents_potentialcontacts, agent_id, shuffle=True)
+                        potential_contacts = self.get_all_potentialcontacts_ids(agents_ids, agents_potentialcontacts, agents_degrees, agent_id, shuffle=True)
 
                         if potential_contacts is not None:
-                            # direct_contacts_ids = []
-
                             if degree > len(potential_contacts):
                                 print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: " + str(len(potential_contacts)))
                                 degree = len(potential_contacts)
 
                             direct_contacts_ids = np.random.choice(potential_contacts, size=degree, replace=False)
 
-                            agents_directcontacts, agents_potentialcontacts = self.create_contacts(agents_ids, agents_degrees, i, agent_id, degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts)
+                            agents_directcontacts, agents_potentialcontacts, agents_directcontacts_count = self.create_contacts(agents_ids, agents_degrees, i, agent_id, degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts, agents_directcontacts_count, self.maintain_directcontacts_count)
                         else:
                             print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: 0")
+                
+                if self.visualise and self.maintain_directcontacts_count and len(agents_ids) > 500:
+                    self.figurecount += 1
+                    plt.figure(self.figurecount)
+                    plt.hist(agents_directcontacts_count.values(), bins=10)
+                    plt.xlabel("Actual Direct Contacts")
+                    plt.ylabel("Count")
+                    plt.show(block=False)
 
                 print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
 
                 # print("direct contacts: " + str(agents_directcontacts))
 
-        return agents_directcontacts
-                      
-    def simulate_direct_contacts(self, agents_directcontacts):
-        for pairid, timesteps in agents_directcontacts.items():
-            primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
+        return agents_directcontacts, cell
 
-            primary_agent_state, secondary_agent_state = self.agents_seir_state[primary_agent_id], self.agents_seir_state[secondary_agent_id]
-            if ((primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible) or
-                (primary_agent_state == SEIRState.Susceptible and secondary_agent_state == SEIRState.Infectious)): # XOR (only 1 infected, not both, 1 susceptible, not both)  
-                indoor = False # method to get indoor/outdoor
-
-                contact_duration = 0
-                for start_timestep, end_timestep in timesteps:
-                    contact_duration += (end_timestep - start_timestep) + 1 # ensures that if overlapping range is the same, it is considered 1 timestep
-
-                infection_multiplier = max(1, math.log(contact_duration))
-
-                infection_probability = 0
-                if indoor:
-                    infection_probability = self.indoorinfectionprobability * infection_multiplier
-                else:
-                    infection_probability = self.outdoorinfectionprobability * infection_multiplier
-
-                rand = random.random()
-                if rand < infection_probability:
-                    if primary_agent_state == SEIRState.Susceptible:
-                        exposed_agent_id = primary_agent_id
-                    else:
-                        exposed_agent_id = secondary_agent_id
-                    
-                    self.agents_seir_state[exposed_agent_id] = SEIRState.Exposed
-
-                    latent_duration = round(np.random.gamma(self.latentperiodshapeparam, self.latentperiodscaleparam, size=1)[0])
-                    self.agents_latent_period[exposed_agent_id] = latent_duration
-
-                    infectious_duration = round(np.random.gamma(self.infectiousperiodshapeparam, self.infectiousperiodscaleparam, size=1)[0])
-                    self.agents_infectious_period[exposed_agent_id] = infectious_duration
-
-                    immune_duration = round(np.random.uniform(self.immunityperiodmin, self.immunityperiodmax, size=1)[0])
-                    self.agents_immune_period[exposed_agent_id] = immune_duration
-
-                    # log, exposed for latent_duration, infectious for infectious_duration, immune for immune_duration
-                    print("agent exposed. latent period of " + str(latent_duration) + " days, infectious period of " + str(infectious_duration) + " days, immune duration of " + str(immune_duration) + " days")
-
-    def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid):
-        cell = self.cells[cellid]
-        celltype = cell["type"]
+    def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid, celltype=None):
+        if celltype is None:
+            cell = self.cells[cellid]
+            celltype = cell["type"]
 
         match celltype:
             case "household":
@@ -241,7 +211,7 @@ class ContactNetwork:
                 return 5
             case _:
                 return 0 # total
-    
+            
     # this determines whether all the overlapping timesteps for this pair have been computed, hence, allowing the same checks to be done only once
     def pair_already_computed_in_agentspotentialcontacts(self, agents_potentialcontacts, id1, id2):
         return (id2, id1) in agents_potentialcontacts
@@ -260,12 +230,16 @@ class ContactNetwork:
         
         return None
     
-    def get_all_potentialcontacts_ids(self, agents_potentialcontacts, id, shuffle=True):
+    def get_all_potentialcontacts_ids(self, agents_ids, agents_potentialcontacts, agents_degrees, id, shuffle=True):
         potential_contacts_ids = []
         for pairid in agents_potentialcontacts.keys():
             if id in pairid:
                 potential_contact_id = pairid[1] if pairid[0] == id else pairid[0]
-                potential_contacts_ids.append(potential_contact_id)
+                potential_contact_index = agents_ids.index(potential_contact_id)
+                potential_contact_degree = agents_degrees[potential_contact_index]
+
+                if potential_contact_degree > 0:
+                    potential_contacts_ids.append(potential_contact_id)
 
         if len(potential_contacts_ids) == 0:
             return None
@@ -284,10 +258,16 @@ class ContactNetwork:
 
         return agents_potentialcontacts
     
-    def create_contacts(self, agents_ids, agents_degrees, agent_index, agent_id, main_agent_degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts):       
+    def create_contacts(self, agents_ids, agents_degrees, agent_index, agent_id, main_agent_degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts, agents_directcontacts_count, maintain_agents_directcontacts_count=False):       
         main_agent_degree -= len(direct_contacts_ids)
 
         agents_degrees[agent_index] = main_agent_degree
+
+        if maintain_agents_directcontacts_count:
+            if agent_id not in agents_directcontacts_count:
+                agents_directcontacts_count[agent_id] = len(direct_contacts_ids)
+            else:
+                agents_directcontacts_count[agent_id] += len(direct_contacts_ids)
 
         for contact_agent_id in direct_contacts_ids:
             pair_id = self.get_key_if_pair_exists_in_agentspotentialcontacts(agents_potentialcontacts, agent_id, contact_agent_id)
@@ -304,13 +284,19 @@ class ContactNetwork:
 
             agents_degrees[contact_agent_index] = contact_agent_degree
 
+            if maintain_agents_directcontacts_count:
+                if contact_agent_id not in agents_directcontacts_count:
+                    agents_directcontacts_count[contact_agent_id] = 1
+                else:
+                    agents_directcontacts_count[contact_agent_id] += 1
+
             if contact_agent_degree == 0:
                 self.delete_all_pairs_by_id(agents_potentialcontacts, contact_agent_id)
 
         if main_agent_degree == 0:
             agents_potentialcontacts = self.delete_all_pairs_by_id(agents_potentialcontacts, agent_id)
 
-        return agents_directcontacts, agents_potentialcontacts
+        return agents_directcontacts, agents_potentialcontacts, agents_directcontacts_count
     
     def get_overlapping_range(self, a1, a2, b1, b2):
         lower = max(a1, b1)
@@ -319,12 +305,4 @@ class ContactNetwork:
             return lower, upper
         else:
             return None
-
-class SEIRState(IntEnum):
-    Undefined = 0
-    Susceptible = 1 # not infected, susceptible to become infected
-    Exposed = 2 # exposed to the virus, but within the latent period
-    Infectious = 3 # post-latent period, infectious, for an infective period
-    Recovered = 4 # recovered, immune for an immunte period
-    Deceased = 5 # deceased
 
