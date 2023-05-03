@@ -2,16 +2,14 @@ import json
 import numpy as np
 import math
 import time
-import powerlaw
 import matplotlib.pyplot as plt
 import random
 from cells import Cells
 from simulator import util
 from simulator import itinerary
 from simulator import contactnetwork
-from contactnetwork import SEIRState
-
-# to establish set of static parameters such as cellsize, but grouped in dict
+from simulator.epidemiology import SEIRState
+from simulator import tourism
 
 params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "timestepmins": 10,
@@ -55,6 +53,9 @@ epidemiologyfile = open("./data/epidemiology.json")
 epidemiologyparams = json.load(epidemiologyfile)
 initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
 
+tourismfile = open("./data/tourism.json")
+tourismparams = json.load(tourismfile)
+
 population_sub_folder = ""
 
 if params["quickdebug"]:
@@ -67,10 +68,18 @@ if len(params["popsubfolder"]) > 0:
 agents = {}
 agents_ids_by_ages = {}
 agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
+
+# contact network model
+cells_agents_timesteps = {} # {cellid: (agentid, starttimestep, endtimestep)}
+
+# transmission model
 agents_seir_state = [] # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
-agents_latent_period = {}
-agents_infectious_period = {}
-agents_immune_period = {}
+agents_seir_state_transition_for_day = {} # handled as dict, because it will only apply for a subset of agents per day
+agents_infection_type = {} # handled as dict, because not every agent will be infected
+agents_infection_severity = {} # handled as dict, because not every agent will be infected
+
+# tourism
+tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
 
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
@@ -84,12 +93,18 @@ if params["loadagents"]:
     temp_agents = {int(k): v for k, v in agents.items()}
     agents_seir_state = np.array([SEIRState(0) for i in range(len(agents))])
 
+    contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, False, False)
+    epi_util = contactnetwork_util.epi_util
+
     for agent_uid, agent in temp_agents.items():
         agent["curr_cellid"] = -1
         agent["res_cellid"] = -1
         agent["work_cellid"] = -1
         agent["school_cellid"] = -1
         agent["inst_cellid"] = -1
+        agent["symptomatic"] = False
+        agent["tourist_id"] = None 
+        agent["state_transition_by_day"] = {}
 
         age = agent["age"]
         agents_ids_by_ages[agent_uid] = agent["age"]
@@ -109,37 +124,11 @@ if params["loadagents"]:
                 agent["working_age_bracket_index"] = i
                 break
 
+        agent["epi_age_bracket_index"] = epi_util.get_sus_mort_prog_age_bracket_index(age)
+
         # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
 
-    for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
-        powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]
-
-        exponent, xmin = powerlaw_dist_params[2], powerlaw_dist_params[3]
-        # exponent, xmin = 2.64, 4.0
-        dist = powerlaw.Power_Law(xmin=xmin, parameters=[exponent])
-
-        agents_contact_propensity = dist.generate_random(len(agents_ids_in_bracket))
-
-        min_arr = np.min(agents_contact_propensity)
-        max_arr = np.max(agents_contact_propensity)
-
-        normalized_arr = (agents_contact_propensity - min_arr) / (max_arr - min_arr) * (sociability_rate_max - sociability_rate_min) + sociability_rate_min
-
-        if params["visualise"]:
-            figure_count += 1
-            plt.figure(figure_count)
-            bins = np.logspace(np.log10(min(agents_contact_propensity)), np.log10(max(agents_contact_propensity)), 50)
-            plt.hist(agents_contact_propensity, bins=bins, density=True)
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.xlabel('Value')
-            plt.ylabel('Frequency')
-            plt.show(block=False)
-
-        for index, agent_id in enumerate(agents_ids_in_bracket):
-            agent = temp_agents[agent_id]
-
-            agent["soc_rate"] = normalized_arr[index]
+    temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
 
     for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
         seirid = seirindex + 1
@@ -169,6 +158,11 @@ if params["loadagents"]:
     agents = temp_agents
 
     temp_agents = None
+
+    contactnetwork_util.agents = None
+    epi_util.agents = None
+    contactnetwork_util.agents = agents
+    epi_util.agents = agents
 
     maleagents = {k:v for k, v in agents.items() if v["gender"] == 0}
     femaleagents = {k:v for k, v in agents.items() if v["gender"] == 1}
@@ -234,12 +228,12 @@ if params["loadinstitutions"]:
 hh_insts = []
 if params["loadhouseholds"]:
     for hh in households.values():
-        hh_inst = {"resident_uids": hh["resident_uids"]}
+        hh_inst = {"id": hh["hhid"], "is_hh": True, "resident_uids": hh["resident_uids"]}
         hh_insts.append(hh_inst)
 
 if params["loadinstitutions"]:
     for inst in institutions:
-        hh_inst = {"resident_uids": inst["resident_uids"]}
+        hh_inst = {"id": inst["instid"], "is_hh": False, "resident_uids": inst["resident_uids"]}
         hh_insts.append(hh_inst)
 
 if hh_insts is not None:
@@ -283,13 +277,16 @@ if params["loadworkplaces"]:
 
     hospital_cells_params = cellsparams["hospital"]
     transport_cells_params = cellsparams["transport"]
+    airport_cells_params = cellsparams["airport"]
     entertainment_acitvity_dist = cellsparams["entertainmentactivitydistribution"]
 
     transport, cells_transport = cell.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
 
+    # cells_accommodation_by_accomid = {} # {accomid: [{cellid: {cellinfo}}]}
     accommodations = []
     roomsizes_by_accomid_by_accomtype = {} # {typeid: {accomid: {roomsize: [member_uids]}}} - here member_uids represents room ids
     rooms_by_accomid_by_accomtype = {} # {typeid: {accomid: {roomid: {"roomsize":1, "member_uids":[]}}}} - here member_uids represents tourist ids
+    tourists_active_groupids = []
     accomgroups = None
 
     if params["loadtourism"]:
@@ -321,7 +318,7 @@ if params["loadworkplaces"]:
                 rooms_accom_by_id[roomid] = {}
 
     # handle cell splitting (on workplaces & accommodations)
-    industries, cells_industries, cells_accommodations, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport, entertainment_acitvity_dist)
+    industries, cells_industries, cells_accommodation, cells_accommodation_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, transport, entertainment_acitvity_dist)
 
 if params["loadtourism"]:
     touristsfile = open("./population/" + population_sub_folder + "tourists.json")
@@ -336,11 +333,11 @@ if params["loadtourism"]:
     touristsgroupsdays = json.load(touristsgroupsdaysfile)
     touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
 
-    airport_cells_params = cellsparams["airport"]
+    # airport_cells_params = cellsparams["airport"]
 
-    cell.create_airport_cell()
+    # cell.create_airport_cell()
 
-    cellindex += 1
+    # cellindex += 1
 
 if params["loadschools"]:
     schoolsfile = open("./population/" + population_sub_folder + "schools.json")
@@ -360,13 +357,13 @@ if params["religiouscells"]:
 
     churches, cells_religious = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
-
 # this might cause problems when referring to related agents, by household, workplaces etc
 # if params["quickdebug"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
-itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households)
-contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_latent_period, agents_infectious_period, agents_immune_period, cells, itinerary_util.cells_agents_timesteps, contactnetworkparams, epidemiologyparams)
+tourist_util = tourism.Tourism(tourismparams, cells, tourists, agents, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_active_groupids, age_brackets, epi_util)
+itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_airport, cells_agents_timesteps, epi_util)
+
 itinerary_sum_time_taken = 0
 contactnetwork_sum_time_taken = 0
 for day in range(1, 365+1):
@@ -376,45 +373,24 @@ for day in range(1, 365+1):
     # assign tourists (this is the first prototype which assumes tourists checkout/in at 00.00
     # but with itinerary we can generate random timestep at which tourists checkout/in
     if params["loadtourism"]:
-        tourist_groupids_by_day = touristsgroupsdays[day]
-
-        for tour_group_id in tourist_groupids_by_day:
-            tourists_group = touristsgroups[tour_group_id]
-
-            accomtype = tourists_group["accomtype"]
-            accominfo = tourists_group["accominfo"]
-            arrivalday = tourists_group["arr"]
-            departureday = tourists_group["dep"]
-            purpose = tourists_group["purpose"]
-            subgroupsmemberids = tourists_group["subgroupsmemberids"]
-
-            if arrivalday == day or departureday == day:
-                for accinfoindex, accinfo in enumerate(accominfo):
-                    accomid, roomid, roomsize = accinfo[0], accinfo[1], accinfo[2]
-
-                    subgroupmmembers = subgroupsmemberids[accinfoindex]
-
-                    cellindex = rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
-
-                    if arrivalday == day:
-                        cells[cellindex]["place"]["member_uids"] = subgroupmmembers
-                    else:
-                        cells[cellindex]["place"]["member_uids"] = []
+        agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+        
+        itinerary_util.generate_itinerary_accom(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day)
 
     # should be cell based, but for testing purposes, traversing all agents here
-
     if day == 1 or weekdaystr == "Monday":
-        for agentid, agent in agents.items():
-            print("day " + str(day) + ", agent id: " + str(agentid))
-            itinerary_util.generate_working_days_for_week(agent)
+        for hh_inst in hh_insts:
+            print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
+            itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
 
     itinerary_util.cells_agents_timesteps = {}
     contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
-
+    agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
+    
     print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
     start = time.time()
     for hh_inst in hh_insts:
-        itinerary_util.generate_itinerary_hh(day, weekday, agents, agents_ids_by_ages, hh_inst["resident_uids"])
+        itinerary_util.generate_itinerary_residence(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
 
     time_taken = time.time() - start
     itinerary_sum_time_taken += time_taken
@@ -424,7 +400,7 @@ for day in range(1, 365+1):
     print("generate contact network for " + str(len(cells.keys())) + " cells")
     start = time.time()
     for cellid in cells.keys():
-        contactnetwork_util.simulate_contact_network(cellid)
+        contactnetwork_util.simulate_contact_network(cellid, day)
 
     time_taken = time.time() - start
     contactnetwork_sum_time_taken += time_taken

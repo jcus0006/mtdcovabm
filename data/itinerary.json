@@ -173,5 +173,6 @@
 		[65, 69,  4,	5,	3],
 		[70, 74,  4,	5,	3],
 		[75, 100, 4,	5,	3]
-	]
+	],
+	"tourism_group_activity_probability_by_purpose": [0.7, 0.5, 0.9, 0.7]
 }

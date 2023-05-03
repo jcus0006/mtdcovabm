@@ -1,0 +1,4 @@
+{
+	"incoming_airport_duration_distribution_params": [0.5, 6, 15],
+	"outgoing_airport_duration_distribution_params": [0.5, 12, 21]
+}

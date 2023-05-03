@@ -6,7 +6,7 @@ from simulator.epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, agents, agents_seir_state, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, visualise=False, maintain_directcontacts_count=False):
+    def __init__(self, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, visualise=False, maintain_directcontacts_count=False):
         self.agents = agents
 
         self.cells = cells
@@ -18,14 +18,14 @@ class ContactNetwork:
         self.maintain_directcontacts_count = maintain_directcontacts_count
         self.figurecount = 0
 
-        self.epi_util = Epidemiology(epidemiologyparams, agents, agents_seir_state, agents_infection_type, agents_infection_severity)
+        self.epi_util = Epidemiology(epidemiologyparams, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity)
 
     def simulate_contact_network(self, cellid, day):
         agents_directcontacts, cell = self.generate_contact_network(cellid)
 
         self.epi_util.simulate_direct_contacts(agents_directcontacts, cell, day)
 
-    def generate_contact_network(self, cellid): # to create class and initialise stuff in init
+    def generate_contact_network(self, cellid):
         print("generating contact network for cell " + str(cellid))
         agents_ids = [] # each index represents an agent ID
         agents_degrees = [] # each index represents an agent degree, maps to agents_ids indices
@@ -42,7 +42,13 @@ class ContactNetwork:
 
             cell_agents_timesteps = self.cells_agents_timesteps[cellid]
 
-            ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"])
+            indid = None
+
+            if cell["type"] == "workplace":
+                if "indid" in cell["place"]:
+                    indid = cell["place"]["indid"]
+
+            ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"], indid)
             
             agents_timesteps_sum = 0
 
@@ -62,8 +68,7 @@ class ContactNetwork:
 
                 agents_total_timesteps[agentid] += total_timesteps
             
-                # pre computation of potential contacts (could potentially use contact graph)
-                # question: if 2 agents meet on more than 1 timestep range, does this affect the degree? i.e. does it count as 1 degree or as many timestep ranges?
+                # pre computation of potential contacts
                 for ag_id, st_ts, end_ts in cell_agents_timesteps:
                     if ag_id != agentid and not self.pair_already_computed_in_agentspotentialcontacts(agents_potentialcontacts, agentid, ag_id):
                         overlapping_range = self.get_overlapping_range(starttimestep, endtimestep, st_ts, end_ts)
@@ -105,19 +110,31 @@ class ContactNetwork:
 
                 max_degree = round((k * n)) # should this be k * n / 2 ?
 
-                avg_agents_timestep_counts = round(agents_timesteps_sum / n)     
+                avg_agents_timestep_counts = agents_timesteps_sum / n
+
+                agents_potentialcontacts_count_np = np.array(list(agents_potentialcontacts_count.values()))
+                avg_potential_contacts_count = np.mean(agents_potentialcontacts_count_np)
+                std_potential_contacts_count = np.std(agents_potentialcontacts_count_np)
                 
                 # create degrees per agent
                 for agentindex, agentid in enumerate(agents_ids):
-                    agent = self.agents[agentid]
+                    agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
 
-                    agent_timestep_count = agents_total_timesteps[agentid]
+                    if agent_potentialcontacts_count > 0:
+                        agent = self.agents[agentid]
 
-                    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[agent["age_bracket_index"], 2 + ageactivitycontact_cm_activityid]
+                        agent_timestep_count = agents_total_timesteps[agentid]
 
-                    timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
+                        avg_contacts_by_age_activity = self.ageactivitycontactmatrix[agent["age_bracket_index"], 2 + ageactivitycontact_cm_activityid]
 
-                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * agent["soc_rate"]
+                        timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
+
+                        potential_contacts_count_multiplier = 1
+                        
+                        if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
+                            potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
+
+                        agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"]
 
                 agents_degrees_sum = round(np.sum(agents_degrees))
                 
@@ -183,10 +200,13 @@ class ContactNetwork:
 
         return agents_directcontacts, cell
 
-    def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid, celltype=None):
+    def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid, celltype=None, indid=None):
         if celltype is None:
             cell = self.cells[cellid]
             celltype = cell["type"]
+
+        if indid == 9 and celltype != "accom":
+            return 5
 
         match celltype:
             case "household":

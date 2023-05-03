@@ -5,10 +5,40 @@ from simulator import util
 import powerlaw
 import networkx as nx
 import collections
-
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as stats
+
+
+x_gamma = util.sample_gamma_reject_out_of_range(0.5, 6, 15, returnInt= True, useNp= True)
+
+exp_to_inf_mean = 4.5
+exp_to_inf_std = 1.5
+
+mean  = np.log(exp_to_inf_mean**2 / np.sqrt(exp_to_inf_std**2 + exp_to_inf_mean**2)) # Computes the mean of the underlying normal distribution
+sigma = np.sqrt(np.log(exp_to_inf_std**2/exp_to_inf_mean**2 + 1)) # Computes sigma for the underlying normal distribution
+
+start = time.time()
+
+arr = []
+for i in range(1000000):
+    x = np.random.lognormal(mean, sigma, size=1)[0]
+    arr.append(x)
+
+time_taken = time.time() - start
+
+print("1m calls: " + str(time_taken))
+
+start = time.time()
+
+arr = np.random.lognormal(mean, sigma, size=1000000)
+
+time_taken = time.time() - start
+
+print("1 call: " + str(time_taken))
+
+print("stop")
 
 # # Define parameters
 # mean = 15    # Mean number of contacts per unit time

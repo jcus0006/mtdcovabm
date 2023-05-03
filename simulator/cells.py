@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import math
 import copy
 import bisect
@@ -87,12 +88,17 @@ class Cells:
     # industries_by_indid (indid) -> workplaces_by_wpid (wpid) -> cells_by_cellid (cellid) -> dict with member_uids key/value pair
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
-    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, transport, entertainment_activity_dist):
+    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, transport, entertainment_activity_dist):
         industries_by_indid = {}
         workplacescells = {}
         hospitalcells = {}
         accommodationcells = {}
+        accommodationcells_by_accomid = {}
         entertainmentcells = {}
+        airportcells = {}
+
+        airport_industries = [7, 8, 9, 19]
+        airport_ensure_workplace_per_industry = [False, False, False, False] # [7, 8, 9, 19]
         # accomgroups = AccomGroup()
 
         bus_drivers = []
@@ -142,6 +148,8 @@ class Cells:
 
             is_entertainment = indid == 18
             is_household = indid == 20
+            is_airport = False
+            is_potentially_airport_external = indid in airport_industries # retail, transp, food, other service activities
 
             if not is_household:
                 accomid = workplace["accomid"] if workplace["accomid"] is not None else -1 # -1 if not an accommodation
@@ -155,6 +163,20 @@ class Cells:
                 if is_hospital:
                     cellsize, cellsizespare = hosp_cell_size, hosp_cell_size_spare
 
+                if is_potentially_airport_external and not is_accom and not is_hospital:
+                    airport_industries_index = airport_industries.index(indid)
+
+                    if airport_ensure_workplace_per_industry[airport_industries_index]: # if 1 wp for this ind has been set for airport, use cell param e.g. 3% 
+                        is_airport_random = random.random()
+                        is_airport_prob = airport_cells_params[2]
+
+                        is_airport = is_airport_random < is_airport_prob
+                    else:
+                        is_airport = True # force as is_airport, ensure at least 1 wp from airport_industries
+                        airport_ensure_workplace_per_industry[airport_industries_index] = True # mark as true, next wp from ind, will be based on cell param prob
+
+                    cellsize, cellsizespare = airport_cells_params[0], airport_cells_params[1]
+
                 # print(accomtypeid)
 
                 num_employees = len(employees)
@@ -165,8 +187,8 @@ class Cells:
 
                 # If the number of members is less than or equal to "max_members", no splitting needed
                 if len(employees) <= max_members:
-                    if not is_accom and not is_hospital and not is_entertainment:
-                        cells_by_cellid[self.cellindex] = { "wpid": wpid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+                    if not is_accom and not is_hospital and not is_entertainment and not is_airport:
+                        cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
                         self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
@@ -176,6 +198,11 @@ class Cells:
                         self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
 
                         accommodationcells[self.cellindex] = self.cells[self.cellindex]
+
+                        if accomid not in accommodationcells_by_accomid:
+                            accommodationcells_by_accomid[accomid] = []
+
+                        accommodationcells_by_accomid[accomid].append(self.cells[self.cellindex])
 
                     if is_hospital:
                         cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(employees)}
@@ -188,7 +215,7 @@ class Cells:
                     if is_entertainment:
                         sampled_activity = np.random.choice(activity_options, 1, p=activity_weights)[0]
 
-                        cells_by_cellid[self.cellindex] = { "wpid": wpid, "activityid": sampled_activity, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+                        cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid, "activityid": sampled_activity, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
                         self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
@@ -198,6 +225,13 @@ class Cells:
                         entertainmentcells_by_activity = entertainmentcells[sampled_activity]
 
                         entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
+
+                    if is_airport:
+                        cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+
+                        self.cells[self.cellindex] = { "type": "airport", "place": cells_by_cellid[self.cellindex]}
+
+                        airportcells[self.cellindex] = self.cells[self.cellindex]
 
                     workplacescells[self.cellindex] = self.cells[self.cellindex]
 
@@ -226,8 +260,8 @@ class Cells:
 
                         members_start = members_end
 
-                        if not is_accom and not is_hospital and not is_entertainment: # normal workplace
-                            cells_by_cellid[self.cellindex] = { "wpid": wpid, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+                        if not is_accom and not is_hospital and not is_entertainment and not is_airport: # normal workplace
+                            cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
                             self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
@@ -237,6 +271,11 @@ class Cells:
                             self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
 
                             accommodationcells[self.cellindex] = self.cells[self.cellindex]
+
+                            if accomid not in accommodationcells_by_accomid:
+                                accommodationcells_by_accomid[accomid] = []
+
+                            accommodationcells_by_accomid[accomid].append(self.cells[self.cellindex])
 
                         if is_hospital:
                             cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(temp_members)}
@@ -249,7 +288,7 @@ class Cells:
                         if is_entertainment:
                             sampled_activity = np.random.choice(activity_options, 1, p=activity_weights)[0]
 
-                            cells_by_cellid[self.cellindex] = { "wpid": wpid, "activityid": sampled_activity, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+                            cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "activityid": sampled_activity, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
                             self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
@@ -259,7 +298,14 @@ class Cells:
                             entertainmentcells_by_activity = entertainmentcells[sampled_activity]
 
                             entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
-                            
+
+                        if is_airport:
+                            cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+
+                            self.cells[self.cellindex] = { "type": "airport", "place": cells_by_cellid[self.cellindex]}
+
+                            airportcells[self.cellindex] = self.cells[self.cellindex]
+                                
                         workplacescells[self.cellindex] = self.cells[self.cellindex]
 
                         if len(self.agents) > 0:
@@ -272,7 +318,7 @@ class Cells:
                         self.cellindex += 1
 
                 if is_accom and len(roomsizes_by_accomid_by_accomtype) > 0:
-                    cells_by_cellid, workplacescells, accommodationcells = self.create_accom_rooms(accomid, accomtypeid, cells_by_cellid, workplacescells, accommodationcells, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype)
+                    cells_by_cellid, workplacescells, accommodationcells, accommodationcells_by_accomid = self.create_accom_rooms(accomid, accomtypeid, cells_by_cellid, workplacescells, accommodationcells, accommodationcells_by_accomid, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype)
 
                 if is_hospital:
                     cells_by_cellid, workplacescells, hospitalcells = self.create_hospital_rooms(hospital_id, num_employees, hosp_beds_per_employee, hosp_avg_beds_per_rooms, cells_by_cellid, workplacescells, hospitalcells)
@@ -290,7 +336,7 @@ class Cells:
                 else:
                     industries_by_indid[indid] = workplaces_by_wpid
 
-        return industries_by_indid, workplacescells, accommodationcells, rooms_by_accomid_by_accomtype, hospitalcells, entertainmentcells
+        return industries_by_indid, workplacescells, accommodationcells, accommodationcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, entertainmentcells, airportcells
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)
@@ -546,7 +592,7 @@ class Cells:
 
         return transport_by_id, cells_transport
     
-    def create_accom_rooms(self, accomid, accomtypeid, cells_by_cellid, workplacescells, accommodationcells, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype):
+    def create_accom_rooms(self, accomid, accomtypeid, cells_by_cellid, workplacescells, accommodationcells, accommodationscells_by_accomid, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype):
         roomsbysizes = roomsizes_by_accomid_by_accomtype[accomtypeid][accomid]
 
         for roomsize, roomids in roomsbysizes.items():
@@ -557,6 +603,7 @@ class Cells:
 
                 workplacescells[self.cellindex] = self.cells[self.cellindex]
                 accommodationcells[self.cellindex] = self.cells[self.cellindex]
+                accommodationscells_by_accomid[accomid].append(self.cells[self.cellindex])
 
                 # accomgroups.append(accomtypeid, accomid, roomid, roomsize, self.cellindex)
                 room_by_accomid_by_accomtype = rooms_by_accomid_by_accomtype[accomtypeid][accomid][roomid]
@@ -565,7 +612,7 @@ class Cells:
 
                 self.cellindex += 1
 
-        return cells_by_cellid, workplacescells, accommodationcells
+        return cells_by_cellid, workplacescells, accommodationcells, accommodationscells_by_accomid
 
     def create_hospital_rooms(self, hospital_id, n_employees, hosp_beds_per_employee, hospitalaveragebedsperroom, cells_by_cellid, workplacescells, hospitalcells): # this is a dynamic cell
         total_no_beds = round(n_employees * hosp_beds_per_employee)
