@@ -88,12 +88,14 @@ class Cells:
     # industries_by_indid (indid) -> workplaces_by_wpid (wpid) -> cells_by_cellid (cellid) -> dict with member_uids key/value pair
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
-    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, transport, entertainment_activity_dist):
+    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_activity_dist):
         industries_by_indid = {}
         workplacescells = {}
+        restaurantcells = {}
         hospitalcells = {}
         accommodationcells = {}
         accommodationcells_by_accomid = {}
+        breakfastcells_by_accomid = {}
         entertainmentcells = {}
         airportcells = {}
 
@@ -156,6 +158,7 @@ class Cells:
                 accomtypeid = workplace["accomtypeid"] if workplace["accomtypeid"] is not None else -1 # -1 if not an accommodation
                 
                 is_accom = accomid > -1
+                is_restaurant = indid == 9 and not is_accom
                 is_hospital = wpid in hospital_ids
 
                 cellsize, cellsizespare = workplaces_cells_params[indid-1][1], workplaces_cells_params[indid-1][2]
@@ -163,7 +166,10 @@ class Cells:
                 if is_hospital:
                     cellsize, cellsizespare = hosp_cell_size, hosp_cell_size_spare
 
-                if is_potentially_airport_external and not is_accom and not is_hospital:
+                if is_accom:
+                    cellsize, cellsizespare = accom_cells_params[0], accom_cells_params[1]
+
+                if is_potentially_airport_external and not is_accom and not is_restaurant and not is_hospital:
                     airport_industries_index = airport_industries.index(indid)
 
                     if airport_ensure_workplace_per_industry[airport_industries_index]: # if 1 wp for this ind has been set for airport, use cell param e.g. 3% 
@@ -192,6 +198,9 @@ class Cells:
 
                         self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
+                        if is_restaurant:
+                            restaurantcells[self.cellindex] = self.cells[self.cellindex]
+
                     if is_accom:
                         cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(employees)}
 
@@ -203,6 +212,13 @@ class Cells:
                             accommodationcells_by_accomid[accomid] = []
 
                         accommodationcells_by_accomid[accomid].append(self.cells[self.cellindex])
+
+                        if accomid not in breakfastcells_by_accomid:
+                            breakfastcells_by_accomid[accomid] = {}
+
+                        accomid_breakfastcells = breakfastcells_by_accomid[accomid] 
+                                
+                        accomid_breakfastcells[self.cellindex] = self.cells[self.cellindex]
 
                     if is_hospital:
                         cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(employees)}
@@ -249,7 +265,14 @@ class Cells:
 
                     employees = np.array(employees)
                     # np.random.shuffle(employees)
-                    
+
+                    accom_breakfast_cell_count = 0
+
+                    if is_accom:
+                        breakfast_cell_perc = accom_cells_params[2]
+                        
+                        accom_breakfast_cell_count = math.ceil(breakfast_cell_perc * len(cell_sizes))
+
                     members_start = 0
                     for index, cell_size in enumerate(cell_sizes):
                         members_count = cell_size
@@ -265,6 +288,9 @@ class Cells:
 
                             self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
+                            if is_restaurant:
+                                restaurantcells[self.cellindex] = self.cells[self.cellindex]
+
                         if is_accom:
                             cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(temp_members)}
 
@@ -276,6 +302,16 @@ class Cells:
                                 accommodationcells_by_accomid[accomid] = []
 
                             accommodationcells_by_accomid[accomid].append(self.cells[self.cellindex])
+
+                            if accom_breakfast_cell_count > 0:
+                                if accomid not in breakfastcells_by_accomid:
+                                    breakfastcells_by_accomid[accomid] = {}
+
+                                accomid_breakfastcells = breakfastcells_by_accomid[accomid] 
+                                
+                                accomid_breakfastcells[self.cellindex] = self.cells[self.cellindex]
+
+                                accom_breakfast_cell_count -= 1
 
                         if is_hospital:
                             cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(temp_members)}
@@ -336,7 +372,7 @@ class Cells:
                 else:
                     industries_by_indid[indid] = workplaces_by_wpid
 
-        return industries_by_indid, workplacescells, accommodationcells, accommodationcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, entertainmentcells, airportcells
+        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, entertainmentcells, airportcells
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)

@@ -28,7 +28,7 @@
 	],
 	"activities_workplaces_working_hours_overrides":[
 		[1,	 18, 20, 4,	 8],
-		[2,	 9,	 12, 24, 12],
+		[2,	 9,	 8,  24, 12],
 		[3,	 18, 12, 24, 12],
 		[4,	 18, 14, 22, 8],
 		[5,	 18, 0,	 24, 24],
@@ -174,5 +174,7 @@
 		[70, 74,  4,	5,	3],
 		[75, 100, 4,	5,	3]
 	],
-	"tourism_group_activity_probability_by_purpose": [0.7, 0.5, 0.9, 0.7]
+	"tourism_group_activity_probability_by_purpose": [0.7, 0.5, 0.9, 0.7],
+	"tourism_accom_breakfast_probability": 0.6,
+	"tourism_airport_duration_min_max": [0.5, 4]
 }

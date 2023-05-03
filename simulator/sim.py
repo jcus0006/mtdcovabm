@@ -278,6 +278,7 @@ if params["loadworkplaces"]:
     hospital_cells_params = cellsparams["hospital"]
     transport_cells_params = cellsparams["transport"]
     airport_cells_params = cellsparams["airport"]
+    accom_cells_params = cellsparams["accommodation"]
     entertainment_acitvity_dist = cellsparams["entertainmentactivitydistribution"]
 
     transport, cells_transport = cell.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
@@ -318,7 +319,7 @@ if params["loadworkplaces"]:
                 rooms_accom_by_id[roomid] = {}
 
     # handle cell splitting (on workplaces & accommodations)
-    industries, cells_industries, cells_accommodation, cells_accommodation_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, transport, entertainment_acitvity_dist)
+    industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
 if params["loadtourism"]:
     touristsfile = open("./population/" + population_sub_folder + "tourists.json")
@@ -362,7 +363,7 @@ if params["religiouscells"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
 tourist_util = tourism.Tourism(tourismparams, cells, tourists, agents, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_active_groupids, age_brackets, epi_util)
-itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_airport, cells_agents_timesteps, epi_util)
+itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_agents_timesteps, epi_util)
 
 itinerary_sum_time_taken = 0
 contactnetwork_sum_time_taken = 0
@@ -375,7 +376,7 @@ for day in range(1, 365+1):
     if params["loadtourism"]:
         agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
         
-        itinerary_util.generate_itinerary_accom(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day)
+        itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day)
 
     # should be cell based, but for testing purposes, traversing all agents here
     if day == 1 or weekdaystr == "Monday":
@@ -390,7 +391,7 @@ for day in range(1, 365+1):
     print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
     start = time.time()
     for hh_inst in hh_insts:
-        itinerary_util.generate_itinerary_residence(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
+        itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
 
     time_taken = time.time() - start
     itinerary_sum_time_taken += time_taken
