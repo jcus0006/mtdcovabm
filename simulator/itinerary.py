@@ -762,57 +762,83 @@ class Itinerary:
                     # to do - this is different than the rest
 
             if sampled_non_daily_activity != NonDailyActivity.Travel:
-                # fill in cells_agents_timesteps
-                start_timesteps = sorted(list(agent["itinerary"].keys()))
+                self.update_cell_agents_timesteps(agent["itinerary"], [agentid])
 
-                prev_cell_id = -1
-                for index, curr_ts in enumerate(start_timesteps):
-                    curr_itinerary = agent["itinerary"][curr_ts]
-                    start_ts = curr_ts
-                    curr_action, curr_cell_id = curr_itinerary[0], curr_itinerary[1]
+    def update_cell_agents_timesteps(self, itinerary, agentids):
+        # fill in cells_agents_timesteps
+        start_timesteps = sorted(list(itinerary.keys()))
+        
+        itinerary = self.combine_same_cell_itinerary_entries(start_timesteps, itinerary)
 
-                    if index == 0: # first: guarantees at least 1 iteration
-                        start_ts = 0
-                        end_ts = 143
-                        if len(start_timesteps) > 0:
-                            next_itinerary = start_timesteps[index+1] # assume at least 2 start_timesteps in a day - might cause problems
-                            end_ts = next_itinerary
-                    elif index == len(start_timesteps) - 1: # last: guarantees at least 2 iterations
-                        # prev_itinerary = start_timesteps[index-1]
-                        # start_ts = prev_itinerary
-                        end_ts = 143
-                    else: # mid: guarantees at least 3 iterations
-                        # prev_itinerary = start_timesteps[index-1]
-                        next_itinerary = start_timesteps[index+1]
+        start_timesteps = sorted(list(itinerary.keys()))
 
-                        # start_ts = prev_itinerary
-                        end_ts = next_itinerary
+        prev_cell_id = -1
+        for index, curr_ts in enumerate(start_timesteps):
+            curr_itinerary = itinerary[curr_ts]
+            start_ts = curr_ts
+            curr_action, curr_cell_id = curr_itinerary[0], curr_itinerary[1]
 
-                    if start_ts != end_ts:
-                        agent_cell_timestep_range = (agentid, start_ts, end_ts)
+            if index == 0: # first: guarantees at least 1 iteration
+                start_ts = 0
+                end_ts = 143
 
-                        if curr_cell_id not in self.cells_agents_timesteps:
-                            self.cells_agents_timesteps[curr_cell_id] = []
+                if len(start_timesteps) > 1:
+                    next_itinerary = start_timesteps[index+1] # assume at least 2 start_timesteps in a day - might cause problems
+                    end_ts = next_itinerary
+            elif index == len(start_timesteps) - 1: # last: guarantees at least 2 iterations
+                # prev_itinerary = start_timesteps[index-1]
+                # start_ts = prev_itinerary
+                end_ts = 143
+            else: # mid: guarantees at least 3 iterations
+                # prev_itinerary = start_timesteps[index-1]
+                next_itinerary = start_timesteps[index+1]
 
-                        if prev_cell_id == -1 or prev_cell_id != curr_cell_id:
-                            self.cells_agents_timesteps[curr_cell_id].append(agent_cell_timestep_range)
+                # start_ts = prev_itinerary
+                end_ts = next_itinerary
 
-                            if agent_cell_timestep_range[1] > agent_cell_timestep_range[2]:
-                                print("problemos")
-                        else:
-                            temp_agent_cell_ts_range = self.cells_agents_timesteps[curr_cell_id][-1]
-                            temp_agent_cell_ts_range = (temp_agent_cell_ts_range[0], temp_agent_cell_ts_range[1], end_ts)
-                            self.cells_agents_timesteps[curr_cell_id][-1] = temp_agent_cell_ts_range
+            if start_ts != end_ts:
+                agent_cell_timestep_ranges = []
+                
+                for agentid in agentids:
+                    agent_cell_timestep_ranges.append((agentid, start_ts, end_ts))
 
-                            if temp_agent_cell_ts_range[1] > temp_agent_cell_ts_range[2]:
-                                print("problemos")
+                if curr_cell_id not in self.cells_agents_timesteps:
+                    self.cells_agents_timesteps[curr_cell_id] = []
 
-                    prev_cell_id = curr_cell_id
+                self.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
 
-                # if self.cells_agents_timesteps[curr_cell_id][-1][2] != 143: # if still home, end cell range at home
-                #     temp_agent_cell_ts_range = self.cells_agents_timesteps[curr_cell_id][-1]
-                #     temp_agent_cell_ts_range = (temp_agent_cell_ts_range[0], temp_agent_cell_ts_range[1], 143)
-                #     self.cells_agents_timesteps[curr_cell_id[-1]] = temp_agent_cell_ts_range
+            prev_cell_id = curr_cell_id
+
+    def combine_same_cell_itinerary_entries(self, start_timesteps, itinerary):
+        updated_itinerary = {}
+        skip_ts = []
+
+        for index, curr_ts in enumerate(start_timesteps):
+            if curr_ts not in skip_ts:
+                curr_itinerary = itinerary[curr_ts]
+                curr_action, curr_cell_id = curr_itinerary[0], curr_itinerary[1]
+
+                if index < len(start_timesteps) - 1:
+                    skip_ts = self.skip_same_cells(start_timesteps, itinerary, curr_cell_id, skip_ts, index)
+
+                updated_itinerary[curr_ts] = curr_action, curr_cell_id
+
+        return updated_itinerary
+
+    def skip_same_cells(self, start_timesteps, itinerary, curr_cell_id, skip_ts, index):
+        if index < len(start_timesteps) - 1:
+            next_timestep = start_timesteps[index+1]
+
+            next_itinerary = itinerary[next_timestep]
+
+            _, next_cell_id = next_itinerary[0], next_itinerary[1]
+
+            if curr_cell_id == next_cell_id:
+                skip_ts.append(next_timestep)
+
+                self.skip_same_cells(start_timesteps, itinerary, curr_cell_id, skip_ts, index+1)
+
+        return skip_ts
 
     def generate_tourist_itinerary(self, day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day):
         for groupid in tourists_active_groupids:
@@ -883,7 +909,7 @@ class Itinerary:
 
             if is_group_activity_for_day:
                 # sample wake up time, breakfast time / place, sleep time, fill in activities in between
-                self.handle_tourism_itinerary(weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, is_agent=False)
+                self.handle_tourism_itinerary(weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, tourists_active_groupids, tourists_arrivals_departures_for_day, groupid)
             else:
                 for accinfoindex, accinfo in enumerate(accominfo):
                     accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
@@ -897,9 +923,9 @@ class Itinerary:
 
                         agent = self.agents[agent_id]
 
-                        self.handle_tourism_itinerary(weekday, agent, accomtype, accomid, is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, True)
+                        self.handle_tourism_itinerary(weekday, agent, accomtype, accomid, is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, tourists_active_groupids, tourists_arrivals_departures_for_day, groupid)
 
-    def handle_tourism_itinerary(self, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, is_agent):
+    def handle_tourism_itinerary(self, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, tourists_active_groupids, tourists_arrivals_departures_for_day, groupid):
         age_bracket_index = agent_group["age_bracket_index"]
 
         checkin_timestep, wakeup_timestep  = None, None
@@ -1062,19 +1088,23 @@ class Itinerary:
             sleep_ts = sleep_timestep
 
             if is_departureday:
-                sleep_ts = arr_dep_time
+                sleep_ts = arr_dep_time - 2
 
             self.sample_activities(weekday, agent_group, sleep_ts, activity_timestep_ranges, age_bracket_index, is_tourist_group=True)
 
         if is_departureday:
-            print("go to airport, spend the duration as imposed by the tourists_arrivals_departures_for_day dict, in different airport cells at random")
+            # go to airport, spend the duration as imposed by the tourists_arrivals_departures_for_day dict, in different airport cells at random"
+            # delete tourists_arrivals_departures_for_day and tourists_active_groupids by tourist group id (hence left the country) (this will be after spending time at the airport)"
+            self.sample_airport_activities(agent_group, range(arr_dep_ts - 12, arr_dep_ts + 1), inbound=False)
+            del tourists_arrivals_departures_for_day[groupid] # to see how "nextday" affect this
+            # tourists_active_groupids.remove(groupid)
 
-            print("delete tourists_arrivals_departures_for_day and tourists_active_groupids by tourist group id (hence left the country) (this will be after spending time at the airport)")                    
+        # self.update_cell_agents_timesteps(agent_group["itinerary"], agentsids)
 
     def sample_activities(self, weekday, agent_group, sleep_timestep, activity_timestep_ranges, age_bracket_index, is_tourist_group=False):
         res_cell_id = -1
-        if "res_cell_id" in agent_group:
-            res_cell_id = agent_group["res_cell_id"]
+        if "res_cellid" in agent_group:
+            res_cell_id = agent_group["res_cellid"]
 
         # fill in activity_timestep_ranges with actual acitivities
         for timestep_range in activity_timestep_ranges:
