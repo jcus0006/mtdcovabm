@@ -8,6 +8,8 @@ from simulator.epidemiology import Epidemiology
 
 class Itinerary:
     def __init__(self, params, timestepmins, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_agents_timesteps, epi_util):
+        self.rng = np.random.default_rng(seed=6)
+
         self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
         self.epi_util = epi_util
 
@@ -131,11 +133,11 @@ class Itinerary:
 
                     max_working_days = min_working_days + 1
 
-                    num_working_days = np.random.choice(np.arange(min_working_days, max_working_days + 1), size=1)[0]
+                    num_working_days = self.rng.choice(np.arange(min_working_days, max_working_days + 1), size=1)[0]
 
                     working_days_range = np.arange(industry_working_week_start_day, industry_working_week_end_day + 1)
 
-                    working_days = np.random.choice(working_days_range, size=num_working_days, replace=False)
+                    working_days = self.rng.choice(working_days_range, size=num_working_days, replace=False)
                     
                     working_days = sorted(working_days)
 
@@ -150,7 +152,7 @@ class Itinerary:
                         else:
                             working_hours_options = np.arange(len(self.shift_working_hours))
                             
-                            sampled_working_hours_option = np.random.choice(working_hours_options, size=1)[0]
+                            sampled_working_hours_option = self.rng.choice(working_hours_options, size=1)[0]
 
                             working_schedule[day] = (self.shift_working_hours[sampled_working_hours_option][1], self.shift_working_hours[sampled_working_hours_option][2])
                 else:
@@ -163,11 +165,11 @@ class Itinerary:
                 
                     max_working_days = industry_working_days
 
-                    num_working_days = np.random.choice(np.arange(min_working_days, max_working_days + 1), size=1)[0]
+                    num_working_days = self.rng.choice(np.arange(min_working_days, max_working_days + 1), size=1)[0]
 
                     working_days_range = np.arange(industry_working_week_start_day, industry_working_week_end_day + 1)
 
-                    working_days = np.random.choice(working_days_range, size=num_working_days, replace=False)
+                    working_days = self.rng.choice(working_days_range, size=num_working_days, replace=False)
 
                     working_days = sorted(working_days)
                     
@@ -183,7 +185,7 @@ class Itinerary:
                         if is_full_time: # assumed 8 hours (8 hours does not work overnight)
                             if industry_working_hours > 8: # 2 options, start from beginning or half
                                 options = np.arange(2)
-                                sampled_option = np.random.choice(options, size=1)[0]
+                                sampled_option = self.rng.choice(options, size=1)[0]
 
                                 if sampled_option == 0:
                                     start_hour = industry_start_work_hour
@@ -204,7 +206,7 @@ class Itinerary:
                         else: # part time
                             possible_slots = int(industry_working_hours / 4)
                             options = np.arange(possible_slots)
-                            sampled_option = np.random.choice(options, size=1)[0]
+                            sampled_option = self.rng.choice(options, size=1)[0]
 
                             start_hour = sampled_option * 4
 
@@ -284,7 +286,7 @@ class Itinerary:
                     if prev_weekday == 6 or prev_weekday == 7: # weekend
                         alpha, beta = alpha_weekend, beta_weekend
 
-                    sampled_sleep_hour_from_range = round(np.random.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+                    sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
 
                     prev_night_sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
 
@@ -344,10 +346,10 @@ class Itinerary:
 
                 # add overnight values into "itinerary" dict
                 if overnight_end_work_ts is not None:
-                    self.add_to_itinerary(agent, 1, Action.Work, agent["work_cellid"])
+                    self.add_to_itinerary(agent, 0, Action.Work, agent["work_cellid"])
                     self.add_to_itinerary(agent, overnight_end_work_ts, Action.Home, agent["res_cellid"])
                 elif overnight_end_activity_ts is not None:
-                    self.add_to_itinerary(agent, 1, Action.LocalActivity, activity_overnight_cellid)
+                    self.add_to_itinerary(agent, 0, Action.LocalActivity, activity_overnight_cellid)
                     self.add_to_itinerary(agent, overnight_end_activity_ts, Action.Home, agent["res_cellid"])
 
                 # set wake up hour
@@ -409,7 +411,7 @@ class Itinerary:
                     probs /= probs.sum()
 
                     # Sample from the array with probabilities favouring the middle range (normal dist)
-                    sampled_sleep_hours_duration = np.random.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
+                    sampled_sleep_hours_duration = self.rng.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
 
                     if prev_night_sleep_hour is not None:
                         wakeup_hour = prev_night_sleep_hour + sampled_sleep_hours_duration
@@ -451,7 +453,7 @@ class Itinerary:
                             non_daily_activities_dist_by_ab = self.non_daily_activities_employed_distribution[working_age_bracket_index]
                             non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
                             non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = np.random.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
                             sampled_non_daily_activity = NonDailyActivityEmployed(sampled_non_daily_activity_index + 1)
 
                             if sampled_non_daily_activity == NonDailyActivityEmployed.NormalWorkingDay: # sampled normal working day
@@ -485,7 +487,7 @@ class Itinerary:
                             non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
                             non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
                             non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = np.random.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
                             sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
 
                             sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
@@ -495,7 +497,7 @@ class Itinerary:
                             non_daily_activities_dist_by_ab = self.non_daily_activities_schools_distribution[age_bracket_index]
                             non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
                             non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = np.random.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
                             sampled_non_daily_activity = NonDailyActivityStudent(sampled_non_daily_activity_index + 1)
 
                             if sampled_non_daily_activity == NonDailyActivityStudent.NormalSchoolDay: # sampled normal working day
@@ -517,7 +519,7 @@ class Itinerary:
                             non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
                             non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
                             non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = np.random.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
                             sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
 
                             sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
@@ -526,7 +528,7 @@ class Itinerary:
                         non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
                         non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
                         non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                        sampled_non_daily_activity_index = np.random.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                        sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
                         sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
 
                         # if sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Local: # sampled normal working day
@@ -551,7 +553,7 @@ class Itinerary:
                         elif sampled_non_daily_activity == NonDailyActivity.Sick:
                             mean_num_days = non_daily_activities_means[4]
 
-                        sampled_num_days = np.random.poisson(mean_num_days)
+                        sampled_num_days = self.rng.poisson(mean_num_days)
 
                         agent["non_daily_activity_recurring"] = {}
                         non_daily_activity_recurring = agent["non_daily_activity_recurring"]
@@ -576,7 +578,7 @@ class Itinerary:
                         set_sleeping_hour = False
                         # sample a timestep from 30 mins to 2 hours randomly
                         timesteps_options = np.arange(round(self.timesteps_in_hour / 2), round((self.timesteps_in_hour * 2) + 1))
-                        sampled_timestep = np.random.choice(timesteps_options, size=1)[0]
+                        sampled_timestep = self.rng.choice(timesteps_options, size=1)[0]
 
                         sleep_timestep = end_work_timestep_with_leeway + sampled_timestep
                         sleep_hour = sleep_timestep / self.timesteps_in_hour
@@ -599,7 +601,7 @@ class Itinerary:
                     if weekday == 6 or weekday == 7: # weekend
                         alpha, beta = alpha_weekend, beta_weekend
 
-                    sampled_sleep_hour_from_range = round(np.random.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+                    sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
 
                     sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
 
@@ -683,7 +685,7 @@ class Itinerary:
                     activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
 
                 # sample activities
-                self.sample_activities(weekday, agent, sleep_timestep, activity_timestep_ranges, age_bracket_index)
+                self.sample_activities(weekday, agent, agent["res_cellid"], sleep_timestep, activity_timestep_ranges, age_bracket_index)
 
                 if guardian is not None: # kids with a guardian
                     wakeup_ts = None
@@ -743,7 +745,7 @@ class Itinerary:
                     if weekday == 6 or weekday == 7: # weekend
                         alpha, beta = alpha_weekend, beta_weekend
 
-                    sampled_sleep_hour_from_range = round(np.random.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+                    sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
 
                     sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
 
@@ -840,7 +842,7 @@ class Itinerary:
 
         return skip_ts
 
-    def generate_tourist_itinerary(self, day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day):
+    def generate_tourist_itinerary(self, day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday):
         for groupid in tourists_active_groupids:
             tourists_group = touristsgroups[groupid]
 
@@ -854,43 +856,11 @@ class Itinerary:
             is_group_activity_for_day = False
             is_arrivalday = arrivalday == day
             is_departureday = departureday == day
+            is_arrivalnextday = arrivalday == day + 1
+            is_departurenextday = departureday == day + 1
 
             arr_dep_for_day, arr_dep_ts, arr_dep_time, airport_duration = None, None, None, None
-
-            if is_arrivalday:
-                # work out average age for group and assign as age bracket index
-                ages = []
-                num_tourists = 0
-                under_age_agent = False
-                group_accom_id = -1
-                for accinfoindex, accinfo in enumerate(accominfo):
-                    accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
-
-                    if accinfoindex == 0:
-                        group_accom_id = accomid
-
-                    room_members = subgroupsmemberids[accinfoindex] # this room
-
-                    num_tourists += len(room_members)
-
-                    for tourist_id in room_members: # tourists ids in room
-                        tourist = self.tourists[tourist_id]
-                        age = tourist["age"]
-
-                        if age < 16:
-                            under_age_agent = True
-
-                        ages.append(tourist["age"])
-
-                tourists_group["under_age_agent"] = under_age_agent 
-                tourists_group["group_accom_id"] = group_accom_id
-
-                avg_age = round(sum(ages) / num_tourists)
-
-                for i, ab in enumerate(self.age_brackets):
-                    if avg_age >= ab[0] and avg_age <= ab[1]:
-                        tourists_group["age_bracket_index"] = i
-                        break
+            arr_dep_for_nextday, dep_nextday_ts, dep_nextday_time = None, None, None
 
             if is_arrivalday or is_departureday:
                 is_group_activity_for_day = True
@@ -907,30 +877,54 @@ class Itinerary:
 
                     is_group_activity_for_day = tour_group_activity_rand < tour_group_activity_prob
 
-            if is_group_activity_for_day:
-                # sample wake up time, breakfast time / place, sleep time, fill in activities in between
-                self.handle_tourism_itinerary(weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, tourists_active_groupids, tourists_arrivals_departures_for_day, groupid)
-            else:
-                for accinfoindex, accinfo in enumerate(accominfo):
-                    accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
+            if is_departurenextday:
+                if day < 365:
+                    arr_dep_for_nextday = tourists_arrivals_departures_for_nextday[groupid]
+                    dep_nextday_ts = arr_dep_for_nextday["ts"]
+                    airport_duration = arr_dep_for_nextday["airport_duration"]
+                    dep_nextday_time = self.get_hour_by_timestep(dep_nextday_ts)
 
-                    room_members = subgroupsmemberids[accinfoindex] # this room
+            if not is_arrivalnextday:
+                if is_group_activity_for_day:
+                    # sample wake up time, breakfast time / place, sleep time, fill in activities in between
+                    tourists_group = self.handle_tourism_itinerary(day, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day)
 
-                    for tourist_id in room_members: # tourists ids in room
-                        tourist = self.tourists[tourist_id]
+                    if not is_departureday:
+                        for room_members in subgroupsmemberids:
+                            for tourist_id in room_members:
+                                tourist = self.tourists[tourist_id]
+                                
+                                agent = self.agents[tourist["agentid"]]
+                                agent["itinerary"] = copy(tourists_group["itinerary"])
+                                agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
+                else:
+                    for accinfoindex, accinfo in enumerate(accominfo):
+                        accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
 
-                        agent_id = tourist["agentid"]
+                        room_members = subgroupsmemberids[accinfoindex] # this room
 
-                        agent = self.agents[agent_id]
+                        for tourist_id in room_members: # tourists ids in room
+                            tourist = self.tourists[tourist_id]
+                            agent = self.agents[tourist["agentid"]]
+                            agent = self.handle_tourism_itinerary(day, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day)
 
-                        self.handle_tourism_itinerary(weekday, agent, accomtype, accomid, is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, tourists_active_groupids, tourists_arrivals_departures_for_day, groupid)
+                            if tourists_group["reftourid"] == tourist_id:
+                                tourists_group["itinerary"] = copy(agent["itinerary"])
+                                tourists_group["itinerary_nextday"] = copy(agent["itinerary_nextday"])
 
-    def handle_tourism_itinerary(self, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, arr_dep_ts, arr_dep_time, airport_duration, tourists_active_groupids, tourists_arrivals_departures_for_day, groupid):
+    def handle_tourism_itinerary(self, day, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_groupcase):
+        res_cell_id = -1
+        if "res_cellid" in agent_group:
+            res_cell_id = agent_group["res_cellid"]
+
         age_bracket_index = agent_group["age_bracket_index"]
 
-        checkin_timestep, wakeup_timestep  = None, None
+        checkin_timestep, next_day_checkin_timestep, wakeup_timestep  = None, None, None
         start_ts, end_ts, breakfast_ts, wakeup_ts, sleep_ts, overnight_sleep_ts = None, None, None, None, None, None
         prev_night_sleep_hour, prev_night_sleep_timestep, same_day_sleep_hour, same_day_sleep_timestep = None, None, None, None
+        overnight_end_activity_ts, activity_overnight_cellid = None, None
+        airport_overnight_cellids_by_ts  = {}
+        prev_night_airport_cellid = None
 
         if is_arrivalday:
             agent_group["itinerary"] = {} # {timestep: cellindex}
@@ -940,126 +934,196 @@ class Itinerary:
 
             airport_timestep_range = range(arr_dep_ts, checkin_timestep + 1)
 
-            self.sample_airport_activities(agent_group, airport_timestep_range, True)
+            self.sample_airport_activities(agent_group, res_cell_id, airport_timestep_range, True, False, groupid)
 
-        if not is_departureday or (is_departureday and arr_dep_time > 12): # if not departure day or departure day and departure time is after noon
-            if is_arrivalday:
-                wakeup_timestep = checkin_timestep
+        prev_day_itinerary = agent_group["itinerary"]
+        prev_day_itinerary_nextday = agent_group["itinerary_nextday"]
+
+        # if "itinerary" not in agent_group: # for subsequent accesses of single agents
+        #     agent_group["itinerary"] = {}
+        #     agent_group["itinerary_nextday"] = {}
+
+        max_leave_for_airport_time, max_leave_for_airport_ts = None, None # 3 hours before departure flight
+        if is_arrivalday:
+            next_day_checkin_timestep = None
+            if checkin_timestep > 143:
+                next_day_checkin_timestep = checkin_timestep - 143
+
+            if next_day_checkin_timestep is not None: # assume sleep in the next hour
+                sampled_ts =  self.rng.choice(np.arange(1, 7), size=1, replace=False)[0]
+                
+                sleep_ts = next_day_checkin_timestep + sampled_ts
             else:
-                if len(agent_group["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
-                    # get morning sleeptimestep
-                    activity_overnight = False
-                    return_home_ts = None
-                    for timestep, (action, cellid) in agent_group["itinerary_nextday"].items():
-                        if action == Action.LocalActivity:
-                            activity_overnight = True
-                            activity_overnight_cellid = cellid
+                wakeup_timestep = checkin_timestep
+        else:
+            if len(agent_group["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
+                # get morning sleeptimestep
+                activity_overnight = False
+                return_home_ts = None
+                for timestep, (action, cellid) in agent_group["itinerary_nextday"].items():
+                    if action == Action.LocalActivity:
+                        activity_overnight = True
+                        activity_overnight_cellid = cellid
 
-                        if action == Action.Home:
-                            return_home_ts = timestep
+                    if action == Action.Home:
+                        return_home_ts = timestep
 
-                        if action == Action.Sleep:
-                            same_day_sleep_timestep = timestep
-                            same_day_sleep_hour = self.get_hour_by_timestep(same_day_sleep_timestep)
+                    if action == Action.Sleep:
+                        same_day_sleep_timestep = timestep
+                        same_day_sleep_hour = self.get_hour_by_timestep(same_day_sleep_timestep)
 
-                    if same_day_sleep_hour is None: # both may be filled in or one of them, if one of them, assume they are the same and simply convert
-                        same_day_sleep_hour = self.get_hour_by_timestep(return_home_ts)
-                    elif return_home_ts is None:
-                        return_home_ts = self.get_timestep_by_hour(same_day_sleep_hour)
+                    if action == Action.Airport:
+                        airport_overnight_cellids_by_ts[timestep] = cellid
 
-                    if activity_overnight:
-                        overnight_end_activity_ts = return_home_ts
-                else:
-                    # get previous night sleeptimestep
-                    for timestep, (action, _) in agent_group["itinerary"].items():
-                        if action == Action.Sleep:
-                            prev_night_sleep_timestep = timestep
-                            prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
+                if same_day_sleep_hour is None and return_home_ts is not None: # both may be filled in or one of them, if one of them, assume they are the same and simply convert
+                    same_day_sleep_hour = self.get_hour_by_timestep(return_home_ts)
+                elif return_home_ts is None and same_day_sleep_hour is not None:
+                    return_home_ts = self.get_timestep_by_hour(same_day_sleep_hour)
 
-                sleep_hours_range = np.arange(self.min_sleep_hours, self.max_sleep_hours + 1)
+                if activity_overnight and return_home_ts is not None:
+                    overnight_end_activity_ts = return_home_ts
+            else:
+                # get previous night sleeptimestep
+                for timestep, (action, _) in agent_group["itinerary"].items():
+                    if action == Action.Sleep:
+                        prev_night_sleep_timestep = timestep
+                        prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
+                        break
 
-                # Calculate the middle index of the array
-                mid = len(sleep_hours_range) // 2
+            # if is_departureday:
+            #     prev_day_timestep_keys = sorted(list(agent_group["itinerary"].keys()), reverse=True)
 
-                sigma = 1.0
-                probs = np.exp(-(np.arange(len(sleep_hours_range)) - mid)**2 / (2*sigma**2))
-                probs /= probs.sum()
+            #     for ts_key in prev_day_timestep_keys:
+            #         tmp_action, tmp_cell = agent_group["itinerary"][ts_key]
 
-                # Sample from the array with probabilities favouring the middle range (normal dist)
-                sampled_sleep_hours_duration = np.random.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
+            #         if tmp_action == Action.Airport:
+            #             prev_night_airport_cellid = tmp_cell
+            #             break
 
-                if prev_night_sleep_hour is not None:
-                    wakeup_hour = prev_night_sleep_hour + sampled_sleep_hours_duration
-                else:
-                    wakeup_hour = same_day_sleep_hour + sampled_sleep_hours_duration
-
-                if wakeup_hour > 24:
-                    wakeup_hour = wakeup_hour - 24
-
-                wakeup_timestep = self.get_timestep_by_hour(wakeup_hour)
-
+            if not is_arrivalday:
                 agent_group["itinerary"] = {} # {timestep: cellindex}
                 agent_group["itinerary_nextday"] = {}
 
-                self.add_to_itinerary(agent_group, wakeup_timestep, Action.WakeUp, -1)
+            # add overnight values into "itinerary" dict
+            if overnight_end_activity_ts is not None:
+                self.add_to_itinerary(agent_group, 0, Action.LocalActivity, activity_overnight_cellid)
+                self.add_to_itinerary(agent_group, overnight_end_activity_ts, Action.Home, res_cell_id)
 
-            if not is_departureday:
-                # set sleeping hours by age brackets
-                sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
-                
-                alpha, beta = alpha_weekday, beta_weekday
-                if weekday == 6 or weekday == 7: # weekend
-                    alpha, beta = alpha_weekend, beta_weekend
+            # if prev_night_airport_cellid is not None:
+            #     self.add_to_itinerary(agent_group, 0, Action.Airport, prev_night_airport_cellid)
 
-                sampled_sleep_hour_from_range = round(np.random.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+            if len(airport_overnight_cellids_by_ts) > 0: # sampled from previous day, simply add previous day airport activities to today's itinerary and skip the rest
+                for ts, cellid in airport_overnight_cellids_by_ts.items():
+                    self.add_to_itinerary(agent_group, ts, Action.Airport, cellid)
 
-                sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
+        #if len(airport_overnight_cellids_by_ts) == 0 or is_arrivalday: # if airport_overnight_cellids_by_ts contains data for departure case skip going to the airport, waking up and sleeping
+        if is_departureday and len(airport_overnight_cellids_by_ts) == 0:
+            # if prev_night_airport_cellid is None: # if not already at the airport from previous day
+            max_leave_for_airport_time = arr_dep_time - 3
+            max_leave_for_airport_ts = self.get_timestep_by_hour(max_leave_for_airport_time)
 
-                sleep_timestep = self.get_timestep_by_hour(sleep_hour)
+        if (not is_departureday or len(airport_overnight_cellids_by_ts) == 0) and next_day_checkin_timestep is None and wakeup_timestep is None: # would already be set for arrivals
+            sleep_hours_range = np.arange(self.min_sleep_hours, self.max_sleep_hours + 1)
 
-                if is_arrivalday and checkin_timestep + 1 > sleep_timestep:
-                    sleep_timestep = checkin_timestep + 1
+            # Calculate the middle index of the array
+            mid = len(sleep_hours_range) // 2
 
-                    if sleep_timestep in agent_group["itinerary"]:
-                        agent_group["itinerary"][sleep_timestep] = (Action.Sleep, -1)
+            sigma = 1.0
+            probs = np.exp(-(np.arange(len(sleep_hours_range)) - mid)**2 / (2*sigma**2))
+            probs /= probs.sum()
+
+            # Sample from the array with probabilities favouring the middle range (normal dist)
+            sampled_sleep_hours_duration = self.rng.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
+
+            if prev_night_sleep_hour is not None:
+                wakeup_hour = prev_night_sleep_hour + sampled_sleep_hours_duration
+            else:
+                wakeup_hour = same_day_sleep_hour + sampled_sleep_hours_duration
+
+            if wakeup_hour > 24:
+                wakeup_hour = wakeup_hour - 24
+
+            if max_leave_for_airport_time is not None:
+                if wakeup_hour > max_leave_for_airport_time:
+                    wakeup_hour = max_leave_for_airport_time
+
+            wakeup_timestep = self.get_timestep_by_hour(wakeup_hour)
+
+        if not is_arrivalday and wakeup_timestep is not None:
+            if wakeup_timestep <= 143: # am
+                self.add_to_itinerary(agent_group, wakeup_timestep, Action.WakeUp, res_cell_id)
+            else:
+                wakeup_timestep -= 143
+                self.add_to_itinerary(agent_group, wakeup_timestep, Action.WakeUp, res_cell_id, True)
+
+        if not is_departureday: # don't schedule sleep time if departure day (or if need to be at the airport today - simplification)
+            max_leave_for_airport_nextday_time = None
+            if is_departurenextday and day < 365:
+                max_leave_for_airport_nextday_time = dep_nextday_time - 3
+
+            if max_leave_for_airport_nextday_time is not None and max_leave_for_airport_nextday_time < 0: # go to the airport instead of sleeping
+                # end the day at the airport, and start the next day at the airport too
+                max_leave_for_airport_time = 24 + max_leave_for_airport_nextday_time
+                max_leave_for_airport_ts = self.get_timestep_by_hour(max_leave_for_airport_time)
+
+                self.sample_airport_activities(agent_group, res_cell_id, range(max_leave_for_airport_ts, max_leave_for_airport_ts + airport_duration + 1), False, True, groupid)
+            else:
+                if next_day_checkin_timestep is None:
+                    # set sleeping hours by age brackets
+                    sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
+                    min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
                     
-                    if sleep_timestep in agent_group["itinerary_nextday"]:
-                        agent_group["itinerary_nextday"][sleep_timestep] = (Action.Sleep, -1)
-                else:
+                    alpha, beta = alpha_weekday, beta_weekday
+                    if weekday == 6 or weekday == 7: # weekend
+                        alpha, beta = alpha_weekend, beta_weekend
+
+                    sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+
+                    sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
+
+                    sleep_timestep = self.get_timestep_by_hour(sleep_hour)
+
+                    # if is_arrivalday and checkin_timestep + 1 > sleep_timestep:
+                    #     sleep_timestep = checkin_timestep + 1
+
                     if sleep_timestep <= 143: # am
-                        self.add_to_itinerary(agent_group, sleep_timestep, Action.Sleep, -1) 
+                        self.add_to_itinerary(agent_group, sleep_timestep, Action.Sleep, res_cell_id) 
                     else:
                         sleep_timestep -= 143
-                        self.add_to_itinerary(agent_group, sleep_timestep, Action.Sleep, -1, next_day=True) 
-
-            if not is_arrivalday or (is_arrivalday and arr_dep_time < 8): # if not arrivalday, or arrival day and arrival time before 8am
-                # eat breakfast (see if hotel or external based on some conditions & probs)
-                eat_at_accom = False
-
-                if accomtype == 1: # collective
-                    tourism_accom_breakfast_rand = random.random()
-
-                    eat_at_accom = tourism_accom_breakfast_rand < self.tourism_accom_breakfast_probability
-
-                wakeup_until_breakfast_timesteps = np.arange(1, 7)
-
-                wakeup_until_breakfast_ts = np.random.choice(wakeup_until_breakfast_timesteps, size=1)[0]
-
-                breakfast_ts = wakeup_timestep + wakeup_until_breakfast_ts
-
-                if eat_at_accom:
-                    breakfast_cells = self.cells_breakfast_by_accomid[accomid]
-
-                    breakfast_cells_options = np.array(list(breakfast_cells.keys()))
-
-                    sampled_cell_id = np.random.choice(breakfast_cells_options, size=1)[0]
+                        self.add_to_itinerary(agent_group, sleep_timestep, Action.Sleep, res_cell_id, next_day=True)   
                 else:
-                    cells_restaurants_options = np.array(list(self.cells_restaurants.keys()))
-                    sampled_cell_id = np.random.choice(cells_restaurants_options, size=1)[0]
+                    self.add_to_itinerary(agent_group, sleep_ts, Action.Sleep, res_cell_id, next_day=True) # next day sleep hour         
 
-                self.add_to_itinerary(agent_group, breakfast_ts, Action.Breakfast, sampled_cell_id, next_day=False)
+        if ((not is_arrivalday and not is_departureday) or
+            (is_arrivalday and next_day_checkin_timestep is None and arr_dep_time <= 8) or 
+            (is_departureday and max_leave_for_airport_time is not None and max_leave_for_airport_time >= 8)): # if not arrivalday, or arrival day and arrival time before 8am
+            # eat breakfast (see if hotel or external based on some conditions & probs)
+            eat_at_accom = False
 
+            if accomtype == 1: # collective
+                tourism_accom_breakfast_rand = random.random()
+
+                eat_at_accom = tourism_accom_breakfast_rand < self.tourism_accom_breakfast_probability
+
+            wakeup_until_breakfast_timesteps = np.arange(1, 7)
+
+            wakeup_until_breakfast_ts = self.rng.choice(wakeup_until_breakfast_timesteps, size=1)[0]
+
+            breakfast_ts = wakeup_timestep + wakeup_until_breakfast_ts
+
+            if eat_at_accom:
+                breakfast_cells = self.cells_breakfast_by_accomid[accomid]
+
+                breakfast_cells_options = np.array(list(breakfast_cells.keys()))
+
+                sampled_cell_id = self.rng.choice(breakfast_cells_options, size=1)[0]
+            else:
+                cells_restaurants_options = np.array(list(self.cells_restaurants.keys()))
+                sampled_cell_id = self.rng.choice(cells_restaurants_options, size=1)[0]
+
+            self.add_to_itinerary(agent_group, breakfast_ts, Action.Breakfast, sampled_cell_id, next_day=False)
+
+        if next_day_checkin_timestep is None:
             # sample activities from breakfast until sleep timestep or airport (if dep) - force dinner as last activity
             activity_timestep_ranges = []
             
@@ -1077,35 +1141,69 @@ class Itinerary:
                     overnight_sleep_ts = timestep
                     end_ts += overnight_sleep_ts
 
-            if start_ts is None:
-                if wakeup_ts is not None:
-                    start_ts = wakeup_ts
-                else:
-                    start_ts = arr_dep_ts
+            if start_ts is None and wakeup_ts is not None:
+                start_ts = wakeup_ts
 
-            activity_timestep_ranges.append(range(start_ts+1, end_ts+1))
+            if end_ts is None and max_leave_for_airport_ts is not None:
+                end_ts = max_leave_for_airport_ts
 
-            sleep_ts = sleep_timestep
+            if start_ts is not None and end_ts is not None and start_ts < end_ts and (end_ts - start_ts) >= 6: # start_ts before end_ts and at least 1 hour timeframe for activities to take place
+                activity_timestep_ranges.append(range(start_ts+1, end_ts+1))
 
-            if is_departureday:
-                sleep_ts = arr_dep_time - 2
+                self.sample_activities(weekday, agent_group, res_cell_id, end_ts, activity_timestep_ranges, age_bracket_index, is_tourist_group=True, airport_timestep=max_leave_for_airport_ts)
 
-            self.sample_activities(weekday, agent_group, sleep_ts, activity_timestep_ranges, age_bracket_index, is_tourist_group=True)
+            if is_departureday and len(airport_overnight_cellids_by_ts) == 0:
+                trip_to_airport_time = self.rng.choice(np.arange(3, 10), size=1)[0]
 
-        if is_departureday:
-            # go to airport, spend the duration as imposed by the tourists_arrivals_departures_for_day dict, in different airport cells at random"
-            # delete tourists_arrivals_departures_for_day and tourists_active_groupids by tourist group id (hence left the country) (this will be after spending time at the airport)"
-            self.sample_airport_activities(agent_group, range(arr_dep_ts - 12, arr_dep_ts + 1), inbound=False)
-            del tourists_arrivals_departures_for_day[groupid] # to see how "nextday" affect this
-            # tourists_active_groupids.remove(groupid)
+                max_arrive_at_airport_ts = max_leave_for_airport_ts + trip_to_airport_time
+
+                # go to airport, spend the duration as imposed by the tourists_arrivals_departures_for_day dict, in different airport cells at random"
+                # delete tourists_arrivals_departures_for_day and tourists_active_groupids by tourist group id (hence left the country) (this will be after spending time at the airport)"
+                self.sample_airport_activities(agent_group, res_cell_id, range(max_arrive_at_airport_ts, arr_dep_ts + 1), inbound=False, is_departurenextday=False, groupid=groupid)
+                # del tourists_arrivals_departures_for_day[groupid] # to see how "nextday" affect this
+                # tourists_active_groupids.remove(groupid)
+
+        something_wrong_sleep = True
+
+        if is_departureday or (is_departurenextday and day < 365):
+            something_wrong_sleep = False
+        else:
+            for ts, (act, cellid) in agent_group["itinerary"].items():
+                if act == Action.Sleep:
+                    something_wrong_sleep = False
+                    break
+
+            if something_wrong_sleep:
+                for ts, (act, cellid) in agent_group["itinerary_nextday"].items():
+                    if act == Action.Sleep:
+                        something_wrong_sleep = False
+                        break
+
+            if something_wrong_sleep:
+                print("something wrong")
+
+        something_wrong_airport = True
+
+        if is_departurenextday and day < 365 and dep_nextday_time < 3:
+            for ts, (act, cellid) in agent_group["itinerary"].items():
+                if act == Action.Airport:
+                    something_wrong_airport = False
+                    break
+
+            if something_wrong_airport:
+                for ts, (act, cellid) in agent_group["itinerary_nextday"].items():
+                    if act == Action.Airport:
+                        something_wrong_airport = False
+                        break
+
+            if something_wrong_airport:
+                print("something wrong")
 
         # self.update_cell_agents_timesteps(agent_group["itinerary"], agentsids)
 
-    def sample_activities(self, weekday, agent_group, sleep_timestep, activity_timestep_ranges, age_bracket_index, is_tourist_group=False):
-        res_cell_id = -1
-        if "res_cellid" in agent_group:
-            res_cell_id = agent_group["res_cellid"]
+        return agent_group
 
+    def sample_activities(self, weekday, agent_group, res_cell_id, sleep_timestep, activity_timestep_ranges, age_bracket_index, is_tourist_group=False, airport_timestep=None):
         # fill in activity_timestep_ranges with actual acitivities
         for timestep_range in activity_timestep_ranges:
             activities_slot_ts = sum([1 for i in timestep_range])
@@ -1120,7 +1218,7 @@ class Itinerary:
                 activities_probs_for_agegroup_and_day = self.activities_by_week_days_by_age_groups[age_bracket_index][:, weekday-1]
                 activities_indices = np.arange(len(activities_probs_for_agegroup_and_day))
 
-                sampled_activity_index = np.random.choice(activities_indices, 1, False, p=activities_probs_for_agegroup_and_day)[0]
+                sampled_activity_index = self.rng.choice(activities_indices, 1, False, p=activities_probs_for_agegroup_and_day)[0]
                 sampled_activity_id = sampled_activity_index + 1
 
                 activity_working_hours_overrides = self.activities_working_hours[sampled_activity_index]
@@ -1133,7 +1231,7 @@ class Itinerary:
 
                 hours_range = np.arange(min_hours, max_hours+1)
 
-                sampled_num_hours = np.random.choice(hours_range, size=1)[0]
+                sampled_num_hours = self.rng.choice(hours_range, size=1)[0]
 
                 last_activity = False
 
@@ -1160,7 +1258,7 @@ class Itinerary:
                             if industry_id != 9:
                                 potential_venues_by_industry = list(self.industries[industry_id].keys())
 
-                                sampled_wp_id = np.random.choice(potential_venues_by_industry)
+                                sampled_wp_id = self.rng.choice(potential_venues_by_industry)
 
                                 potential_cells = list(self.industries[industry_id][sampled_wp_id].keys())
                             else:
@@ -1173,7 +1271,7 @@ class Itinerary:
                         elif sampled_activity_id == 10: # other residence visit
                             potential_cells = list(self.cells_households.keys())
 
-                sampled_cell_id = np.random.choice(potential_cells)
+                sampled_cell_id = self.rng.choice(potential_cells)
 
                 if next_timestep <= 143:
                     self.add_to_itinerary(agent_group, next_timestep, action_type, sampled_cell_id) 
@@ -1185,13 +1283,13 @@ class Itinerary:
                 activities_slot_hours -= sampled_num_hours
             
             if next_timestep <= 143: # always return back home after last sampled activity
-                if next_timestep < sleep_timestep: # next_timestep could be slightly larger than sleep_timestep due to rounding, in that case ignore going back Home
+                if next_timestep < sleep_timestep and (airport_timestep is None or next_timestep < airport_timestep): # next_timestep could be slightly larger than sleep_timestep due to rounding, in that case ignore going back Home
                     self.add_to_itinerary(agent_group, next_timestep, Action.Home, res_cell_id)
             else:
-                if next_timestep - 143 < sleep_timestep: # next_timestep could be slightly larger than sleep_timestep due to rounding, in that case ignore going back Home
+                if next_timestep - 143 < sleep_timestep and (airport_timestep is None or next_timestep - 143 < airport_timestep): # next_timestep could be slightly larger than sleep_timestep due to rounding, in that case ignore going back Home
                     self.add_to_itinerary(agent_group, next_timestep - 143, Action.Home, res_cell_id, next_day=True)
 
-    def sample_airport_activities(self, agent_group, timestep_range_in_airport, inbound):
+    def sample_airport_activities(self, agent_group, res_cell_id, timestep_range_in_airport, inbound, is_departurenextday, groupid):
         activity_id = 3 # entertainment (indoor)
         activity_index = 1 # zero based
 
@@ -1207,11 +1305,10 @@ class Itinerary:
 
         potential_cells = list(self.cells_airport.keys())
 
+        itinerary_nextday_inserted = False
         # repeat until no more hours to fill
         while activities_slot_hours > 0:
-            sampled_num_hours = np.random.choice(hours_range, size=1)[0]
-
-            last_activity = False
+            sampled_num_hours = self.rng.choice(hours_range, size=1)[0]
 
             if sampled_num_hours == activities_slot_hours:
                 last_activity = True
@@ -1222,11 +1319,12 @@ class Itinerary:
                 last_activity = True
                 sampled_num_hours = sampled_num_hours + (activities_slot_hours - sampled_num_hours) # less than an hour would be left after adding activity, hence add it to this activity
 
-            sampled_cell_id = np.random.choice(potential_cells)
+            sampled_cell_id = self.rng.choice(potential_cells)
 
             if next_timestep <= 143:
                 self.add_to_itinerary(agent_group, next_timestep, Action.Airport, sampled_cell_id) 
             else:
+                itinerary_nextday_inserted = True
                 self.add_to_itinerary(agent_group, next_timestep - 143, Action.Airport, sampled_cell_id, next_day=True) 
 
             next_timestep += self.get_timestep_by_hour(sampled_num_hours)
@@ -1235,9 +1333,13 @@ class Itinerary:
         
         if inbound:
             if next_timestep <= 143: # always return back home after last sampled activity
-                self.add_to_itinerary(agent_group, next_timestep, Action.Home, -1)
+                self.add_to_itinerary(agent_group, next_timestep, Action.Home, res_cell_id)
             else:
-                self.add_to_itinerary(agent_group, next_timestep - 143, Action.Home, -1, next_day=True)
+                self.add_to_itinerary(agent_group, next_timestep - 143, Action.Home, res_cell_id, next_day=True)
+        else:
+            if is_departurenextday and not itinerary_nextday_inserted: # ensure itinerary_nextday is updated such that on departure day agent starts at the same cell
+                self.add_to_itinerary(agent_group, 0, Action.Airport, sampled_cell_id, next_day=True)
+
 
     # updates the itinerary and itinerary_nextday dictionaries with start_timesteps
     # the dictionary is used at the end of the itinerary generation process to update the cells_agents_timesteps dict (used in contact network)
@@ -1252,6 +1354,7 @@ class Itinerary:
                 if timestep <= 143:
                     self.add_to_itinerary(agent, timestep, action, cellid, next_day)
                 else:
+                    timestep -= 143
                     self.add_to_itinerary(agent, timestep, action, cellid, True)
         else:
             if timestep not in agent["itinerary_nextday"]:
@@ -1275,7 +1378,7 @@ class Itinerary:
             probs /= probs.sum()
 
             # Sample from the array with probabilities favouring the middle range (normal dist)
-            sampled_leeway = np.random.choice(leeway_range, size=1, replace=False, p=probs)[0]
+            sampled_leeway = self.rng.choice(leeway_range, size=1, replace=False, p=probs)[0]
 
             timestep_with_leeway = actual_timestep + sampled_leeway
 

@@ -22,6 +22,7 @@ params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "religiouscells": True,
             "year": 2021,
             "quickdebug": True,
+            "quicktourismrun": True,
             "visualise": False
          }
 
@@ -80,6 +81,7 @@ agents_infection_severity = {} # handled as dict, because not every agent will b
 
 # tourism
 tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
+tourists_arrivals_departures_for_nextday = {}
 
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
@@ -362,50 +364,59 @@ if params["religiouscells"]:
 # if params["quickdebug"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
-tourist_util = tourism.Tourism(tourismparams, cells, tourists, agents, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_active_groupids, age_brackets, epi_util)
+tourist_util = tourism.Tourism(tourismparams, cells, tourists, agents, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, epi_util)
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_agents_timesteps, epi_util)
 
 itinerary_sum_time_taken = 0
+tourist_itinerary_sum_time_taken = 0
 contactnetwork_sum_time_taken = 0
 for day in range(1, 365+1):
     weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
+
+    itinerary_util.cells_agents_timesteps = {}
+    contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
+    agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
 
     # workout itineraries
     # assign tourists (this is the first prototype which assumes tourists checkout/in at 00.00
     # but with itinerary we can generate random timestep at which tourists checkout/in
     if params["loadtourism"]:
-        agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+        print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
+        start = time.time()
+        agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
         
-        itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day)
+        itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+        
+        time_taken = time.time() - start
+        tourist_itinerary_sum_time_taken += time_taken
+        avg_time_taken = tourist_itinerary_sum_time_taken / day
+        print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
-    # should be cell based, but for testing purposes, traversing all agents here
-    if day == 1 or weekdaystr == "Monday":
+    if not params["quicktourismrun"]:
+        # should be cell based, but for testing purposes, traversing all agents here
+        if day == 1 or weekdaystr == "Monday":
+            for hh_inst in hh_insts:
+                print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
+                itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+        
+        print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
+        start = time.time()
         for hh_inst in hh_insts:
-            print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
-            itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+            itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
 
-    itinerary_util.cells_agents_timesteps = {}
-    contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
-    agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
-    
-    print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
-    start = time.time()
-    for hh_inst in hh_insts:
-        itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
+        time_taken = time.time() - start
+        itinerary_sum_time_taken += time_taken
+        avg_time_taken = itinerary_sum_time_taken / day
+        print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
-    time_taken = time.time() - start
-    itinerary_sum_time_taken += time_taken
-    avg_time_taken = itinerary_sum_time_taken / day
-    print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+        print("generate contact network for " + str(len(cells.keys())) + " cells")
+        start = time.time()
+        for cellid in cells.keys():
+            contactnetwork_util.simulate_contact_network(cellid, day)
 
-    print("generate contact network for " + str(len(cells.keys())) + " cells")
-    start = time.time()
-    for cellid in cells.keys():
-        contactnetwork_util.simulate_contact_network(cellid, day)
-
-    time_taken = time.time() - start
-    contactnetwork_sum_time_taken += time_taken
-    avg_time_taken = contactnetwork_sum_time_taken / day
-    print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+        time_taken = time.time() - start
+        contactnetwork_sum_time_taken += time_taken
+        avg_time_taken = contactnetwork_sum_time_taken / day
+        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
 print(len(agents))

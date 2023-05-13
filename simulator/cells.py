@@ -438,6 +438,7 @@ class Cells:
                         for uid in temp_nonteachingstaff:
                             agent = self.agents[uid]
                             agent["school_cellid"] = self.cellindex
+                            agent["work_cellid"] = self.cellindex
 
                     self.cellindex += 1
 
@@ -459,6 +460,7 @@ class Cells:
                     for uid in teachers:
                         agent = self.agents[uid]
                         agent["school_cellid"] = self.cellindex
+                        agent["work_cellid"] = self.cellindex
 
                 self.cellindex += 1
                 
