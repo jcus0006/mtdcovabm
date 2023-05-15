@@ -3,6 +3,7 @@ import numpy as np
 import scipy.stats as stats
 import powerlaw
 import matplotlib.pyplot as plt
+import random
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -92,6 +93,28 @@ def sample_log_normal(mean, std, size, isInt=False):
     
     return samples
 
+def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets, set_working_age_bracket=True):
+    age = agent["age"]
+    agents_ids_by_ages[agent_uid] = agent["age"]
+
+    agent["age_bracket_index"] = -1
+    for i, ab in enumerate(age_brackets):
+        if age >= ab[0] and age <= ab[1]:
+            agent["age_bracket_index"] = i
+            
+            agents_ids_by_agebrackets[i].append(agent_uid)
+
+            break
+    
+    if set_working_age_bracket:
+        agent["working_age_bracket_index"] = -1
+        for i, ab in enumerate(age_brackets_workingages):
+            if age >= ab[0] and age <= ab[1]:
+                agent["working_age_bracket_index"] = i
+                break
+
+    return agent, age, agents_ids_by_ages, agents_ids_by_agebrackets
+
 def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count):
     for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
         powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]
@@ -100,27 +123,45 @@ def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebracke
         # exponent, xmin = 2.64, 4.0
         dist = powerlaw.Power_Law(xmin=xmin, parameters=[exponent])
 
-        agents_contact_propensity = dist.generate_random(len(agents_ids_in_bracket))
+        if len(agents_ids_in_bracket) > 0:
+            if len(agents_ids_in_bracket) > 1:
+                agents_contact_propensity = dist.generate_random(len(agents_ids_in_bracket))
 
-        min_arr = np.min(agents_contact_propensity)
-        max_arr = np.max(agents_contact_propensity)
+                min_arr = np.min(agents_contact_propensity)
+                max_arr = np.max(agents_contact_propensity)
 
-        normalized_arr = (agents_contact_propensity - min_arr) / (max_arr - min_arr) * (sociability_rate_max - sociability_rate_min) + sociability_rate_min
+                normalized_arr = (agents_contact_propensity - min_arr) / (max_arr - min_arr) * (sociability_rate_max - sociability_rate_min) + sociability_rate_min
 
-        if params["visualise"]:
-            figure_count += 1
-            plt.figure(figure_count)
-            bins = np.logspace(np.log10(min(agents_contact_propensity)), np.log10(max(agents_contact_propensity)), 50)
-            plt.hist(agents_contact_propensity, bins=bins, density=True)
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.xlabel('Value')
-            plt.ylabel('Frequency')
-            plt.show(block=False)
+                if params["visualise"]:
+                    figure_count += 1
+                    plt.figure(figure_count)
+                    bins = np.logspace(np.log10(min(agents_contact_propensity)), np.log10(max(agents_contact_propensity)), 50)
+                    plt.hist(agents_contact_propensity, bins=bins, density=True)
+                    plt.xscale('log')
+                    plt.yscale('log')
+                    plt.xlabel('Value')
+                    plt.ylabel('Frequency')
+                    plt.show(block=False)
 
-        for index, agent_id in enumerate(agents_ids_in_bracket):
-            agent = temp_agents[agent_id]
+                for index, agent_id in enumerate(agents_ids_in_bracket):
+                    agent = temp_agents[agent_id]
 
-            agent["soc_rate"] = normalized_arr[index]
+                    agent["soc_rate"] = normalized_arr[index]
+            else: # this will never be hit, but in a single case, would favour the lower end of the range with a gamma dist
+                single_agent_id = agents_ids_in_bracket[0]
+
+                agent = temp_agents[single_agent_id]             
+
+                agent["soc_rate"] = sample_gamma_reject_out_of_range(0.5, sociability_rate_min, sociability_rate_max, useNp=True)
 
     return temp_agents
+
+def set_public_transport_regular(agent, usage_probability):
+    public_transport_rand = random.random()
+
+    if public_transport_rand < usage_probability:
+        agent["pub_transp_reg"] = True
+    else:
+        agent["pub_transp_reg"] = False
+
+    return agent

@@ -31,6 +31,39 @@ class Epidemiology:
         self.agents_infection_type = agents_infection_type
         self.agents_infection_severity = agents_infection_severity
 
+    def initialize_agent_states(self, n, initial_seir_state_distribution, agents_seir_state):
+        partial_agents_seir_state = agents_seir_state[:n]
+
+        for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
+            seirid = seirindex + 1
+
+            total_to_assign_this_state = round(n * seirstate_percent)
+
+            seirstate = SEIRState(seirid)
+
+            undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
+
+            if len(undefined_indices) > 0:
+                undefined_indices = np.array(undefined_indices)
+
+            this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
+
+            if len(this_state_indices) > 0:
+                partial_agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
+            else:
+                partial_agents_seir_state = []
+
+        undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
+
+        for index in undefined_indices:
+            random_state = random.randint(1, 4)
+
+            random_seir_state = SEIRState(random_state)
+
+            partial_agents_seir_state[index] = random_seir_state
+
+        return agents_seir_state
+
     # to be called at the beginning of itinerary generation per day, per agent
     # if day is in agent["state_transition_by_day"]
     #   - update agent state (as required) - to be logged

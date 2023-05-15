@@ -22,7 +22,8 @@ params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "religiouscells": True,
             "year": 2021,
             "quickdebug": True,
-            "quicktourismrun": True,
+            "quicktourismrun": False,
+            "quickitineraryrun": True,
             "visualise": False
          }
 
@@ -83,6 +84,19 @@ agents_infection_severity = {} # handled as dict, because not every agent will b
 tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
 tourists_arrivals_departures_for_nextday = {}
 
+if params["loadtourism"]:
+    touristsfile = open("./population/" + population_sub_folder + "tourists.json")
+    tourists = json.load(touristsfile)
+    tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
+
+    touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
+    touristsgroups = json.load(touristsgroupsfile)
+    touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
+
+    touristsgroupsdaysfile = open("./population/" + population_sub_folder + "touristsgroupsdays.json")
+    touristsgroupsdays = json.load(touristsgroupsdaysfile)
+    touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
+
 if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
     agents = json.load(agentsfile)
@@ -93,69 +107,43 @@ if params["loadagents"]:
     #     agents = {str(i):agents[str(i)] for i in range(1000)}
 
     temp_agents = {int(k): v for k, v in agents.items()}
-    agents_seir_state = np.array([SEIRState(0) for i in range(len(agents))])
+
+    if params["loadtourism"]:
+        largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
+
+        for i in range(len(tourists)):
+            temp_agents[largest_agent_id+1] = {}
+            largest_agent_id += 1
+
+    agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
 
     contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, False, False)
     epi_util = contactnetwork_util.epi_util
 
-    for agent_uid, agent in temp_agents.items():
-        agent["curr_cellid"] = -1
-        agent["res_cellid"] = -1
-        agent["work_cellid"] = -1
-        agent["school_cellid"] = -1
-        agent["inst_cellid"] = -1
-        agent["symptomatic"] = False
-        agent["tourist_id"] = None 
-        agent["state_transition_by_day"] = {}
+    for index, (agent_uid, agent) in enumerate(temp_agents.items()):
+        if index < n: # ignore tourists for now
+            agent["curr_cellid"] = -1
+            agent["res_cellid"] = -1
+            agent["work_cellid"] = -1
+            agent["school_cellid"] = -1
+            agent["inst_cellid"] = -1
+            agent["symptomatic"] = False
+            agent["tourist_id"] = None 
+            agent["state_transition_by_day"] = {}
 
-        age = agent["age"]
-        agents_ids_by_ages[agent_uid] = agent["age"]
+            agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
-        agent["age_bracket_index"] = -1
-        for i, ab in enumerate(age_brackets):
-            if age >= ab[0] and age <= ab[1]:
-                agent["age_bracket_index"] = i
-                
-                agents_ids_by_agebrackets[i].append(agent_uid)
+            agent["epi_age_bracket_index"] = epi_util.get_sus_mort_prog_age_bracket_index(age)
 
-                break
-        
-        agent["working_age_bracket_index"] = -1
-        for i, ab in enumerate(age_brackets_workingages):
-            if age >= ab[0] and age <= ab[1]:
-                agent["working_age_bracket_index"] = i
-                break
-
-        agent["epi_age_bracket_index"] = epi_util.get_sus_mort_prog_age_bracket_index(age)
+            agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
+        else:
+            break
 
         # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
 
     temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
 
-    for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
-        seirid = seirindex + 1
-
-        total_to_assign_this_state = round(n * seirstate_percent)
-
-        seirstate = SEIRState(seirid)
-
-        undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
-
-        if len(undefined_indices) > 0:
-            undefined_indices = np.array(undefined_indices)
-
-        this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
-
-        agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
-
-    undefined_indices = [i for i, x in enumerate(agents_seir_state) if x == SEIRState.Undefined]
-
-    for index in undefined_indices:
-        random_state = random.randint(1, 4)
-
-        random_seir_state = SEIRState(random_state)
-
-        agents_seir_state[index] = random_seir_state
+    agents_seir_state = epi_util.initialize_agent_states(n, initial_seir_state_distribution, agents_seir_state)
 
     agents = temp_agents
 
@@ -166,38 +154,38 @@ if params["loadagents"]:
     contactnetwork_util.agents = agents
     epi_util.agents = agents
 
-    maleagents = {k:v for k, v in agents.items() if v["gender"] == 0}
-    femaleagents = {k:v for k, v in agents.items() if v["gender"] == 1}
+    # maleagents = {k:v for k, v in agents.items() if v["gender"] == 0}
+    # femaleagents = {k:v for k, v in agents.items() if v["gender"] == 1}
 
-    agentsbyages = {}
-    malesbyages = {}
-    femalesbyages = {}
+    # agentsbyages = {}
+    # malesbyages = {}
+    # femalesbyages = {}
 
-    for age in range(101):
-        agentsbyage = {k:v for k, v in agents.items() if v["age"] == age}
-        malesbyage = {k:v for k, v in agentsbyage.items() if v["gender"] == 0}
-        femalesbyage = {k:v for k, v in agentsbyage.items() if v["gender"] == 1}
+    # for age in range(101):
+    #     agentsbyage = {k:v for k, v in agents.items() if v["age"] == age}
+    #     malesbyage = {k:v for k, v in agentsbyage.items() if v["gender"] == 0}
+    #     femalesbyage = {k:v for k, v in agentsbyage.items() if v["gender"] == 1}
 
-        agentsbyages[age] = agentsbyage
-        malesbyages[age] = malesbyage
-        femalesbyages[age] = femalesbyage
+    #     agentsbyages[age] = agentsbyage
+    #     malesbyages[age] = malesbyage
+    #     femalesbyages[age] = femalesbyage
 
-    agentsemployed = {k:v for k, v in agents.items() if v["empstatus"] == 0}
-    malesemployed = {k:v for k, v in agentsemployed.items() if v["gender"] == 0}
-    femalesemployed = {k:v for k, v in agentsemployed.items() if v["gender"] == 1}
+    # agentsemployed = {k:v for k, v in agents.items() if v["empstatus"] == 0}
+    # malesemployed = {k:v for k, v in agentsemployed.items() if v["gender"] == 0}
+    # femalesemployed = {k:v for k, v in agentsemployed.items() if v["gender"] == 1}
 
-    agentsbyindustries = {}
-    malesbyindustries = {}
-    femalesbyindustries = {}
+    # agentsbyindustries = {}
+    # malesbyindustries = {}
+    # femalesbyindustries = {}
 
-    for industry in range(1,22):
-        agentsbyindustry = {k:v for k, v in agentsemployed.items() if v["empind"] == industry}
-        malesbyindustry = {k:v for k, v in malesemployed.items() if v["empind"] == industry}
-        femalesbyindustry = {k:v for k, v in femalesemployed.items() if v["empind"] == industry}
+    # for industry in range(1,22):
+    #     agentsbyindustry = {k:v for k, v in agentsemployed.items() if v["empind"] == industry}
+    #     malesbyindustry = {k:v for k, v in malesemployed.items() if v["empind"] == industry}
+    #     femalesbyindustry = {k:v for k, v in femalesemployed.items() if v["empind"] == industry}
 
-        agentsbyindustries[industry] = agentsbyindustry
-        malesbyindustries[industry] = malesbyindustry
-        femalesbyindustries[industry] = femalesbyindustry
+    #     agentsbyindustries[industry] = agentsbyindustry
+    #     malesbyindustries[industry] = malesbyindustry
+    #     femalesbyindustries[industry] = femalesbyindustry
 
 cell = Cells(agents, cells, cellindex)
 
@@ -323,19 +311,6 @@ if params["loadworkplaces"]:
     # handle cell splitting (on workplaces & accommodations)
     industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
-if params["loadtourism"]:
-    touristsfile = open("./population/" + population_sub_folder + "tourists.json")
-    tourists = json.load(touristsfile)
-    tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
-
-    touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
-    touristsgroups = json.load(touristsgroupsfile)
-    touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
-
-    touristsgroupsdaysfile = open("./population/" + population_sub_folder + "touristsgroupsdays.json")
-    touristsgroupsdays = json.load(touristsgroupsdaysfile)
-    touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
-
     # airport_cells_params = cellsparams["airport"]
 
     # cell.create_airport_cell()
@@ -364,8 +339,8 @@ if params["religiouscells"]:
 # if params["quickdebug"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
-tourist_util = tourism.Tourism(tourismparams, cells, tourists, agents, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, epi_util)
-itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_agents_timesteps, epi_util)
+tourist_util = tourism.Tourism(tourismparams, cells, n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util)
+itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util)
 
 itinerary_sum_time_taken = 0
 tourist_itinerary_sum_time_taken = 0
@@ -409,14 +384,15 @@ for day in range(1, 365+1):
         avg_time_taken = itinerary_sum_time_taken / day
         print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
-        print("generate contact network for " + str(len(cells.keys())) + " cells")
-        start = time.time()
-        for cellid in cells.keys():
-            contactnetwork_util.simulate_contact_network(cellid, day)
+        if not params["quickitineraryrun"]:
+            print("generate contact network for " + str(len(cells.keys())) + " cells")
+            start = time.time()
+            for cellid in cells.keys():
+                contactnetwork_util.simulate_contact_network(cellid, day)
 
-        time_taken = time.time() - start
-        contactnetwork_sum_time_taken += time_taken
-        avg_time_taken = contactnetwork_sum_time_taken / day
-        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+            time_taken = time.time() - start
+            contactnetwork_sum_time_taken += time_taken
+            avg_time_taken = contactnetwork_sum_time_taken / day
+            print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
 print(len(agents))

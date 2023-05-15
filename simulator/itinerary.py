@@ -7,7 +7,7 @@ from copy import copy
 from simulator.epidemiology import Epidemiology
 
 class Itinerary:
-    def __init__(self, params, timestepmins, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_agents_timesteps, epi_util):
+    def __init__(self, params, timestepmins, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util):
         self.rng = np.random.default_rng(seed=6)
 
         self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
@@ -30,11 +30,13 @@ class Itinerary:
         self.cells_accommodation_by_accomid = cells_accommodation_by_accomid
         self.cells_breakfast_by_accomid = cells_breakfast_by_accomid
         self.cells_airport = cells_airport
+        self.cells_transport = cells_transport
 
         # tourism
         self.tourism_group_activity_probability_by_purpose = self.params["tourism_group_activity_probability_by_purpose"]
         self.tourism_accom_breakfast_probability = self.params["tourism_accom_breakfast_probability"]
 
+        # local
         self.non_daily_activities_employed_distribution = self.params["non_daily_activities_employed_distribution"]
         self.non_daily_activities_schools_distribution = self.params["non_daily_activities_schools_distribution"]
         self.non_daily_activities_nonworkingday_distribution = self.params["non_daily_activities_nonworkingday_distribution"]
@@ -52,6 +54,7 @@ class Itinerary:
         self.activities_by_agerange_distribution = self.params["activities_by_agerange_distribution"]
         self.activities_duration_hours = self.params["activities_duration_hours"]
         self.tourism_airport_duration_min_max = self.params["tourism_airport_duration_min_max"]
+        self.public_transport_usage_non_reg_daily_probability = self.params["public_transport_usage_probability"][1]
 
         self.age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in self.sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
         self.age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in self.non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
@@ -246,6 +249,7 @@ class Itinerary:
             age_bracket_index = agent["age_bracket_index"]
             working_age_bracket_index = agent["working_age_bracket_index"]
 
+            prev_day_last_event = None
             sampled_non_daily_activity = None
             prevday_non_daily_activity = None
 
@@ -339,6 +343,14 @@ class Itinerary:
                             if action == Action.Sleep:
                                 prev_night_sleep_timestep = timestep
                                 prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
+                    
+                    prev_day_itinerary = agent["itinerary"]
+                    prev_day_itinerary_nextday = agent["itinerary_nextday"]
+
+                    prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
+                    prev_day_last_ts = prev_day_itinerary_timesteps[0]
+                    prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
+                    prev_day_last_event = prev_day_last_ts, prev_day_last_action, prev_day_last_cell
 
                 # initialise "itinerary" and "itinerary_nextday" for today/overnight, accordingly
                 agent["itinerary"] = {} # {timestep: cellindex}
@@ -353,7 +365,6 @@ class Itinerary:
                     self.add_to_itinerary(agent, overnight_end_activity_ts, Action.Home, agent["res_cellid"])
 
                 # set wake up hour
-
                 start_work_school_hour = None
                 wakeup_hour = None
                 wakeup_timestep = None
@@ -764,9 +775,10 @@ class Itinerary:
                     # to do - this is different than the rest
 
             if sampled_non_daily_activity != NonDailyActivity.Travel:
-                self.update_cell_agents_timesteps(agent["itinerary"], [agentid])
+                self.sample_transport_cells(agent, prev_day_last_event)
+                self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [agent["res_cellid"]])
 
-    def update_cell_agents_timesteps(self, itinerary, agentids):
+    def update_cell_agents_timesteps(self, itinerary, agentids, rescellids):
         # fill in cells_agents_timesteps
         start_timesteps = sorted(list(itinerary.keys()))
         
@@ -774,7 +786,7 @@ class Itinerary:
 
         start_timesteps = sorted(list(itinerary.keys()))
 
-        prev_cell_id = -1
+        # prev_cell_id = -1
         for index, curr_ts in enumerate(start_timesteps):
             curr_itinerary = itinerary[curr_ts]
             start_ts = curr_ts
@@ -801,7 +813,10 @@ class Itinerary:
             if start_ts != end_ts:
                 agent_cell_timestep_ranges = []
                 
-                for agentid in agentids:
+                for index, agentid in enumerate(agentids):
+                    if curr_cell_id == -1: # must be residence for group case, overwrite accordingly
+                        curr_cell_id = rescellids[index]
+                    
                     agent_cell_timestep_ranges.append((agentid, start_ts, end_ts))
 
                 if curr_cell_id not in self.cells_agents_timesteps:
@@ -809,7 +824,7 @@ class Itinerary:
 
                 self.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
 
-            prev_cell_id = curr_cell_id
+            # prev_cell_id = curr_cell_id
 
     def combine_same_cell_itinerary_entries(self, start_timesteps, itinerary):
         updated_itinerary = {}
@@ -852,6 +867,8 @@ class Itinerary:
             departureday = tourists_group["dep"]
             purpose = tourists_group["purpose"] # 1 = Holiday, 2 = Business, 3 = Visiting Family, 4 = Other
             subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
+            agentids = tourists_group["agent_ids"]
+            rescellids = tourists_group["res_cell_ids"]
 
             is_group_activity_for_day = False
             is_arrivalday = arrivalday == day
@@ -889,14 +906,13 @@ class Itinerary:
                     # sample wake up time, breakfast time / place, sleep time, fill in activities in between
                     tourists_group = self.handle_tourism_itinerary(day, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day)
 
-                    if not is_departureday:
-                        for room_members in subgroupsmemberids:
-                            for tourist_id in room_members:
-                                tourist = self.tourists[tourist_id]
-                                
-                                agent = self.agents[tourist["agentid"]]
-                                agent["itinerary"] = copy(tourists_group["itinerary"])
-                                agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
+                    for agentid in agentids:
+                        if not is_departureday:
+                            agent = self.agents[agentid]
+                            agent["itinerary"] = copy(tourists_group["itinerary"])
+                            agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
+
+                    self.update_cell_agents_timesteps(tourists_group["itinerary"], agentids, rescellids)
                 else:
                     for accinfoindex, accinfo in enumerate(accominfo):
                         accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
@@ -908,14 +924,16 @@ class Itinerary:
                             agent = self.agents[tourist["agentid"]]
                             agent = self.handle_tourism_itinerary(day, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day)
 
+                            self.update_cell_agents_timesteps(tourists_group["itinerary"], [tourist["agentid"]], [agent["res_cellid"]])
+
                             if tourists_group["reftourid"] == tourist_id:
                                 tourists_group["itinerary"] = copy(agent["itinerary"])
                                 tourists_group["itinerary_nextday"] = copy(agent["itinerary_nextday"])
 
     def handle_tourism_itinerary(self, day, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_groupcase):
-        res_cell_id = -1
-        if "res_cellid" in agent_group:
-            res_cell_id = agent_group["res_cellid"]
+        res_cell_id = -1 # this will be updated later when calling self.update_cell_agents_timesteps
+        # if "res_cellid" in agent_group:
+        #     res_cell_id = agent_group["res_cellid"]
 
         age_bracket_index = agent_group["age_bracket_index"]
 
@@ -939,9 +957,12 @@ class Itinerary:
         prev_day_itinerary = agent_group["itinerary"]
         prev_day_itinerary_nextday = agent_group["itinerary_nextday"]
 
-        # if "itinerary" not in agent_group: # for subsequent accesses of single agents
-        #     agent_group["itinerary"] = {}
-        #     agent_group["itinerary_nextday"] = {}
+        prev_day_last_event = None
+        if not is_arrivalday:
+            prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
+            prev_day_last_ts = prev_day_itinerary_timesteps[0]
+            prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
+            prev_day_last_event = prev_day_last_ts, prev_day_last_action, prev_day_last_cell
 
         max_leave_for_airport_time, max_leave_for_airport_ts = None, None # 3 hours before departure flight
         if is_arrivalday:
@@ -980,6 +1001,14 @@ class Itinerary:
                 elif return_home_ts is None and same_day_sleep_hour is not None:
                     return_home_ts = self.get_timestep_by_hour(same_day_sleep_hour)
 
+                if same_day_sleep_hour is None and return_home_ts is None:
+                    # get previous night sleeptimestep
+                    for timestep, (action, _) in agent_group["itinerary"].items():
+                        if action == Action.Sleep:
+                            prev_night_sleep_timestep = timestep
+                            prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
+                            break
+
                 if activity_overnight and return_home_ts is not None:
                     overnight_end_activity_ts = return_home_ts
             else:
@@ -989,16 +1018,6 @@ class Itinerary:
                         prev_night_sleep_timestep = timestep
                         prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
                         break
-
-            # if is_departureday:
-            #     prev_day_timestep_keys = sorted(list(agent_group["itinerary"].keys()), reverse=True)
-
-            #     for ts_key in prev_day_timestep_keys:
-            #         tmp_action, tmp_cell = agent_group["itinerary"][ts_key]
-
-            #         if tmp_action == Action.Airport:
-            #             prev_night_airport_cellid = tmp_cell
-            #             break
 
             if not is_arrivalday:
                 agent_group["itinerary"] = {} # {timestep: cellindex}
@@ -1163,43 +1182,43 @@ class Itinerary:
                 # del tourists_arrivals_departures_for_day[groupid] # to see how "nextday" affect this
                 # tourists_active_groupids.remove(groupid)
 
-        something_wrong_sleep = True
+            agent_group = self.sample_transport_cells(agent_group, prev_day_last_event)
 
-        if is_departureday or (is_departurenextday and day < 365):
-            something_wrong_sleep = False
-        else:
-            for ts, (act, cellid) in agent_group["itinerary"].items():
-                if act == Action.Sleep:
-                    something_wrong_sleep = False
-                    break
+        # something_wrong_sleep = True
 
-            if something_wrong_sleep:
-                for ts, (act, cellid) in agent_group["itinerary_nextday"].items():
-                    if act == Action.Sleep:
-                        something_wrong_sleep = False
-                        break
+        # if is_departureday or (is_departurenextday and day < 365):
+        #     something_wrong_sleep = False
+        # else:
+        #     for ts, (act, cellid) in agent_group["itinerary"].items():
+        #         if act == Action.Sleep:
+        #             something_wrong_sleep = False
+        #             break
 
-            if something_wrong_sleep:
-                print("something wrong")
+        #     if something_wrong_sleep:
+        #         for ts, (act, cellid) in agent_group["itinerary_nextday"].items():
+        #             if act == Action.Sleep:
+        #                 something_wrong_sleep = False
+        #                 break
 
-        something_wrong_airport = True
+        #     if something_wrong_sleep:
+        #         print("something wrong")
 
-        if is_departurenextday and day < 365 and dep_nextday_time < 3:
-            for ts, (act, cellid) in agent_group["itinerary"].items():
-                if act == Action.Airport:
-                    something_wrong_airport = False
-                    break
+        # something_wrong_airport = True
 
-            if something_wrong_airport:
-                for ts, (act, cellid) in agent_group["itinerary_nextday"].items():
-                    if act == Action.Airport:
-                        something_wrong_airport = False
-                        break
+        # if is_departurenextday and day < 365 and dep_nextday_time < 3:
+        #     for ts, (act, cellid) in agent_group["itinerary"].items():
+        #         if act == Action.Airport:
+        #             something_wrong_airport = False
+        #             break
 
-            if something_wrong_airport:
-                print("something wrong")
+        #     if something_wrong_airport:
+        #         for ts, (act, cellid) in agent_group["itinerary_nextday"].items():
+        #             if act == Action.Airport:
+        #                 something_wrong_airport = False
+        #                 break
 
-        # self.update_cell_agents_timesteps(agent_group["itinerary"], agentsids)
+        #     if something_wrong_airport:
+        #         print("something wrong")
 
         return agent_group
 
@@ -1319,7 +1338,7 @@ class Itinerary:
                 last_activity = True
                 sampled_num_hours = sampled_num_hours + (activities_slot_hours - sampled_num_hours) # less than an hour would be left after adding activity, hence add it to this activity
 
-            sampled_cell_id = self.rng.choice(potential_cells)
+            sampled_cell_id = self.rng.choice(potential_cells, size=1)[0]
 
             if next_timestep <= 143:
                 self.add_to_itinerary(agent_group, next_timestep, Action.Airport, sampled_cell_id) 
@@ -1340,7 +1359,67 @@ class Itinerary:
             if is_departurenextday and not itinerary_nextday_inserted: # ensure itinerary_nextday is updated such that on departure day agent starts at the same cell
                 self.add_to_itinerary(agent_group, 0, Action.Airport, sampled_cell_id, next_day=True)
 
+    def sample_transport_cells(self, agent, last_prev_day_event):
+        pub_transp_reg = agent["pub_transp_reg"]
+        if not pub_transp_reg:
+            daily_transport_rand = random.random()
 
+            if daily_transport_rand < self.public_transport_usage_non_reg_daily_probability:
+                pub_transp_reg = True
+
+        if pub_transp_reg:
+            timestep_keys = sorted(agent["itinerary"].keys())
+
+            pre_transport_itinerary = copy(agent["itinerary"])
+
+            for index, ts in enumerate(timestep_keys):
+                action, cellid = pre_transport_itinerary[ts]
+                prev_ts, prev_action, prev_cellid = None, None, None
+
+                sample_transport_cell = True
+                if index == 0:
+                    if last_prev_day_event is not None:
+                        prev_ts, prev_action, prev_cellid = last_prev_day_event            
+                else:
+                    prev_ts = timestep_keys[index-1]
+                
+                    prev_action, prev_cellid = pre_transport_itinerary[prev_ts]
+
+                if (prev_cellid is None or cellid == prev_cellid or (action == prev_action and action != Action.LocalActivity) or 
+                    ((prev_action == Action.Home or prev_action == Action.WakeUp or prev_action == Action.Breakfast or prev_action == Action.Sleep)
+                    and (action == Action.Home or action == Action.WakeUp or action == Action.Breakfast or action == Action.Sleep))):
+                    sample_transport_cell = False
+                
+                if sample_transport_cell:
+                    if index == 0 and prev_action == Action.Transport:
+                        self.add_to_itinerary(agent, 0, Action.Transport, prev_cellid)
+                    else:
+                        transp_min_start_ts = prev_ts + 3
+                        trans_end_ts = ts - 1
+
+                        sampled_num_timesteps = self.rng.choice(np.arange(1, 7), size=1)[0]
+
+                        transp_start_ts = trans_end_ts - sampled_num_timesteps
+
+                        if index != 0 and transp_start_ts < transp_min_start_ts:
+                            transp_start_ts = transp_min_start_ts
+
+                        if transp_start_ts < 0:
+                            transp_start_ts = 0
+
+                        potential_cells = list(self.cells_airport.keys())
+
+                        sampled_cell_id = self.rng.choice(potential_cells, size=1)[0]
+
+                        if transp_start_ts < sorted(agent["itinerary"].keys(), reverse=True)[0] and transp_start_ts < trans_end_ts: # no space to fit in transport, hence, skip
+                            if transp_start_ts <= 143:
+                                self.add_to_itinerary(agent, transp_start_ts, Action.Transport, sampled_cell_id)
+                            else:
+                                transp_start_ts -= 143
+                                self.add_to_itinerary(agent, transp_start_ts, Action.Transport, sampled_cell_id, True)
+
+        return agent
+     
     # updates the itinerary and itinerary_nextday dictionaries with start_timesteps
     # the dictionary is used at the end of the itinerary generation process to update the cells_agents_timesteps dict (used in contact network)
     # method does not allow replacing of key, in which case the timestep is incremented, and the method is called recursively until finding a freeslot
@@ -1349,19 +1428,33 @@ class Itinerary:
             if timestep not in agent["itinerary"]:
                 agent["itinerary"][timestep] = (action, cellid)
             else:
-                timestep += 1
+                if action == Action.Transport:
+                    curr_action, curr_cellid = agent["itinerary"][timestep]
+                    agent["itinerary"][timestep] = (action, cellid) # replace with transport and move curr_action to next free timestep
 
-                if timestep <= 143:
-                    self.add_to_itinerary(agent, timestep, action, cellid, next_day)
+                    timestep += 1
+                    self.add_to_itinerary(agent, timestep, curr_action, curr_cellid, next_day)
                 else:
-                    timestep -= 143
-                    self.add_to_itinerary(agent, timestep, action, cellid, True)
+                    timestep += 1
+
+                    if timestep <= 143:
+                        self.add_to_itinerary(agent, timestep, action, cellid, next_day)
+                    else:
+                        timestep -= 143
+                        self.add_to_itinerary(agent, timestep, action, cellid, True)
         else:
             if timestep not in agent["itinerary_nextday"]:
                 agent["itinerary_nextday"][timestep] = (action, cellid)
             else:
-                timestep += 1
-                self.add_to_itinerary(agent, timestep, action, cellid, next_day)
+                if action == Action.Transport:
+                    curr_action, curr_cellid = agent["itinerary_nextday"][timestep]
+                    agent["itinerary_nextday"][timestep] = (action, cellid) # replace with transport and move curr_action to next free timestep
+
+                    timestep += 1
+                    self.add_to_itinerary(agent, timestep, curr_action, curr_cellid, next_day)
+                else:
+                    timestep += 1
+                    self.add_to_itinerary(agent, timestep, action, cellid, next_day)
 
     def get_timestep_by_hour(self, hr, leeway_ts=-1, min_ts=None, max_ts=None, cushion_ts=1):
         actual_timestep = round((hr * self.timesteps_in_hour)) #+ 1
@@ -1427,6 +1520,7 @@ class Action(IntEnum):
     LocalActivity = 6
     Airport = 7
     Breakfast = 8
+    Transport = 9
 
 class WeekDay(IntEnum):
     Monday = 1

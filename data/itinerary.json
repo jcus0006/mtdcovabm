@@ -177,5 +177,5 @@
 	"tourism_group_activity_probability_by_purpose": [0.7, 0.5, 0.9, 0.7],
 	"tourism_accom_breakfast_probability": 0.6,
 	"tourism_airport_duration_min_max": [0.5, 4],
-	"public_transport_usage_percentages": [0.1, 0.05]
+	"public_transport_usage_probability": [0.1, 0.05]
 }

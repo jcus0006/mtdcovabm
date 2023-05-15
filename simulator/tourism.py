@@ -3,13 +3,15 @@ from copy import copy
 from simulator import util
 
 class Tourism:
-    def __init__(self, tourismparams, cells, tourists, agents, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, epi_util):
+    def __init__(self, tourismparams, cells, agents_n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
         self.tourists_arrivals_departures_for_nextday = tourists_arrivals_departures_for_nextday
         self.tourists_active_groupids = tourists_active_groupids
         self.age_brackets = age_brackets
+        self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count = powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count
+        self.initial_seir_state_distribution = initial_seir_state_distribution
         self.epi_util = epi_util
 
         incoming_airport_duration_dist_params = tourismparams["incoming_airport_duration_distribution_params"]
@@ -19,8 +21,10 @@ class Tourism:
         self.outgoing_duration_shape_param, self.outgoing_duration_min, self.outgoing_duration_max = outgoing_airport_duration_dist_params[0], outgoing_airport_duration_dist_params[1], outgoing_airport_duration_dist_params[2]
 
         self.cells = cells
+        self.agents_n = agents_n
         self.tourists = tourists
         self.agents = agents
+        self.agents_seir_state = agents_seir_state
         self.touristsgroupsdays = touristsgroupsdays
         self.touristsgroups = touristsgroups
         self.rooms_by_accomid_by_accomtype = rooms_by_accomid_by_accomtype
@@ -29,7 +33,7 @@ class Tourism:
 
     def initialize_foreign_arrivals_departures_for_day(self, day):
         if day > 1: # clean up previous day
-            for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items(): # this representes prev day when called
+            for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items(): # this represents prev day when called
                 if not grp_arr_dep_info["arrival"]:
                     tourists_group = self.touristsgroups[tour_grp_id]
 
@@ -50,11 +54,12 @@ class Tourism:
                         # this means that tourists arriving on later days may be assigned the same agent id. 
                         # tourists still have to be uniquely identified by tourist_id
 
-                        for tourist_id in subgroupmmembers: # tourists ids in room
-                            tourist = self.tourists[tourist_id]
-                            agent_id = tourist["agentid"]
+                        # updated - all tourists are now created in dict on startup (they don't have to be deleted, unless for memory usage decreasing purposes)
+                        # for tourist_id in subgroupmmembers: # tourists ids in room
+                        #     tourist = self.tourists[tourist_id]
+                        #     agent_id = tourist["agentid"]
 
-                            del self.agents[agent_id]
+                        #     del self.agents[agent_id]
 
                     self.tourists_active_groupids.remove(tour_grp_id)
 
@@ -111,9 +116,16 @@ class Tourism:
 
                 if arrivalday == day:
                     ages = []
+                    new_agents = {}
+                    new_agent_ids = []
+                    res_cell_ids = []
                     num_tourists = 0
                     group_accom_id = None
                     under_age_agent = False
+
+                    agents_ids_by_ages = {}
+                    agents_ids_by_agebrackets = {i:[] for i in range(len(self.age_brackets))}
+
                     for accinfoindex, accinfo in enumerate(accominfo):
                         accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
 
@@ -130,7 +142,10 @@ class Tourism:
                         # handle as part of "agents" dict, to avoid having to do checks against 2 dicts
                         for tourist_id in room_members: # tourists ids in room
                             tourist = self.tourists[tourist_id]
-                            new_agent_id = self.get_next_available_agent_id()
+                            # new_agent_id = self.get_next_available_agent_id()
+                            new_agent_id = tourist_id + self.agents_n
+                            new_agent_ids.append(new_agent_id)
+                            res_cell_ids.append(cellindex)
                             tourist["agentid"] = new_agent_id
 
                             age_bracket_index = -1
@@ -146,10 +161,19 @@ class Tourism:
 
                             epi_age_bracket_index = self.epi_util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                            self.agents[new_agent_id] = { "touristid": tourist_id, "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": {}, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index}
+                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": {}, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True}
+
+                            new_agent, _, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(new_agent, agents_ids_by_ages, new_agent_id, self.age_brackets, None, agents_ids_by_agebrackets, set_working_age_bracket=False)
+
+                            self.agents[new_agent_id] = new_agent
+
+                            new_agents[new_agent_id] = new_agent
 
                         tourists_group["under_age_agent"] = under_age_agent
                         tourists_group["group_accom_id"] = group_accom_id
+                        tourists_group["agent_ids"] = new_agent_ids
+                        tourists_group["res_cell_ids"] = res_cell_ids
+                        tourists_group["pub_transp_reg"] = True
 
                         avg_age = round(sum(ages) / num_tourists)
 
@@ -157,6 +181,14 @@ class Tourism:
                             if avg_age >= ab[0] and avg_age <= ab[1]:
                                 tourists_group["age_bracket_index"] = i
                                 break
+
+                    new_agents = util.generate_sociability_rate_powerlaw_dist(new_agents, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
+
+                    agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
+                    agents_seir_state_tourists_subset = self.epi_util.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
+
+                    for index, agent_idx in enumerate(new_agent_ids):
+                        self.agents_seir_state[agent_idx] = agents_seir_state_tourists_subset[index]
 
     def get_next_available_agent_id(self):
         if not self.agents:
