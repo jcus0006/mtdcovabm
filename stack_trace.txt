@@ -1,6 +1,7 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 131, in simulate_contact_network
-    direct_contacts_ids = np.random.choice(potential_contacts, size=degree, replace=False)
-                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "mtrand.pyx", line 984, in numpy.random.mtrand.RandomState.choice
-ValueError: Cannot take a larger sample than population when 'replace=False'
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 382, in <module>
+    itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 415, in generate_local_itinerary
+    for timestep, (action, _) in agent["itinerary"].items():
+                                 ~~~~~^^^^^^^^^^^^^
+KeyError: 'itinerary'

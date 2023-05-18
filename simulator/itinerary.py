@@ -105,6 +105,11 @@ class Itinerary:
         for agentid in resident_uids:
             agent = self.agents[agentid]
 
+            if "working_schedule" not in agent:
+                agent["working_schedule"] = {}
+
+            prev_working_schedule = agent["working_schedule"]
+
             if agent["empstatus"] == 0: # 0: employed, 1: unemployed, 2: inactive
                 # employed
                 agent["working_schedule"] = {} # {workingday:(start,end)}
@@ -145,13 +150,18 @@ class Itinerary:
                     working_days = sorted(working_days)
 
                     for index, day in enumerate(working_days):
-                        if index != 0 and working_days[index - 1] == day-1:
-                            previous_day_schedule = working_schedule[working_days[index - 1]]
+                        if index == 0 and 7 in prev_working_schedule or (working_days[index - 1] == day-1):
+                            if index == 0 and 7 in prev_working_schedule:
+                                previous_day_schedule = prev_working_schedule[7]
+                            else:
+                                previous_day_schedule = working_schedule[working_days[index - 1]]
+
                             previous_day_start_hour = previous_day_schedule[0]
 
                             for shift_working_hour_option in self.shift_working_hours:
-                                if shift_working_hour_option[1] != previous_day_start_hour:
+                                if shift_working_hour_option[1] == previous_day_start_hour: # if starting hour is the same, it ensures 24 hours would have passed
                                     working_schedule[day] = (shift_working_hour_option[1], shift_working_hour_option[2])
+                                    break
                         else:
                             working_hours_options = np.arange(len(self.shift_working_hours))
                             
@@ -249,24 +259,48 @@ class Itinerary:
             age_bracket_index = agent["age_bracket_index"]
             working_age_bracket_index = agent["working_age_bracket_index"]
 
-            prev_day_last_event = None
+            is_arrivalday, is_departureday, is_work_or_school_day = False, False, False
             sampled_non_daily_activity = None
-            prevday_non_daily_activity = None
+            prevday_non_daily_end_activity = None
+            wakeup_timestep = None
+            next_day_arrive_home_timestep, next_day_sleep_timestep = None, None
+            non_daily_activity_recurring = None
+
+            prev_day_itinerary, prev_day_itinerary_nextday, prev_day_last_event = None, None, None
+            if simday > 1:
+                prev_day_itinerary = agent["itinerary"]
+                prev_day_itinerary_nextday = agent["itinerary_nextday"]
+
+                prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
+
+                if len(prev_day_itinerary_timesteps) > 0:
+                    prev_day_last_ts = prev_day_itinerary_timesteps[0]
+                    prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
+                    prev_day_last_event = prev_day_last_ts, prev_day_last_action, prev_day_last_cell
 
             guardian = None
             if age < 15 and "guardian_id" in agent:
                 guardian = self.agents[agent["guardian_id"]]
 
+            # always reset on the next day (this is only to be referred to by the guardian and cleared on the next day)
+            if "prevday_non_daily_activity_recurring" not in agent or len(agent["prevday_non_daily_activity_recurring"]) > 0:
+                agent["prevday_non_daily_activity_recurring"] = {}
+
             if "non_daily_activity_recurring" in agent and agent["non_daily_activity_recurring"] is not None:
-                non_daily_activity_recurring = agent["non_daily_activity_recurring"]
+                non_daily_activity_recurring = copy(agent["non_daily_activity_recurring"])
 
                 if simday in non_daily_activity_recurring:
                     sampled_non_daily_activity = non_daily_activity_recurring[simday]
 
                 if sampled_non_daily_activity is None:
                     if simday-1 in non_daily_activity_recurring:
-                        prevday_non_daily_activity = copy(non_daily_activity_recurring[simday-1])
+                        prevday_non_daily_end_activity = copy(non_daily_activity_recurring[simday-1])
+                        agent["prevday_non_daily_activity_recurring"] = non_daily_activity_recurring
                         agent["non_daily_activity_recurring"] = None
+                        
+                        if prevday_non_daily_end_activity == NonDailyActivity.Travel: # clear as at this point, values here would be stale
+                            agent["itinerary"] = {}
+                            agent["itinerary_nextday"] = {}
 
             # first include overnight entries or sample wakeup timestep, and sample work/school start/end timesteps (if applicable)
             # then, sample_non_daily_activity, unless recurring sampled_non_daily_activity already exists
@@ -277,7 +311,7 @@ class Itinerary:
                 prev_night_sleep_hour, prev_night_sleep_timestep, same_day_sleep_hour, same_day_sleep_timestep = None, None, None, None
                 overnight_end_work_ts, overnight_end_activity_ts, activity_overnight_cellid = None, None, None
                 
-                if simday == 1 or prevday_non_daily_activity == NonDailyActivity.Travel: # sample previous night sleeptimestep for first simday and if previous day was Travel
+                if simday == 1: # sample previous night sleeptimestep for first simday and if previous day was Travel
                     prev_weekday = weekday - 1
 
                     if prev_weekday < 0:
@@ -307,6 +341,59 @@ class Itinerary:
                         prev_night_sleep_timestep = self.get_timestep_by_hour(prev_night_sleep_hour)
                     else:
                         same_day_sleep_timestep = self.get_timestep_by_hour(same_day_sleep_hour)
+                elif prevday_non_daily_end_activity == NonDailyActivity.Travel:
+                    is_arrivalday = True
+
+                    # if (guardian is None or 
+                    #     ("non_daily_activity_recurring" not in agent or "non_daily_activity_recurring" not in guardian) or
+                    #     agent["non_daily_activity_recurring"] != guardian["non_daily_activity_recurring"]):
+                    #     agent["itinerary"] = {} # {timestep: cellindex}
+                    #     agent["itinerary_nextday"] = {}
+
+                    if (guardian is None or 
+                        agent["prevday_non_daily_activity_recurring"] != guardian["prevday_non_daily_activity_recurring"]):
+                        agent["itinerary"] = {} # {timestep: cellindex}
+                        agent["itinerary_nextday"] = {}
+
+                        potential_arrival_timesteps = np.arange(0, 144)
+
+                        sampled_arrival_timestep = self.rng.choice(potential_arrival_timesteps, size=1)[0]
+
+                        potential_timesteps_until_arrive_home = np.arange(12, 19) # 2 - 3 hours until arrive home
+
+                        sampled_timesteps_until_arrive_home = self.rng.choice(potential_timesteps_until_arrive_home, size=1)[0]
+
+                        arrive_home_timestep = sampled_arrival_timestep + sampled_timesteps_until_arrive_home
+                        
+                        self.sample_airport_activities(agent, agent["res_cellid"], range(sampled_arrival_timestep, arrive_home_timestep+1), True, False, 0)
+
+                        if arrive_home_timestep > 143:
+                            next_day_arrive_home_timestep = arrive_home_timestep - 143
+
+                        if next_day_arrive_home_timestep is not None: # assume sleep in the next hour
+                            sampled_timesteps_until_sleep =  self.rng.choice(np.arange(1, 7), size=1, replace=False)[0]
+                            
+                            next_day_sleep_timestep = next_day_arrive_home_timestep + sampled_timesteps_until_sleep
+                        else:
+                            wakeup_timestep = arrive_home_timestep
+                    else:
+                        agent["itinerary"] = deepcopy(guardian["itinerary"]) # create a copy by value, so it can be extended without affecting guardian and vice versa
+                        agent["itinerary_nextday"] = deepcopy(guardian["itinerary_nextday"])
+
+                        for timestep, (action, _) in agent["itinerary"].items():
+                            if action == Action.Home:
+                                wakeup_timestep = timestep
+                                break
+
+                        for timestep, (action, _) in agent["itinerary_nextday"].items():
+                            if action == Action.Sleep:
+                                next_day_sleep_timestep = timestep
+                                
+                            if action == Action.Home:
+                                next_day_arrive_home_timestep = timestep
+
+                            if next_day_sleep_timestep is not None and next_day_arrive_home_timestep is not None:
+                                break
                 else:
                     if len(agent["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
                         # get morning sleeptimestep
@@ -343,18 +430,11 @@ class Itinerary:
                             if action == Action.Sleep:
                                 prev_night_sleep_timestep = timestep
                                 prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
-                    
-                    prev_day_itinerary = agent["itinerary"]
-                    prev_day_itinerary_nextday = agent["itinerary_nextday"]
 
-                    prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
-                    prev_day_last_ts = prev_day_itinerary_timesteps[0]
-                    prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
-                    prev_day_last_event = prev_day_last_ts, prev_day_last_action, prev_day_last_cell
-
-                # initialise "itinerary" and "itinerary_nextday" for today/overnight, accordingly
-                agent["itinerary"] = {} # {timestep: cellindex}
-                agent["itinerary_nextday"] = {}
+                if not is_arrivalday:
+                    # initialise "itinerary" and "itinerary_nextday" for today/overnight, accordingly
+                    agent["itinerary"] = {} # {timestep: cellindex}
+                    agent["itinerary_nextday"] = {}
 
                 # add overnight values into "itinerary" dict
                 if overnight_end_work_ts is not None:
@@ -367,133 +447,227 @@ class Itinerary:
                 # set wake up hour
                 start_work_school_hour = None
                 wakeup_hour = None
-                wakeup_timestep = None
                 working_schedule = None
 
-                if agent["empstatus"] == 0 or agent["sc_student"] == 1:
-                    if agent["empstatus"] == 0:
-                        working_schedule = agent["working_schedule"]
+                if prevday_non_daily_end_activity == NonDailyActivity.Travel and next_day_sleep_timestep is not None and guardian is None:
+                    self.add_to_itinerary(agent, next_day_sleep_timestep, Action.Sleep, agent["res_cellid"], next_day=True)                        
 
-                        if weekday in working_schedule: # will not be possible 2 days after each other for shift
-                            start_work_school_hour = working_schedule[weekday][0]
+                if "working_schedule" in agent:
+                    working_schedule = agent["working_schedule"]
 
-                            if prev_night_sleep_hour is not None:
-                                latest_wake_up_hour = prev_night_sleep_hour + self.max_sleep_hours
+                if next_day_sleep_timestep is None and next_day_arrive_home_timestep is None:
+                    if wakeup_timestep is None:
+                        if agent["empstatus"] == 0 or agent["sc_student"] == 1:
+                            if agent["empstatus"] == 0:
+                                if weekday in working_schedule: # will not be possible 2 days after each other for shift
+                                    start_work_school_hour = working_schedule[weekday][0]
 
-                                if latest_wake_up_hour >= 24:
-                                    if latest_wake_up_hour == 24:
-                                        latest_wake_up_hour = 0
+                                    if prev_night_sleep_hour is not None:
+                                        latest_wake_up_hour = prev_night_sleep_hour + self.max_sleep_hours
+
+                                        if latest_wake_up_hour >= 24:
+                                            if latest_wake_up_hour == 24:
+                                                latest_wake_up_hour = 0
+                                            else:
+                                                latest_wake_up_hour -= 24 
                                     else:
-                                        latest_wake_up_hour -= 24 
-                            else:
-                                latest_wake_up_hour = same_day_sleep_hour + self.max_sleep_hours
+                                        latest_wake_up_hour = same_day_sleep_hour + self.max_sleep_hours
 
-                            if latest_wake_up_hour <= 24 and latest_wake_up_hour >= start_work_school_hour - 1:
-                                wakeup_hour = start_work_school_hour - 1
-                                wakeup_timestep = self.get_timestep_by_hour(wakeup_hour) # force wake up before work
+                                    if latest_wake_up_hour <= 24 and latest_wake_up_hour >= start_work_school_hour - 1:
+                                        wakeup_hour = start_work_school_hour - 1
+                                        wakeup_timestep = self.get_timestep_by_hour(wakeup_hour) # force wake up before work
+                                    
+                            else: # student
+                                if weekday >= 1 and weekday <= 5: # weekday
+                                    start_work_school_hour = 8
+
+                                    if prev_night_sleep_hour is not None:
+                                        latest_wake_up_hour = prev_night_sleep_hour + self.max_sleep_hours
+
+                                        if latest_wake_up_hour >= 24:
+                                            if latest_wake_up_hour == 24:
+                                                latest_wake_up_hour = 0
+                                            else:
+                                                latest_wake_up_hour -= 24 
+                                    else:
+                                        latest_wake_up_hour = same_day_sleep_hour + self.max_sleep_hours
+
+                                    if latest_wake_up_hour <= 24 and latest_wake_up_hour >= start_work_school_hour - 1:
+                                        wakeup_hour = start_work_school_hour - 1
+                                        wakeup_timestep = self.get_timestep_by_hour(wakeup_hour) # force wake up before school
+
+                    if wakeup_timestep is None:
+                        sleep_hours_range = np.arange(self.min_sleep_hours, self.max_sleep_hours + 1)
+
+                        # Calculate the middle index of the array
+                        mid = len(sleep_hours_range) // 2
+
+                        sigma = 1.0
+                        probs = np.exp(-(np.arange(len(sleep_hours_range)) - mid)**2 / (2*sigma**2))
+                        probs /= probs.sum()
+
+                        # Sample from the array with probabilities favouring the middle range (normal dist)
+                        sampled_sleep_hours_duration = self.rng.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
+
+                        if prev_night_sleep_hour is not None:
+                            wakeup_hour = prev_night_sleep_hour + sampled_sleep_hours_duration
+                        else:
+                            wakeup_hour = same_day_sleep_hour + sampled_sleep_hours_duration
+
+                        if wakeup_hour > 24:
+                            wakeup_hour = wakeup_hour - 24
+
+                        wakeup_timestep = self.get_timestep_by_hour(wakeup_hour)
+
+                    if not is_arrivalday:
+                        self.add_to_itinerary(agent, wakeup_timestep, Action.WakeUp, agent["res_cellid"])
+
+                    # sample non daily activity (if not recurring)
+                    end_work_next_day = False
+
+                    # travel with guardian overrides
+                    if guardian is not None and "non_daily_activity_recurring" in guardian: 
+                        guardian_non_daily_activity_recurring = guardian["non_daily_activity_recurring"]
+
+                        # ensure travel recurring activity (skip if non travel)
+                        if (guardian_non_daily_activity_recurring is not None and len(guardian_non_daily_activity_recurring) > 0 and 
+                            guardian_non_daily_activity_recurring[list(guardian_non_daily_activity_recurring.keys())[0]] == NonDailyActivity.Travel):
+                            # if kid within non daily activity of his/her own, skip
+                            # if "non_daily_activity_recurring" not in agent or agent["non_daily_activity_recurring"] is None or agent["non_daily_activity_recurring"] == guardian["non_daily_activity_recurring"]:
+                            guardian_sampled_non_daily_activity, guardian_sampled_non_daily_activity_departure_day = None, None
+
+                            if guardian_non_daily_activity_recurring is not None:           
+                                if simday in guardian_non_daily_activity_recurring:
+                                    if simday-1 not in guardian_non_daily_activity_recurring: # if first day of non_daily_activity_recurring
+                                        guardian_sampled_non_daily_activity_departure_day = guardian_non_daily_activity_recurring[simday]
+                                    else:
+                                        guardian_sampled_non_daily_activity = guardian_non_daily_activity_recurring[simday]
+
+                                if guardian_sampled_non_daily_activity_departure_day is not None:
+                                    is_departureday = True
+                                    agent["non_daily_activity_recurring"] = guardian["non_daily_activity_recurring"]
+                                    sampled_non_daily_activity = guardian_sampled_non_daily_activity_departure_day
+                                elif guardian_sampled_non_daily_activity is not None:
+                                    if agent["non_daily_activity_recurring"] == guardian["non_daily_activity_recurring"]:
+                                        sampled_non_daily_activity = guardian_sampled_non_daily_activity     
+
+                    if sampled_non_daily_activity is None: # sample non daily activity (normal case)
+                        # set the working / school hours
+                        if agent["empstatus"] == 0: # 0: employed, 1: unemployed, 2: inactive
+                            # employed. consider workingday/ vacationlocal/ vacationtravel/ sickleave
                             
-                    else: # student
-                        if weekday >= 1 and weekday <= 5: # weekday
-                            start_work_school_hour = 8
+                            if weekday in working_schedule: # working day
+                                is_work_or_school_day = True
 
-                            if prev_night_sleep_hour is not None:
-                                latest_wake_up_hour = prev_night_sleep_hour + self.max_sleep_hours
-
-                                if latest_wake_up_hour >= 24:
-                                    if latest_wake_up_hour == 24:
-                                        latest_wake_up_hour = 0
-                                    else:
-                                        latest_wake_up_hour -= 24 
-                            else:
-                                latest_wake_up_hour = same_day_sleep_hour + self.max_sleep_hours
-
-                            if latest_wake_up_hour <= 24 and latest_wake_up_hour >= start_work_school_hour - 1:
-                                wakeup_hour = start_work_school_hour - 1
-                                wakeup_timestep = self.get_timestep_by_hour(wakeup_hour) # force wake up before school
-
-                if wakeup_timestep is None:
-                    sleep_hours_range = np.arange(self.min_sleep_hours, self.max_sleep_hours + 1)
-
-                    # Calculate the middle index of the array
-                    mid = len(sleep_hours_range) // 2
-
-                    sigma = 1.0
-                    probs = np.exp(-(np.arange(len(sleep_hours_range)) - mid)**2 / (2*sigma**2))
-                    probs /= probs.sum()
-
-                    # Sample from the array with probabilities favouring the middle range (normal dist)
-                    sampled_sleep_hours_duration = self.rng.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
-
-                    if prev_night_sleep_hour is not None:
-                        wakeup_hour = prev_night_sleep_hour + sampled_sleep_hours_duration
-                    else:
-                        wakeup_hour = same_day_sleep_hour + sampled_sleep_hours_duration
-
-                    if wakeup_hour > 24:
-                        wakeup_hour = wakeup_hour - 24
-
-                    wakeup_timestep = self.get_timestep_by_hour(wakeup_hour)
-
-                self.add_to_itinerary(agent, wakeup_timestep, Action.WakeUp, agent["res_cellid"])
-
-                is_work_or_school_day = False
-
-                # sample non daily activity (if not recurring)
-                end_work_next_day = False
-                if sampled_non_daily_activity is None: # sample non daily activity (guardian "copy" case)
-                    if guardian is not None and "non_daily_activity_recurring" in guardian: # travel with guardian override
-                        non_daily_activity_recurring = guardian["non_daily_activity_recurring"]
-
-                        if non_daily_activity_recurring is not None:
-                            guardian_sampled_non_daily_activity = None
-                            if simday in non_daily_activity_recurring and simday-1 not in non_daily_activity_recurring: # if first day of non_daily_activity_recurring
-                                guardian_sampled_non_daily_activity = non_daily_activity_recurring[simday]
-
-                            if guardian_sampled_non_daily_activity is not None and guardian_sampled_non_daily_activity == NonDailyActivity.Travel:
-                                agent["non_daily_activity_recurring"] = deepcopy(guardian["non_daily_activity_recurring"])
-                                sampled_non_daily_activity = guardian_sampled_non_daily_activity
-
-                if sampled_non_daily_activity is None: # sample non daily activity (normal case)
-                    # set the working / school hours
-                    if agent["empstatus"] == 0: # 0: employed, 1: unemployed, 2: inactive
-                        # employed. consider workingday/ vacationlocal/ vacationtravel/ sickleave
-                        
-                        if weekday in working_schedule: # working day
-                            is_work_or_school_day = True
-
-                            non_daily_activities_dist_by_ab = self.non_daily_activities_employed_distribution[working_age_bracket_index]
-                            non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
-                            non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
-                            sampled_non_daily_activity = NonDailyActivityEmployed(sampled_non_daily_activity_index + 1)
-
-                            if sampled_non_daily_activity == NonDailyActivityEmployed.NormalWorkingDay: # sampled normal working day
                                 working_hours = working_schedule[weekday]
                                 start_work_hour = working_hours[0]
                                 end_work_hour = working_hours[1]
 
-                                # if end_work_hour < start_work_hour: # overnight
+                                start_work_timestep_with_leeway, end_work_timestep_with_leeway = self.get_timestep_by_hour(start_work_hour, 2), self.get_timestep_by_hour(end_work_hour, 3)
 
-                                start_work_timestep_with_leeway, end_work_timestep_with_leeway = self.get_timestep_by_hour(start_work_hour, 2, min_ts=wakeup_timestep+1), self.get_timestep_by_hour(end_work_hour, 3)
-
-                                if start_work_timestep_with_leeway <= 143:
-                                    self.add_to_itinerary(agent, start_work_timestep_with_leeway, Action.Work, agent["work_cellid"])
+                                if prevday_non_daily_end_activity is not None and wakeup_timestep < start_work_timestep_with_leeway:
+                                    sampled_non_daily_activity = NonDailyActivityEmployed.NormalWorkingDay
                                 else:
-                                    self.add_to_itinerary(agent, start_work_timestep_with_leeway - 143, Action.Work, agent["work_cellid"], next_day=True)
+                                    non_daily_activities_dist_by_ab = self.non_daily_activities_employed_distribution[working_age_bracket_index]
+                                    non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
+                                    non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
+                                    sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                                    sampled_non_daily_activity = NonDailyActivityEmployed(sampled_non_daily_activity_index + 1)
+                                    
+                                    if sampled_non_daily_activity == NonDailyActivityEmployed.NormalWorkingDay and wakeup_timestep > start_work_timestep_with_leeway:
+                                        is_work_or_school_day = False # to avoid recurring local vacation
+                                        sampled_non_daily_activity = NonDailyActivityEmployed.VacationLocal
 
-                                if end_work_timestep_with_leeway <= 143 and end_work_timestep_with_leeway > start_work_timestep_with_leeway:
-                                    self.add_to_itinerary(agent, end_work_timestep_with_leeway, Action.Home, agent["res_cellid"])
+                                    if sampled_non_daily_activity == NonDailyActivityEmployed.VacationTravel and prevday_non_daily_end_activity == NonDailyActivity.Travel:
+                                        if wakeup_timestep < start_work_timestep_with_leeway:
+                                            sampled_non_daily_activity = NonDailyActivityEmployed.NormalWorkingDay
+                                        else:
+                                            is_work_or_school_day = False # to avoid recurring local vacation
+                                            sampled_non_daily_activity = NonDailyActivityEmployed.VacationLocal                            
+
+                                if sampled_non_daily_activity == NonDailyActivityEmployed.NormalWorkingDay: # sampled normal working day                             
+                                    if start_work_timestep_with_leeway <= 143:
+                                        self.add_to_itinerary(agent, start_work_timestep_with_leeway, Action.Work, agent["work_cellid"])
+                                    else:
+                                        self.add_to_itinerary(agent, start_work_timestep_with_leeway - 143, Action.Work, agent["work_cellid"], next_day=True)
+
+                                    if end_work_timestep_with_leeway <= 143 and end_work_timestep_with_leeway > start_work_timestep_with_leeway:
+                                        self.add_to_itinerary(agent, end_work_timestep_with_leeway, Action.Home, agent["res_cellid"])
+                                    else:
+                                        end_work_next_day = True
+
+                                        if end_work_timestep_with_leeway > 143:
+                                            end_work_ts_with_leeway = end_work_timestep_with_leeway - 143
+                                        else:
+                                            end_work_ts_with_leeway = end_work_timestep_with_leeway
+
+                                        self.add_to_itinerary(agent, end_work_ts_with_leeway, Action.Home, agent["res_cellid"], next_day=True) 
+                                elif sampled_non_daily_activity == NonDailyActivityEmployed.VacationTravel:
+                                    is_departureday = True                           
+
+                                sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
+                            else: 
+                                # non working day
+                                # unemployed/inactive. only consider local / travel / sick
+                                non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
+                                non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
+                                non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
+                                sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                                sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
+
+                                if sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Travel:
+                                    if guardian is None: # should never be not None here
+                                        is_departureday = True
+                                    else:
+                                        sampled_non_daily_activity = NonDailyActivityNonWorkingDay.Local
+
+                                sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
+                        elif agent["sc_student"] == 1:
+                            if weekday <= 5: # monday to friday
+                                is_work_or_school_day = True
+
+                                start_school_hour = 8
+                                end_school_hour = 15 # students end 1 hour before teachers
+
+                                start_school_timestep, end_school_timestep = self.get_timestep_by_hour(start_school_hour), self.get_timestep_by_hour(end_school_hour)
+                            
+                                # students. only consider schoolday / sick
+                                if prevday_non_daily_end_activity is not None and wakeup_timestep < start_school_timestep:
+                                    sampled_non_daily_activity = NonDailyActivityStudent.NormalSchoolDay
                                 else:
-                                    end_work_next_day = True
+                                    non_daily_activities_dist_by_ab = self.non_daily_activities_schools_distribution[age_bracket_index]
+                                    non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
+                                    non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
+                                    sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                                    sampled_non_daily_activity = NonDailyActivityStudent(sampled_non_daily_activity_index + 1)
+                                    
+                                    if sampled_non_daily_activity == NonDailyActivityStudent.NormalSchoolDay and wakeup_timestep > start_school_timestep:
+                                        is_work_or_school_day = False # to aovid recurring sick
+                                        sampled_non_daily_activity = NonDailyActivityStudent.Sick
 
-                                    if end_work_timestep_with_leeway > 143:
-                                        end_work_timestep_with_leeway -= 143
+                                if sampled_non_daily_activity == NonDailyActivityStudent.NormalSchoolDay: # sampled normal working day
+                                    self.add_to_itinerary(agent, start_school_timestep, Action.School, agent["school_cellid"])
 
-                                    self.add_to_itinerary(agent, end_work_timestep_with_leeway, Action.Home, agent["res_cellid"], next_day=True)                            
+                                    self.add_to_itinerary(agent, end_school_timestep, Action.Home, agent["res_cellid"])                          
+                                # elif sampled_non_daily_activity == NonDailyActivityStudent.Sick:
+                                #     print("sick school day - stay home")    
 
-                            sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
-                        else: 
-                            # non working day
+                                sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
+                            else:
+                                non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
+                                non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
+                                non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
+                                sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
+                                sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
+
+                                if sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Travel:
+                                    if guardian is None:
+                                        is_departureday = True
+                                    else:
+                                        sampled_non_daily_activity = NonDailyActivityNonWorkingDay.Local
+
+                                sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
+                        else:
                             # unemployed/inactive. only consider local / travel / sick
                             non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
                             non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
@@ -501,282 +675,275 @@ class Itinerary:
                             sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
                             sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
 
-                            sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
-                    elif agent["sc_student"] == 1:
-                        if weekday <= 5: # monday to friday
-                            # students. only consider schoolday / sick
-                            non_daily_activities_dist_by_ab = self.non_daily_activities_schools_distribution[age_bracket_index]
-                            non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
-                            non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
-                            sampled_non_daily_activity = NonDailyActivityStudent(sampled_non_daily_activity_index + 1)
+                            if sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Travel:
+                                if guardian is None:
+                                    is_departureday = True
+                                else:
+                                    sampled_non_daily_activity = NonDailyActivityNonWorkingDay.Local
 
-                            if sampled_non_daily_activity == NonDailyActivityStudent.NormalSchoolDay: # sampled normal working day
-                                is_work_or_school_day = True
-
-                                start_school_hour = 8
-                                end_school_hour = 15 # students end 1 hour before teachers
-
-                                start_school_timestep, end_school_timestep = self.get_timestep_by_hour(start_school_hour), self.get_timestep_by_hour(end_school_hour)
-
-                                self.add_to_itinerary(agent, start_school_timestep, Action.School, agent["school_cellid"])
-
-                                self.add_to_itinerary(agent, end_school_timestep, Action.Home, agent["res_cellid"])                          
-                            # elif sampled_non_daily_activity == NonDailyActivityStudent.Sick:
-                            #     print("sick school day - stay home")    
+                            # if sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Local: # sampled normal working day
+                            #     print("unemployed/inactive local")
+                            # elif sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Travel:
+                            #     print("unemployed/inactive travel")                           
+                            # elif sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Sick:
+                            #     print("unemployed/inactive sick")      
 
                             sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
-                        else:
-                            non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
-                            non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
-                            non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                            sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
-                            sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
-
-                            sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
-                    else:
-                        # unemployed/inactive. only consider local / travel / sick
-                        non_daily_activities_dist_by_ab = self.non_daily_activities_nonworkingday_distribution[working_age_bracket_index]
-                        non_daily_activities_dist_by_ab_options = np.arange(len(non_daily_activities_dist_by_ab[2:]))
-                        non_daily_activities_dist_by_ab_weights = np.array(non_daily_activities_dist_by_ab[2:])
-                        sampled_non_daily_activity_index = self.rng.choice(non_daily_activities_dist_by_ab_options, size=1, p=non_daily_activities_dist_by_ab_weights)[0]
-                        sampled_non_daily_activity = NonDailyActivityNonWorkingDay(sampled_non_daily_activity_index + 1)
-
-                        # if sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Local: # sampled normal working day
-                        #     print("unemployed/inactive local")
-                        # elif sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Travel:
-                        #     print("unemployed/inactive travel")                           
-                        # elif sampled_non_daily_activity == NonDailyActivityNonWorkingDay.Sick:
-                        #     print("unemployed/inactive sick")      
-
-                        sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
-                            
-                    # generate number of days for non daily activities i.e. 
-                    if sampled_non_daily_activity != NonDailyActivity.NormalWorkOrSchoolDay:
-                        non_daily_activities_means = self.non_daily_activities_num_days[age_bracket_index]
-
-                        mean_num_days = 0
-
-                        if sampled_non_daily_activity == NonDailyActivity.Local:
-                            mean_num_days = non_daily_activities_means[2]
-                        if sampled_non_daily_activity == NonDailyActivity.Travel:
-                            mean_num_days = non_daily_activities_means[3]
-                        elif sampled_non_daily_activity == NonDailyActivity.Sick:
-                            mean_num_days = non_daily_activities_means[4]
-
-                        sampled_num_days = self.rng.poisson(mean_num_days)
-
-                        agent["non_daily_activity_recurring"] = {}
-                        non_daily_activity_recurring = agent["non_daily_activity_recurring"]
-                        for day in range(simday, simday+sampled_num_days+1):
-                            non_daily_activity_recurring[day] = sampled_non_daily_activity
-                
-            # if not sick and not travelling (local or normal work/school day), sample sleep timestep
-            # fill in activity_timestep_ranges, representing "free time"
-            # sample acitivities to fill in the activity_timestep_ranges
-            # if kid with guardian, "copy" itinerary of guardian, where applicable
-            # if sick stay at home all day
-            # if travelling, yet to be done
-            # finally, if not travelling, fill in cells_agents_timesteps (to be used in contact network)
-            # cells_agents_timesteps -> {cellid: (agentid, starttimestep, endtimestep)}
-            if sampled_non_daily_activity == NonDailyActivity.Local or sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay:
-                # schedule sleeping hours
-                sleep_hour = None
-                sleep_timestep = None
-
-                if agent["empstatus"] == 0:
-                    if sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay and agent["isshiftbased"]:
-                        set_sleeping_hour = False
-                        # sample a timestep from 30 mins to 2 hours randomly
-                        timesteps_options = np.arange(round(self.timesteps_in_hour / 2), round((self.timesteps_in_hour * 2) + 1))
-                        sampled_timestep = self.rng.choice(timesteps_options, size=1)[0]
-
-                        sleep_timestep = end_work_timestep_with_leeway + sampled_timestep
-                        sleep_hour = sleep_timestep / self.timesteps_in_hour
-
-                        if not end_work_next_day and sleep_timestep <= 143:
-                            self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"]) 
-                        else:
-                            if sleep_timestep > 143: # might have skipped midnight or work might have ended overnight
-                                sleep_timestep -= 143
-
-                            self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"], next_day=True)
-
-                if sleep_timestep is None:
-                    # set sleeping hours by age brackets
-
-                    sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                    min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
-                    
-                    alpha, beta = alpha_weekday, beta_weekday
-                    if weekday == 6 or weekday == 7: # weekend
-                        alpha, beta = alpha_weekend, beta_weekend
-
-                    sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
-
-                    sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
-
-                    sleep_timestep = self.get_timestep_by_hour(sleep_hour)
-
-                    if sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay:
-                        if agent["empstatus"] == 0:
-                            end_work_school_ts = end_work_timestep_with_leeway
-                        elif  agent["sc_student"] == 1:
-                            end_work_school_ts = end_school_timestep
-
-                        if sleep_timestep <= end_work_school_ts: # if sampled a time which is earlier or same time as end work school, schedule sleep for 30 mins from work/school end
-                            sleep_timestep = end_work_school_ts + round(self.timesteps_in_hour / 2) # sleep 30 mins after work/school end
                                 
-                    if sleep_timestep <= 143: # am
-                        self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"]) 
-                    else:
-                        sleep_timestep -= 143
-                        self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"], next_day=True) 
+                        # generate number of days for non daily activities i.e. 
+                        if ((is_work_or_school_day and sampled_non_daily_activity != NonDailyActivity.NormalWorkOrSchoolDay) or
+                            sampled_non_daily_activity == NonDailyActivity.Travel):
+                            non_daily_activities_means = self.non_daily_activities_num_days[age_bracket_index]
 
-                # find out the activity_timestep_ranges (free time - to be filled in by actual activities further below)
-                wakeup_ts, work_ts, end_work_ts, sleep_ts, overnight_end_work_ts, overnight_sleep_ts = None, None, None, None, None, None
-                activity_timestep_ranges = []
+                            mean_num_days = 0
 
-                if sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay:
-                    # find activity timestep ranges i.e. time between wake up and work/school, and time between end work/school and sleep
+                            if sampled_non_daily_activity == NonDailyActivity.Local:
+                                mean_num_days = non_daily_activities_means[2]
+                            if sampled_non_daily_activity == NonDailyActivity.Travel:
+                                mean_num_days = non_daily_activities_means[3]
+                            elif sampled_non_daily_activity == NonDailyActivity.Sick:
+                                mean_num_days = non_daily_activities_means[4]
 
-                    for timestep, (action, cellid) in agent["itinerary"].items():
-                        if action == Action.WakeUp:
-                            wakeup_ts = timestep
-                        elif action == Action.Work or action == Action.School:
-                            work_ts = timestep
-                        elif action == Action.Home:
-                            end_work_ts = timestep
-                        elif action == Action.Sleep:
-                            sleep_ts = timestep
+                            sampled_num_days = self.rng.poisson(mean_num_days)
 
-                    for timestep, (action, cellid) in agent["itinerary_nextday"].items():
-                        if action == Action.Home:
-                            overnight_end_work_ts = timestep
-                        elif action == Action.Sleep:
-                            sleep_ts = 143 + timestep
-                    
-                    # if work is scheduled for this day and more than 2 hours between wakeup hour and work, sample activities for the range
-                    if work_ts is not None:
-                        wakeup_until_work_ts = work_ts - wakeup_ts
+                            agent["non_daily_activity_recurring"] = {}
+                            non_daily_activity_recurring = agent["non_daily_activity_recurring"]
+                            for day in range(simday, simday+sampled_num_days+1):
+                                non_daily_activity_recurring[day] = sampled_non_daily_activity
+                        
+                    # if not sick and not travelling (local or normal work/school day), sample sleep timestep
+                    # fill in activity_timestep_ranges, representing "free time"
+                    # sample acitivities to fill in the activity_timestep_ranges
+                    # if kid with guardian, "copy" itinerary of guardian, where applicable
+                    # if sick stay at home all day
+                    # if travelling, yet to be done
+                    # finally, if not travelling, fill in cells_agents_timesteps (to be used in contact network)
+                    # cells_agents_timesteps -> {cellid: (agentid, starttimestep, endtimestep)}
+                    if (sampled_non_daily_activity == NonDailyActivity.Local or 
+                        sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay):
+                        # schedule sleeping hours
+                        sleep_hour = None
+                        sleep_timestep = None
 
-                        wakeup_until_work_hours = self.get_hour_by_timestep(wakeup_until_work_ts)
+                        if agent["empstatus"] == 0 and sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay and agent["isshiftbased"]:
+                            set_sleeping_hour = False
+                            # sample a timestep from 30 mins to 2 hours randomly
+                            timesteps_options = np.arange(round(self.timesteps_in_hour / 2), round((self.timesteps_in_hour * 2) + 1))
+                            sampled_timestep = self.rng.choice(timesteps_options, size=1)[0]
 
-                        if wakeup_until_work_hours > 2: # take activities if 2 hours or more
-                            activity_timestep_ranges.append(range(wakeup_ts+1, work_ts+1))
+                            sleep_timestep = end_work_timestep_with_leeway + sampled_timestep
+                            sleep_hour = sleep_timestep / self.timesteps_in_hour
 
-                        if overnight_end_work_ts is None: # non-overnight (normal case) - if overnight, from work till midnight is already taken up
-                            # if more than 2 hours between end work hour and sleep
-                            endwork_until_sleep_ts = sleep_ts - end_work_ts
-                            endwork_until_sleep_hours = self.get_hour_by_timestep(endwork_until_sleep_ts)
-
-                            if endwork_until_sleep_hours > 2: # take activities if 2 hours or more
-                                activity_timestep_ranges.append(range(end_work_ts+1, sleep_ts+1))
-                        # else: # ends work after midnight (will be handled next day), check whether activities for normal day are possible
-                        #     if sleep_ts is not None and wakeup_ts is not None:
-                        #         wakeup_until_sleep_ts = sleep_ts - wakeup_ts
-
-                        #         activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
-                    else:
-                        activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
-                else:
-                    # find activity timestep ranges for non-workers or non-work-day
-                    for timestep, (action, cellid) in agent["itinerary"].items():
-                        if action == Action.WakeUp:
-                            wakeup_ts = timestep
-                        elif action == Action.Sleep:
-                            sleep_ts = timestep
-
-                    for timestep, (action, cellid) in agent["itinerary_nextday"].items():
-                        if action == Action.Sleep:
-                            sleep_ts = 143
-                            overnight_sleep_ts = timestep
-                            sleep_ts += overnight_sleep_ts
-
-                    activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
-
-                # sample activities
-                self.sample_activities(weekday, agent, agent["res_cellid"], sleep_timestep, activity_timestep_ranges, age_bracket_index)
-
-                if guardian is not None: # kids with a guardian
-                    wakeup_ts = None
-                    home_ts = None
-                    sleep_ts = None
-                    home_ts_arr = []
-                    # get earliest home_ts and sleep_ts indicating the range of timesteps to replace with guardian activities
-                    # wakeup_ts replaces home_ts, if the latter is not found
-                    for timestep, (action, cellid) in agent["itinerary"].items():
-                        if action == Action.Home:
-                            if home_ts is None:
-                                home_ts = timestep
+                            if not end_work_next_day and sleep_timestep <= 143:
+                                self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"]) 
                             else:
-                                if timestep < home_ts:
-                                    home_ts = timestep
+                                if sleep_timestep > 143: # might have skipped midnight or work might have ended overnight
+                                    sleep_timestep -= 143
 
-                            home_ts_arr.append(timestep)
+                                self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"], next_day=True)
 
-                        if action == Action.WakeUp:
-                            wakeup_ts = timestep
+                        if sleep_timestep is None:
+                            # set sleeping hours by age brackets
 
-                        if action == Action.Sleep:
-                            sleep_ts = timestep
+                            sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
+                            min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
+                            
+                            alpha, beta = alpha_weekday, beta_weekday
+                            if weekday == 6 or weekday == 7: # weekend
+                                alpha, beta = alpha_weekend, beta_weekend
 
-                    if home_ts is None:
-                        home_ts = wakeup_ts
+                            if wakeup_hour is None:
+                                wakeup_hour = self.get_hour_by_timestep(wakeup_timestep)
 
-                    if sleep_ts is None:
-                        sleep_ts = 143 # in the context of kids, only sleep is possible after midnight i.e. itinerary_nextday
+                            if wakeup_hour > min_start_sleep_hour:
+                                min_start_sleep_hour = wakeup_hour
 
-                    # clear the extra activities to be replaced by guardian itinerary activities
-                    if home_ts is not None:
-                        home_ts_arr.remove(home_ts)
+                            sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
 
-                        to_remove = []
-                        for timestep, (action, cellid) in agent["itinerary"].items():
-                            if timestep in home_ts_arr:
-                                to_remove.append(timestep)
+                            sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
 
-                        for tr in to_remove:
-                            del agent["itinerary"][tr]
-                    else:
-                        print("big problem")
-                    
-                    # fill in kid itinerary by guardian activities
-                    for timestep, (action, cellid) in guardian["itinerary"].items():
-                        if action == Action.LocalActivity:
-                            if timestep >= home_ts and timestep < sleep_ts:
-                                self.add_to_itinerary(agent, timestep, action, cellid)
-            else:
-                # sick or travel
-                if sampled_non_daily_activity == NonDailyActivity.Sick: # stay home all day, simply sample sleep - to refer to on the next day itinerary
-                    sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                    min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
-                    
-                    alpha, beta = alpha_weekday, beta_weekday
-                    if weekday == 6 or weekday == 7: # weekend
-                        alpha, beta = alpha_weekend, beta_weekend
+                            sleep_timestep = self.get_timestep_by_hour(sleep_hour)
 
-                    sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+                            if sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay:
+                                if agent["empstatus"] == 0:
+                                    end_work_school_ts = end_work_timestep_with_leeway
+                                elif  agent["sc_student"] == 1:
+                                    end_work_school_ts = end_school_timestep
 
-                    sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
+                                if sleep_timestep <= end_work_school_ts: # if sampled a time which is earlier or same time as end work school, schedule sleep for 30 mins from work/school end
+                                    sleep_timestep = end_work_school_ts + round(self.timesteps_in_hour / 2) # sleep 30 mins after work/school end
+                                        
+                            if sleep_timestep <= 143: # am
+                                self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"]) 
+                            else:
+                                sleep_timestep -= 143
+                                self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"], next_day=True) 
 
-                    sleep_timestep = self.get_timestep_by_hour(sleep_hour)
+                        # find out the activity_timestep_ranges (free time - to be filled in by actual activities further below)
+                        wakeup_ts, work_ts, end_work_ts, sleep_ts, overnight_end_work_ts, overnight_sleep_ts = None, None, None, None, None, None
+                        activity_timestep_ranges = []
 
-                    if sleep_timestep <= 143: # am
-                        self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"])
-                    else:
-                        sleep_timestep -= 143
-                        self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"])
-                elif sampled_non_daily_activity == NonDailyActivity.Travel: # to do
-                    # initialise Itinerary
-                    agent["itinerary"] = {} # {timestep: cellindex}
-                    agent["itinerary_nextday"] = {}
+                        if sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay:
+                            # find activity timestep ranges i.e. time between wake up and work/school, and time between end work/school and sleep
+                            for timestep, (action, cellid) in agent["itinerary"].items():
+                                if action == Action.WakeUp:
+                                    wakeup_ts = timestep
+                                elif action == Action.Work or action == Action.School:
+                                    work_ts = timestep
+                                elif action == Action.Home:
+                                    end_work_ts = timestep
+                                elif action == Action.Sleep:
+                                    sleep_ts = timestep
 
-                    # to do - this is different than the rest
+                            for timestep, (action, cellid) in agent["itinerary_nextday"].items():
+                                if action == Action.Home:
+                                    overnight_end_work_ts = timestep
+                                elif action == Action.Sleep:
+                                    sleep_ts = 143 + timestep
+                            
+                            if wakeup_ts is None and wakeup_timestep is not None:
+                                wakeup_ts = wakeup_timestep
 
-            if sampled_non_daily_activity != NonDailyActivity.Travel:
-                self.sample_transport_cells(agent, prev_day_last_event)
+                            # if work is scheduled for this day and more than 2 hours between wakeup hour and work, sample activities for the range
+                            if work_ts is not None:
+                                wakeup_until_work_ts = work_ts - wakeup_ts
+
+                                wakeup_until_work_hours = self.get_hour_by_timestep(wakeup_until_work_ts)
+
+                                if wakeup_until_work_hours >= 2: # take activities if 2 hours or more
+                                    activity_timestep_ranges.append(range(wakeup_ts+1, work_ts+1))
+
+                                if overnight_end_work_ts is None: # non-overnight (normal case) - if overnight, from work till midnight is already taken up
+                                    # if more than 2 hours between end work hour and sleep
+                                    endwork_until_sleep_ts = sleep_ts - end_work_ts
+                                    endwork_until_sleep_hours = self.get_hour_by_timestep(endwork_until_sleep_ts)
+
+                                    if endwork_until_sleep_hours >= 2: # take activities if 2 hours or more
+                                        activity_timestep_ranges.append(range(end_work_ts+1, sleep_ts+1))
+                                # else: # ends work after midnight (will be handled next day), check whether activities for normal day are possible
+                                #     if sleep_ts is not None and wakeup_ts is not None:
+                                #         wakeup_until_sleep_ts = sleep_ts - wakeup_ts
+
+                                #         activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
+                            else:
+                                if sleep_ts+1 - wakeup_ts+1 >= 12: # if range is 2 hours or more
+                                    activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
+                        else:
+                            # find activity timestep ranges for non-workers or non-work-day
+                            for timestep, (action, cellid) in agent["itinerary"].items():
+                                if action == Action.WakeUp:
+                                    wakeup_ts = timestep
+                                elif action == Action.Sleep:
+                                    sleep_ts = timestep
+
+                            for timestep, (action, cellid) in agent["itinerary_nextday"].items():
+                                if action == Action.Sleep:
+                                    sleep_ts = 143
+                                    overnight_sleep_ts = timestep
+                                    sleep_ts += overnight_sleep_ts
+
+                            if wakeup_ts is None and wakeup_timestep is not None:
+                                wakeup_ts = wakeup_timestep
+
+                            if sleep_ts+1 - wakeup_ts+1 >= 12: # if range is 2 hours or more
+                                activity_timestep_ranges.append(range(wakeup_ts+1, sleep_ts+1))
+
+                        if (guardian is None or 
+                            ("non_daily_activity_recurring" not in agent or "non_daily_activity_recurring" not in guardian) or
+                            (agent["non_daily_activity_recurring"] != guardian["non_daily_activity_recurring"])):
+                            # sample activities
+                            self.sample_activities(weekday, agent, agent["res_cellid"], sleep_timestep, activity_timestep_ranges, age_bracket_index)
+
+                    elif sampled_non_daily_activity == NonDailyActivity.Sick: # stay home all day, simply sample sleep - to refer to on the next day itinerary
+                        sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
+                        min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
+                        
+                        alpha, beta = alpha_weekday, beta_weekday
+                        if weekday == 6 or weekday == 7: # weekend
+                            alpha, beta = alpha_weekend, beta_weekend
+
+                        sampled_sleep_hour_from_range = round(self.rng.beta(alpha, beta, 1)[0] * start_hour_range + 1)
+
+                        sleep_hour = min_start_sleep_hour + (sampled_sleep_hour_from_range - 1) # this is 1 based; if sampled_sleep_hour_from_range is 1, sleep_hour should be min_start_sleep_hour
+
+                        sleep_timestep = self.get_timestep_by_hour(sleep_hour)
+
+                        if sleep_timestep <= 143: # am
+                            self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"])
+                        else:
+                            sleep_timestep -= 143
+                            self.add_to_itinerary(agent, sleep_timestep, Action.Sleep, agent["res_cellid"], next_day=True)
+                    elif (sampled_non_daily_activity == NonDailyActivity.Travel and 
+                         (guardian is None or 
+                         ("non_daily_activity_recurring" not in agent or "non_daily_activity_recurring" not in guardian) or
+                         agent["non_daily_activity_recurring"] != guardian["non_daily_activity_recurring"])): # same day departure (kids will be copied from guardian)
+                        # initialise Itinerary
+                        remaining_timesteps_for_day = np.arange(wakeup_timestep+1, 144)
+
+                        if len(remaining_timesteps_for_day) > 0:
+                            # choose a random timestep in remaining timesteps for day
+                            sampled_departure_timestep = self.rng.choice(remaining_timesteps_for_day, size=1)[0]
+
+                            self.sample_airport_activities(agent, agent["res_cellid"], range(wakeup_timestep, sampled_departure_timestep + 1), False, False, 0)
+
+                    if guardian is not None: # kids with a guardian
+                        if (sampled_non_daily_activity == NonDailyActivity.Travel and 
+                            ("non_daily_activity_recurring" not in agent or "non_daily_activity_recurring" not in guardian or
+                            agent["non_daily_activity_recurring"] == guardian["non_daily_activity_recurring"]) and 
+                            is_departureday):
+                            agent["itinerary"] = guardian["itinerary"] # create a copy by reference such that transport is also included accordingly
+                            agent["itinerary_nextday"] = guardian["itinerary_nextday"]
+                        else:
+                            if sampled_non_daily_activity != NonDailyActivity.Sick and sampled_non_daily_activity != NonDailyActivity.Travel:
+                                wakeup_ts = None
+                                home_ts = None
+                                sleep_ts = None
+                                # get earliest home_ts and sleep_ts indicating the range of timesteps to replace with guardian activities
+                                # wakeup_ts replaces home_ts, if the latter is not found
+                                for timestep, (action, cellid) in agent["itinerary"].items():
+                                    if action == Action.Home:
+                                        if home_ts is None:
+                                            home_ts = timestep
+                                        else:
+                                            if timestep > home_ts: # always consider latest home timestep, to then fill in activities from that point onwards (covers school case)
+                                                home_ts = timestep
+
+                                    if action == Action.WakeUp:
+                                        wakeup_ts = timestep
+
+                                    if action == Action.Sleep:
+                                        sleep_ts = timestep
+
+                                if home_ts is None:
+                                    home_ts = wakeup_ts
+
+                                if sleep_ts is None:
+                                    sleep_ts = 143 # in the context of kids, only sleep is possible after midnight i.e. itinerary_nextday
+                                
+                                if home_ts is not None and sleep_ts is not None:
+                                    # fill in kid itinerary by guardian activities
+                                    for timestep, (action, cellid) in guardian["itinerary"].items():
+                                        if action == Action.LocalActivity:
+                                            if timestep >= home_ts and timestep < sleep_ts:
+                                                self.add_to_itinerary(agent, timestep, action, cellid)
+                                        elif action == Action.Transport:
+                                            self.add_to_itinerary(agent, timestep, action, cellid)
+
+            if sampled_non_daily_activity != NonDailyActivity.Travel or is_departureday:
+                if sampled_non_daily_activity != NonDailyActivity.Sick and guardian is None:
+                    self.sample_transport_cells(agent, prev_day_last_event)
+
                 self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [agent["res_cellid"]])
+
+            test_itinerary_keys = sorted(list(agent["itinerary"].keys()), reverse=True)
+            test_itinerarynextday_keys = sorted(list(agent["itinerary_nextday"].keys()), reverse=True)
+
+            if (not is_arrivalday and not is_departureday and "non_daily_activity_recurring" not in agent or agent["non_daily_activity_recurring"] is None or len(agent["non_daily_activity_recurring"]) == 0) and not is_work_or_school_day:
+                if ((len(test_itinerary_keys) == 0 or agent["itinerary"][test_itinerary_keys[0]][0] != Action.Sleep) and
+                    (len(test_itinerarynextday_keys) == 0 or agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] != Action.Sleep)):
+                    if ((len(test_itinerary_keys) > 2 and agent["itinerary"][test_itinerary_keys[0]][0] == Action.LocalActivity and agent["itinerary"][test_itinerary_keys[1]][0] == Action.Sleep) or
+                        (len(test_itinerarynextday_keys) > 2 and agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] == Action.LocalActivity and agent["itinerary_nextday"][test_itinerarynextday_keys[1]][0] == Action.Sleep)):
+                            print("to check")
 
     def update_cell_agents_timesteps(self, itinerary, agentids, rescellids):
         # fill in cells_agents_timesteps
@@ -1073,7 +1240,7 @@ class Itinerary:
                 self.add_to_itinerary(agent_group, wakeup_timestep, Action.WakeUp, res_cell_id)
             else:
                 wakeup_timestep -= 143
-                self.add_to_itinerary(agent_group, wakeup_timestep, Action.WakeUp, res_cell_id, True)
+                self.add_to_itinerary(agent_group, wakeup_timestep, Action.WakeUp, res_cell_id, next_day=True)
 
         if not is_departureday: # don't schedule sleep time if departure day (or if need to be at the airport today - simplification)
             max_leave_for_airport_nextday_time = None
@@ -1386,6 +1553,7 @@ class Itinerary:
                     prev_action, prev_cellid = pre_transport_itinerary[prev_ts]
 
                 if (prev_cellid is None or cellid == prev_cellid or (action == prev_action and action != Action.LocalActivity) or 
+                    (action == Action.WakeUp) or
                     ((prev_action == Action.Home or prev_action == Action.WakeUp or prev_action == Action.Breakfast or prev_action == Action.Sleep)
                     and (action == Action.Home or action == Action.WakeUp or action == Action.Breakfast or action == Action.Sleep))):
                     sample_transport_cell = False
@@ -1416,7 +1584,7 @@ class Itinerary:
                                 self.add_to_itinerary(agent, transp_start_ts, Action.Transport, sampled_cell_id)
                             else:
                                 transp_start_ts -= 143
-                                self.add_to_itinerary(agent, transp_start_ts, Action.Transport, sampled_cell_id, True)
+                                self.add_to_itinerary(agent, transp_start_ts, Action.Transport, sampled_cell_id, next_day=True)
 
         return agent
      
