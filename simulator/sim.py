@@ -131,6 +131,7 @@ if params["loadagents"]:
             agent["symptomatic"] = False
             agent["tourist_id"] = None 
             agent["state_transition_by_day"] = {}
+            agent["intervention_events_by_day"] = {}
 
             agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
@@ -267,6 +268,8 @@ if params["loadworkplaces"]:
         workplaces_cells_params = cellsparams["workplaces"]
 
     hospital_cells_params = cellsparams["hospital"]
+    testing_hubs_cells_params = cellsparams["testinghubs"]
+    vaccinations_hubs_cells_params = cellsparams["vaccinationhubs"]
     transport_cells_params = cellsparams["transport"]
     airport_cells_params = cellsparams["airport"]
     accom_cells_params = cellsparams["accommodation"]
@@ -310,7 +313,7 @@ if params["loadworkplaces"]:
                 rooms_accom_by_id[roomid] = {}
 
     # handle cell splitting (on workplaces & accommodations)
-    industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
+    industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
     # airport_cells_params = cellsparams["airport"]
 
@@ -341,7 +344,7 @@ if params["religiouscells"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
 tourist_util = tourism.Tourism(tourismparams, cells, n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util)
-itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util)
+itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util)
 
 try:
     itinerary_sum_time_taken = 0

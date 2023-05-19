@@ -7,7 +7,7 @@ from copy import copy
 from simulator.epidemiology import Epidemiology
 
 class Itinerary:
-    def __init__(self, params, timestepmins, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util):
+    def __init__(self, params, timestepmins, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util):
         self.rng = np.random.default_rng(seed=6)
 
         self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
@@ -24,6 +24,8 @@ class Itinerary:
         self.cells_restaurants = cells_restaurants
         self.cells_schools = cells_schools
         self.cells_hospital = cells_hospital
+        self.cells_testinghub = cells_testinghub
+        self.cells_vaccinationhub = cells_vaccinationhub
         self.cells_entertainment = cells_entertainment
         self.cells_religious = cells_religious
         self.cells_households = cells_households
@@ -1069,6 +1071,17 @@ class Itinerary:
                     dep_nextday_time = self.get_hour_by_timestep(dep_nextday_ts)
 
             if not is_arrivalnextday:
+                for agentid in agentids:
+                    new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
+
+                    # this updates the state, infection type and severity (such that the itinery may also handle public health interventions)
+                    new_states = self.epi_util.update_agent_state(agentid, agent, day)
+
+                    if new_states is not None:
+                        new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
+
+                        self.epi_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
+
                 if is_group_activity_for_day:
                     # sample wake up time, breakfast time / place, sleep time, fill in activities in between
                     tourists_group = self.handle_tourism_itinerary(day, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_ts, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day)
