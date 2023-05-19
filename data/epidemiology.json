@@ -24,7 +24,7 @@
 	],
 	"testing_after_contact_probability": 0.4,
 	"testing_days_distribution_parameters": [8.0, 4.0],
-	"quarantine_until_testing_results_probability": 0.8,
+	"quarantine_until_testing_results_parameters": [0.8, 1.5, 2.0],
 	"testing_results_days_distribution_parameters": [1.5, 2.0],
 	"quarantine_if_positive_probability": 0.9,
 	"contact_tracing_parameters": [0.9, 0.5, 0.3, 7, 0.25],

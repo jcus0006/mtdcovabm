@@ -88,11 +88,13 @@ class Cells:
     # industries_by_indid (indid) -> workplaces_by_wpid (wpid) -> cells_by_cellid (cellid) -> dict with member_uids key/value pair
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
-    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_activity_dist):
+    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccination_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_activity_dist):
         industries_by_indid = {}
         workplacescells = {}
         restaurantcells = {}
         hospitalcells = {}
+        testinghubcells = {}
+        vaccinationhubcells = {}
         accommodationcells = {}
         accommodationcells_by_accomid = {}
         breakfastcells_by_accomid = {}
@@ -119,21 +121,40 @@ class Cells:
         # pick the largest one as the main hospital
         # pick hosp_count - 1, at random, as the other hospitals
 
-        if len(hospital_cells_params) > 0:
-            hosp_cell_size, hosp_cell_size_spare, hosp_count, hosp_beds_per_employee, hosp_avg_beds_per_rooms = hospital_cells_params[0], hospital_cells_params[1], hospital_cells_params[2], hospital_cells_params[3], hospital_cells_params[4]
-
-            healthcare_workplaces = [wp for wp in workplaces if wp["indid"] == 17]
-
-            for wp in healthcare_workplaces:
-                healthcare_workplaces_sizes[wp["wpid"]] = len(wp["member_uids"])
+        healthcare_workplaces = [wp for wp in workplaces if wp["indid"] == 17]
+        for wp in healthcare_workplaces:
+            healthcare_workplaces_sizes[wp["wpid"]] = len(wp["member_uids"])
 
             healthcare_workplaces_sizes = dict(sorted(healthcare_workplaces_sizes.items(), key=lambda item: item[1]))
 
-            healthcare_workplaces_sizes_keys = np.array(list(healthcare_workplaces_sizes.keys()))
+            healthcare_workplaces_keys = np.array(list(healthcare_workplaces_sizes.keys()))
+        
+        if len(hospital_cells_params) > 0:
+            hosp_cell_size, hosp_cell_size_spare, hosp_count, hosp_beds_per_employee, hosp_avg_beds_per_rooms = hospital_cells_params[0], hospital_cells_params[1], hospital_cells_params[2], hospital_cells_params[3], hospital_cells_params[4]
 
-            hospital_ids = healthcare_workplaces_sizes_keys[-1:]
+            hospital_ids = healthcare_workplaces_keys[-1:]
 
-            hospital_ids = np.append(hospital_ids, np.random.choice(healthcare_workplaces_sizes_keys, hosp_count-1))
+            hospital_ids = np.append(hospital_ids, np.random.choice(healthcare_workplaces_keys, hosp_count-1))
+
+        if len(testing_hubs_cells_params) > 0:
+            test_hub_cell_size, test_hub_cell_size_spare, test_hub_healthcare_percent = testing_hubs_cells_params[0], testing_hubs_cells_params[1], testing_hubs_cells_params[2]
+            
+            testing_hubs_n = round(len(healthcare_workplaces) * test_hub_healthcare_percent)
+
+            if testing_hubs_n >= len(healthcare_workplaces_keys):
+                testing_hubs_cell_ids = healthcare_workplaces_keys
+            else:
+                testing_hubs_cell_ids = np.random.choice(healthcare_workplaces_keys, size=testing_hubs_n)
+
+        if len(vaccination_hubs_cells_params) > 0:
+            vacc_hub_cell_size, vacc_hub_cell_size_spare, vacc_hub_healthcare_percent = vaccination_hubs_cells_params[0], vaccination_hubs_cells_params[1], vaccination_hubs_cells_params[2]
+            
+            vacc_hubs_n = round(len(healthcare_workplaces) * vacc_hub_healthcare_percent)
+
+            if vacc_hubs_n >= len(healthcare_workplaces_keys):
+                vaccination_hubs_cell_ids = healthcare_workplaces_keys
+            else:
+                vaccination_hubs_cell_ids = np.random.choice(healthcare_workplaces_keys, size=vacc_hubs_n)
 
         activity_options = [activity_dist[0] for activity_dist in entertainment_activity_dist]
         activity_weights = [activity_dist[1] for activity_dist in entertainment_activity_dist]
@@ -160,11 +181,27 @@ class Cells:
                 is_accom = accomid > -1
                 is_restaurant = indid == 9 and not is_accom
                 is_hospital = wpid in hospital_ids
+                is_testinghub = wpid in testing_hubs_cell_ids
+                is_vaccinationhub = wpid in vaccination_hubs_cell_ids
 
                 cellsize, cellsizespare = workplaces_cells_params[indid-1][1], workplaces_cells_params[indid-1][2]
 
                 if is_hospital:
                     cellsize, cellsizespare = hosp_cell_size, hosp_cell_size_spare
+
+                if is_testinghub:
+                    if test_hub_cell_size > cellsize:
+                        cellsize = test_hub_cell_size
+
+                    if test_hub_cell_size_spare > cellsizespare:
+                        cellsizespare = test_hub_cell_size_spare
+
+                if is_vaccinationhub:
+                    if vacc_hub_cell_size > cellsize:
+                        cellsize = vacc_hub_cell_size
+
+                    if vacc_hub_cell_size_spare > cellsizespare:
+                        cellsizespare = vacc_hub_cell_size_spare
 
                 if is_accom:
                     cellsize, cellsizespare = accom_cells_params[0], accom_cells_params[1]
@@ -201,6 +238,12 @@ class Cells:
                         if is_restaurant:
                             restaurantcells[self.cellindex] = self.cells[self.cellindex]
 
+                        if is_testinghub:
+                            testinghubcells[self.cellindex] = self.cells[self.cellindex]
+
+                        if is_vaccinationhub:
+                            vaccinationhubcells[self.cellindex] = self.cells[self.cellindex]
+
                     if is_accom:
                         cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(employees)}
 
@@ -226,6 +269,12 @@ class Cells:
                         self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
 
                         hospitalcells[self.cellindex] = self.cells[self.cellindex]
+
+                        if is_testinghub:
+                            testinghubcells[self.cellindex] = self.cells[self.cellindex]
+
+                        if is_vaccinationhub:
+                            vaccinationhubcells[self.cellindex] = self.cells[self.cellindex]
 
                     sampled_activity = -1
                     if is_entertainment:
@@ -291,6 +340,12 @@ class Cells:
                             if is_restaurant:
                                 restaurantcells[self.cellindex] = self.cells[self.cellindex]
 
+                            if is_testinghub:
+                                testinghubcells[self.cellindex] = self.cells[self.cellindex]
+
+                            if is_vaccinationhub:
+                                vaccinationhubcells[self.cellindex] = self.cells[self.cellindex]
+
                         if is_accom:
                             cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(temp_members)}
 
@@ -319,6 +374,12 @@ class Cells:
                             self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
 
                             hospitalcells[self.cellindex] = self.cells[self.cellindex]
+
+                            if is_testinghub:
+                                testinghubcells[self.cellindex] = self.cells[self.cellindex]
+
+                            if is_vaccinationhub:
+                                vaccinationhubcells[self.cellindex] = self.cells[self.cellindex]
 
                         sampled_activity = -1
                         if is_entertainment:
@@ -372,7 +433,7 @@ class Cells:
                 else:
                     industries_by_indid[indid] = workplaces_by_wpid
 
-        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, entertainmentcells, airportcells
+        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, testinghubcells, vaccinationhubcells, entertainmentcells, airportcells
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)

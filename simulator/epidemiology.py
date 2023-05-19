@@ -25,6 +25,20 @@ class Epidemiology:
         self.cri_to_rec_mean, self.cri_to_rec_std = cri_to_rec_dist_params[0], cri_to_rec_dist_params[1]
         self.rec_to_exp_mean, self.rec_to_exp_std = rec_to_exp_min_max[0], rec_to_exp_min_max[1]
 
+        # intervention parameters
+        self.testing_after_contact_probability = epidemiologyparams["testing_after_contact_probability"]
+        self.testing_days_distribution_parameters = epidemiologyparams["testing_days_distribution_parameters"]
+        quarantine_until_testing_results_parameters = epidemiologyparams["quarantine_until_testing_results_parameters"]
+        self.quarantine_until_testing_prob, self.days_until_quarantine_mean, self.days_until_quarantine_std = quarantine_until_testing_results_parameters[0], quarantine_until_testing_results_parameters[1], quarantine_until_testing_results_parameters[1]
+        self.testing_results_days_distribution_parameters = epidemiologyparams["testing_results_days_distribution_parameters"]
+        self.quarantine_if_positive_probability = epidemiologyparams["quarantine_if_positive_probability"]
+        self.contact_tracing_parameters = epidemiologyparams["contact_tracing_parameters"]
+        self.quarantine_symptomatic_probability = epidemiologyparams["quarantine_symptomatic_probability"]
+        self.masks_hygiene_distancing_parameters = epidemiologyparams["masks_hygiene_distancing_parameters"]
+        self.daily_total_vaccinations = epidemiologyparams["daily_total_vaccinations"]
+        self.vaccination_parameters = epidemiologyparams["vaccination_parameters"]
+        self.immunity_after_vaccination_multiplier = epidemiologyparams["immunity_after_vaccination_multiplier"]       
+
         self.agents = agents
         self.agents_seir_state = agents_seir_state
         self.agents_seir_state_transition_for_day = agents_seir_state_transition_for_day
@@ -87,6 +101,7 @@ class Epidemiology:
                 self.agents_infection_severity[agentid] = new_infection_severity
                 
             del agent["state_transition_by_day"][day]
+            del agent["intervention_events_by_day"][day]
 
             return new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
 
@@ -222,6 +237,7 @@ class Epidemiology:
                     exposed_agent = self.agents[exposed_agent_id]
 
                     agent_state_transition_by_day = exposed_agent["state_transition_by_day"]
+                    intervention_events_by_day = exposed_agent["intervention_events_by_day"]
                     agent_epi_age_bracket_index = exposed_agent["epi_age_bracket_index"]
 
                     susceptibility_multiplier = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SusceptibilityMultiplier][agent_epi_age_bracket_index]
@@ -236,7 +252,9 @@ class Epidemiology:
 
                     recovered = False # if below condition is hit, False means Dead, True means recovered. 
                     incremental_days = day
-                    if exposed_rand < infection_probability: # exposed (infected but not yet infectious)                  
+                    if exposed_rand < infection_probability: # exposed (infected but not yet infectious)
+                        exp_incremental_days = incremental_days
+
                         self.agents_seir_state[exposed_agent_id] = SEIRState.Exposed
                         self.agents_infection_severity[exposed_agent_id] = Severity.Undefined
 
@@ -247,6 +265,28 @@ class Epidemiology:
                         incremental_days += exp_to_inf_days
 
                         agent_state_transition_by_day[incremental_days] = (SEIRStateTransition.ExposedToInfectious, sampled_exposed_timestep)
+
+                        # testing prob
+                        # an interesting point here is the trigger. a person would normally get tested, if they feel symptoms or 
+                        # if they know they were in contact with someone who get infected (through contact tracing etc)
+                        # that would be the trigger. the test would happen "days_until_test" after the day they are notified (symptoms/contact tracing)
+
+                        if False:
+                            test_after_contact_rand = random.random()
+                            
+                            if test_after_contact_rand < self.testing_after_contact_probability:
+                                days_until_test = util.sample_log_normal(self.testing_days_distribution_parameters[0], self.testing_days_distribution_parameters[1], 1, True)
+
+                                testing_day = exp_incremental_days + days_until_test
+
+                                intervention_events_by_day[testing_day] = (InterventionAgentEvents.Test, sampled_exposed_timestep)
+
+                                quarantine_rand = random.random()
+
+                                if quarantine_rand < self.quarantine_until_testing_prob:
+                                    # choose quarantine day (a day in between contact and test)                            
+                                    # self.days_until_quarantine_mean, self.days_until_quarantine_std
+                                    print("to do")
 
                         symptomatic_rand = random.random()
 
@@ -436,3 +476,15 @@ class SEIRStateTransition(IntEnum):
     SevereToRecovery = 7, # if severe, sample SevToRec, assign "Recovered" after SevToRec
     CriticalToRecovery = 8 # if critical, sample CriToRec, assign "Recovered" after CriToRec
     RecoveredToExposed = 9 # if recovered, sample RecToExp (uniform from range e.g. 30-90 days), assign "Exposed" after RecToExp
+
+class InterventionAgentEvents(IntEnum):
+    Test = 0,
+    TestResult = 1,
+    Quarantine = 2,
+    ContactTracing = 3,
+    Vaccine = 4
+
+class InterventionSimulationEvents(IntEnum):
+    MasksHygeneDistancing = 0,
+    PartialLockDown = 1,
+    LockDown = 2
