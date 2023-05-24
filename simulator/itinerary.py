@@ -5,10 +5,14 @@ from enum import IntEnum
 from copy import deepcopy
 from copy import copy
 from simulator.epidemiology import Epidemiology
+from simulator.epidemiology import SEIRState
+from simulator.epidemiology import QuarantineType
 
 class Itinerary:
     def __init__(self, params, timestepmins, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util):
         self.rng = np.random.default_rng(seed=6)
+
+        self.one_to_two_hours = np.arange(6, 13)
 
         self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
         self.epi_util = epi_util
@@ -264,10 +268,13 @@ class Itinerary:
             is_arrivalday, is_departureday, is_work_or_school_day = False, False, False
             sampled_non_daily_activity = None
             prevday_non_daily_end_activity = None
-            wakeup_timestep = None
+            wakeup_timestep, sleep_timestep = None, None
             next_day_arrive_home_timestep, next_day_sleep_timestep = None, None
             non_daily_activity_recurring = None
-
+            
+            start_work_timestep_with_leeway, end_work_timestep_with_leeway = None, None
+            start_school_timestep, end_school_timestep = None, None
+            
             prev_day_itinerary, prev_day_itinerary_nextday, prev_day_last_event = None, None, None
             if simday > 1:
                 prev_day_itinerary = agent["itinerary"]
@@ -283,6 +290,36 @@ class Itinerary:
             guardian = None
             if age < 15 and "guardian_id" in agent:
                 guardian = self.agents[agent["guardian_id"]]
+
+            is_quarantined_start_day = False
+            is_quarantined_end_day = False
+            is_quarantined = False
+
+            if len(agent["quarantine_days"]) > 0:
+                quar_start_day_ts, quar_end_day_ts = agent["quarantine_days"][0][0], agent["quarantine_days"][0][1]
+
+                quar_start_day, quar_start_ts = quar_start_day_ts[0], quar_start_day_ts[1]
+                quar_end_day, quar_end_ts = quar_end_day_ts[0], quar_end_day_ts[1]
+
+                if simday >= quar_start_day and simday <= quar_end_day:
+                    is_quarantined = True
+
+                if simday == quar_start_day:
+                    is_quarantined_start_day
+
+                if simday == quar_end_day:
+                    is_quarantined_end_day
+
+            if is_quarantined and not is_quarantined_start_day and not is_quarantined_end_day:
+                self.add_to_itinerary(agent, 0, Action.WakeUp, agent["res_cellid"])
+
+                # must still schedule sleep time in case next day is not quarantine
+
+                # otherwise just wake up at 0 and stay at home all day
+
+                # if is_quarantined_start_day or is_quarantined_end_day still to handle as per usual
+
+                # to see how to handle the else of this, and structure accordingly
 
             # always reset on the next day (this is only to be referred to by the guardian and cleared on the next day)
             if "prevday_non_daily_activity_recurring" not in agent or len(agent["prevday_non_daily_activity_recurring"]) > 0:
@@ -725,7 +762,6 @@ class Itinerary:
                         sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay):
                         # schedule sleeping hours
                         sleep_hour = None
-                        sleep_timestep = None
 
                         if agent["empstatus"] == 0 and sampled_non_daily_activity == NonDailyActivity.NormalWorkOrSchoolDay and agent["isshiftbased"]:
                             set_sleeping_hour = False
@@ -931,21 +967,38 @@ class Itinerary:
                                         elif action == Action.Transport:
                                             self.add_to_itinerary(agent, timestep, action, cellid)
 
+            if sampled_non_daily_activity != NonDailyActivity.Travel or (is_departureday or is_arrivalday):
+                start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action = None, None, None, None
+
+                if start_work_timestep_with_leeway is not None:
+                    start_work_school_ts = start_work_timestep_with_leeway
+                    end_work_school_ts = end_work_timestep_with_leeway
+                    work_school_cellid = agent["work_cellid"]
+                    work_school_action = Action.Work
+                
+                if start_school_timestep is not None:
+                    start_work_school_ts = start_school_timestep
+                    end_work_school_ts = end_school_timestep
+                    work_school_cellid = agent["school_cellid"]
+                    work_school_action = Action.School
+
+                agent = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action)
+
             if sampled_non_daily_activity != NonDailyActivity.Travel or is_departureday:
                 if sampled_non_daily_activity != NonDailyActivity.Sick and guardian is None:
                     self.sample_transport_cells(agent, prev_day_last_event)
 
                 self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [agent["res_cellid"]])
 
-            test_itinerary_keys = sorted(list(agent["itinerary"].keys()), reverse=True)
-            test_itinerarynextday_keys = sorted(list(agent["itinerary_nextday"].keys()), reverse=True)
+            # test_itinerary_keys = sorted(list(agent["itinerary"].keys()), reverse=True)
+            # test_itinerarynextday_keys = sorted(list(agent["itinerary_nextday"].keys()), reverse=True)
 
-            if (not is_arrivalday and not is_departureday and "non_daily_activity_recurring" not in agent or agent["non_daily_activity_recurring"] is None or len(agent["non_daily_activity_recurring"]) == 0) and not is_work_or_school_day:
-                if ((len(test_itinerary_keys) == 0 or agent["itinerary"][test_itinerary_keys[0]][0] != Action.Sleep) and
-                    (len(test_itinerarynextday_keys) == 0 or agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] != Action.Sleep)):
-                    if ((len(test_itinerary_keys) > 2 and agent["itinerary"][test_itinerary_keys[0]][0] == Action.LocalActivity and agent["itinerary"][test_itinerary_keys[1]][0] == Action.Sleep) or
-                        (len(test_itinerarynextday_keys) > 2 and agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] == Action.LocalActivity and agent["itinerary_nextday"][test_itinerarynextday_keys[1]][0] == Action.Sleep)):
-                            print("to check")
+            # if (not is_arrivalday and not is_departureday and "non_daily_activity_recurring" not in agent or agent["non_daily_activity_recurring"] is None or len(agent["non_daily_activity_recurring"]) == 0) and not is_work_or_school_day:
+            #     if ((len(test_itinerary_keys) == 0 or agent["itinerary"][test_itinerary_keys[0]][0] != Action.Sleep) and
+            #         (len(test_itinerarynextday_keys) == 0 or agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] != Action.Sleep)):
+            #         if ((len(test_itinerary_keys) > 2 and agent["itinerary"][test_itinerary_keys[0]][0] == Action.LocalActivity and agent["itinerary"][test_itinerary_keys[1]][0] == Action.Sleep) or
+            #             (len(test_itinerarynextday_keys) > 2 and agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] == Action.LocalActivity and agent["itinerary_nextday"][test_itinerarynextday_keys[1]][0] == Action.Sleep)):
+            #                 print("to check")
 
     def update_cell_agents_timesteps(self, itinerary, agentids, rescellids):
         # fill in cells_agents_timesteps
@@ -1072,6 +1125,8 @@ class Itinerary:
 
             if not is_arrivalnextday:
                 for agentid in agentids:
+                    agent = self.agents[agentid]
+                    
                     new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
 
                     # this updates the state, infection type and severity (such that the itinery may also handle public health interventions)
@@ -1509,13 +1564,9 @@ class Itinerary:
         while activities_slot_hours > 0:
             sampled_num_hours = self.rng.choice(hours_range, size=1)[0]
 
-            if sampled_num_hours == activities_slot_hours:
-                last_activity = True
-            elif sampled_num_hours > activities_slot_hours:
-                last_activity = True
+            if sampled_num_hours > activities_slot_hours:
                 sampled_num_hours = activities_slot_hours # sampled a larger value than the remaining hours available, hence, go for remaining hours
             elif activities_slot_hours - sampled_num_hours < 1:
-                last_activity = True
                 sampled_num_hours = sampled_num_hours + (activities_slot_hours - sampled_num_hours) # less than an hour would be left after adding activity, hence add it to this activity
 
             sampled_cell_id = self.rng.choice(potential_cells, size=1)[0]
@@ -1601,6 +1652,148 @@ class Itinerary:
 
         return agent
      
+    # covers quarantine, tests and vaccines and is called at the end of the itinerary generation such that intervention activities supercede other activities
+    # for quarantine, clear any activities that are already scheduled beyond the start ts, and schedule home from 0 to 143 for subsequent days until quarantine ends
+    # in test/vaccine cases, introduce the vaccine activity and sample a test/vaccine cell randomly
+    # if test/vaccine start ts coincides with work or school, and if after start_ts + 6 ts (1 hour) work/school would not have ended, 
+    # agent goes back to work/school accordingly, otherwise, goes back home, then activites continue as per usual
+    def sample_intervention_activities(self, agentid, agent, day, wakeup_ts, sleep_ts=None, start_work_school_ts=None, end_work_school_ts=None, work_school_cellid=None, work_school_action=None):
+        # test_result_day: [day,timestep]
+        # quarantine_days: [[startday,timestep], [endday, timestep]]
+        # test_day: [day,timestep]
+        # vaccination_day: [day,timestep]
+
+        if len(agent["test_result_day"]) > 0 and agent["test_result_day"][0] == day:
+            start_ts = agent["test_result_day"][1]
+
+            seir_state = self.epi_util.agents_seir_state[agentid]
+            
+            if seir_state == SEIRState.Exposed or seir_state == SEIRState.Infectious: # this mostly handles asymptomatic cases
+                false_negative_rand = random.random()
+
+                is_false_negative = False
+                if false_negative_rand < self.epi_util.testing_false_negative_rate:
+                    is_false_negative = True
+
+                if not is_false_negative:
+                    self.epi_util.contact_tracing_agent_ids.append(agentid) 
+
+                    self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+            else:
+                false_positive_rand = random.random()
+
+                is_false_positive = False
+                if false_positive_rand < self.epi_util.testing_false_positive_rate:
+                    is_false_positive = True
+
+                if is_false_positive:
+                    self.epi_util.contact_tracing_agent_ids.append(agentid) 
+
+                    self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+        
+        quarantine_ts = None
+        if len(agent["quarantine_days"]) > 0:
+            start_day_ts, end_day_ts = agent["quarantine_days"][0][0], agent["quarantine_days"][0][1]
+            start_day, start_ts = start_day_ts[0], start_day_ts[1]
+            
+            if start_day == day:
+                quarantine_ts = start_ts
+                timesteps_to_delete = []
+                for timestep, _ in agent["itinerary"].items():
+                    if timestep >= quarantine_ts:
+                        timesteps_to_delete.append(timestep)
+
+                for timestep in timesteps_to_delete:
+                    del agent["itinerary"][timestep]
+
+                self.add_to_itinerary(agent, quarantine_ts, Action.Home, agent["res_cellid"])
+
+                agent["itinerary_nextday"] = {}
+
+        if len(agent["test_day"]) > 0 and agent["test_day"][0] == day:
+            start_ts = agent["test_day"][1]
+            
+            cells_testinghub_cellids = list(self.cells_testinghub.keys())
+
+            cells_testinghub_indices = np.arange(len(cells_testinghub_cellids))
+
+            sampled_testinghub_index = self.rng.choice(cells_testinghub_indices, size=1, replace=False)[0]
+            
+            sampled_testinghub_cellid = cells_testinghub_cellids[sampled_testinghub_index]
+
+            self.add_to_itinerary(agent, start_ts, Action.Test, sampled_testinghub_cellid)
+
+            self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
+
+        if len(agent["vaccination_day"]) > 0 and agent["vaccination_day"][0] == day:
+            start_ts = agent["vaccination_day"][1]
+            
+            cells_vaccinationhub_cellids = list(self.cells_vaccinationhub.keys())
+
+            cells_vaccinationhub_indices = np.arange(len(cells_vaccinationhub_cellids))
+
+            sampled_vaccinationhub_index = self.rng.choice(cells_vaccinationhub_indices, size=1, replace=False)[0]
+            
+            sampled_vaccinationhub_cellid = cells_vaccinationhub_cellids[sampled_vaccinationhub_index]
+
+            self.add_to_itinerary(agent, start_ts, Action.Vaccine, sampled_vaccinationhub_cellid)
+
+            self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
+        
+        return agent
+
+    def modify_wakeup_sleep_work_school_for_interventions(self, agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts):
+        if wakeup_ts is not None and start_ts < wakeup_ts: # if test start ts before wakeup
+            wakeup_ts_before_test_or_vaccine = self.rng.choice(self.one_to_two_hours, size=1)[0]
+            new_wakeup_ts = start_ts - wakeup_ts_before_test_or_vaccine
+
+            timesteps_to_delete = []
+            for timestep, (action, cellid) in agent["itinerary"].items():
+                if action == Action.WakeUp:
+                    timesteps_to_delete.append(timestep)
+                    break
+            
+            if len(timesteps_to_delete) > 0:
+                for timestep in timesteps_to_delete:
+                    del agent["itinerary"][timestep]
+
+                self.add_to_itinerary(agent, new_wakeup_ts, Action.WakeUp, agent["res_cellid"])
+
+        if sleep_ts is not None and start_ts > sleep_ts:
+            sleep_ts_after_test_or_vaccine = self.rng.choice(self.one_to_two_hours, size=1)[0]
+            new_sleep_ts = start_ts + sleep_ts_after_test_or_vaccine
+
+            timesteps_to_delete = []
+            for timestep, (action, cellid) in agent["itinerary"].items():
+                if action == Action.Sleep:
+                    timesteps_to_delete.append(timestep)
+                    break
+            
+            if len(timesteps_to_delete) > 0:
+                for timestep in timesteps_to_delete:
+                    del agent["itinerary"][timestep]
+
+                if new_sleep_ts <= 143:
+                    self.add_to_itinerary(agent, new_sleep_ts, Action.Sleep, agent["res_cellid"])
+                else:
+                    self.add_to_itinerary(agent, new_sleep_ts - 143, Action.Sleep, agent["res_cellid"], next_day=True)
+
+        if start_work_school_ts is not None and end_work_school_ts is not None:
+            duration = self.rng.choice(self.one_to_two_hours, size=1)[0]
+            if start_ts + duration < end_work_school_ts - 6: # if finishes 1 hour before work ends, go back to work otherwise go back home (home would already be scheduled)
+                self.add_to_itinerary(agent, start_ts + duration, work_school_action, work_school_cellid)
+
+        if quarantine_ts is not None and start_ts > quarantine_ts:
+            back_home_ts_after_test_or_vaccine = self.rng.choice(self.one_to_two_hours, size=1)[0]
+            new_sleep_ts = start_ts + back_home_ts_after_test_or_vaccine
+
+            if new_sleep_ts <= 143:
+                self.add_to_itinerary(agent, new_sleep_ts, Action.Sleep, agent["res_cellid"])
+            else:
+                self.add_to_itinerary(agent, new_sleep_ts - 143, Action.Sleep, agent["res_cellid"], next_day=True)
+
+        return agent
+    
     # updates the itinerary and itinerary_nextday dictionaries with start_timesteps
     # the dictionary is used at the end of the itinerary generation process to update the cells_agents_timesteps dict (used in contact network)
     # method does not allow replacing of key, in which case the timestep is incremented, and the method is called recursively until finding a freeslot
@@ -1702,6 +1895,8 @@ class Action(IntEnum):
     Airport = 7
     Breakfast = 8
     Transport = 9
+    Test = 10
+    Vaccine = 11
 
 class WeekDay(IntEnum):
     Monday = 1
