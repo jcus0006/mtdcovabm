@@ -135,7 +135,7 @@ class Tourism:
 
                         cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
 
-                        self.cells[cellindex]["place"]["member_uids"] = room_members
+                        self.cells[cellindex]["place"]["member_uids"] = np.array(room_members) + self.agents_n 
 
                         num_tourists += len(room_members)
 
@@ -161,7 +161,9 @@ class Tourism:
 
                             epi_age_bracket_index = self.epi_util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": {}, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True}
+                            new_agent = self.agents[new_agent_id]
+
+                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": {}, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "test_day":[], "test_result_day":[], "quarantine_days":[], "vaccination_day":[]}
 
                             new_agent, _, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(new_agent, agents_ids_by_ages, new_agent_id, self.age_brackets, None, agents_ids_by_agebrackets, set_working_age_bracket=False)
 

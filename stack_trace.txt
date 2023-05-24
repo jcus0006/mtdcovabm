@@ -1,7 +1,10 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 382, in <module>
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 392, in <module>
     itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 415, in generate_local_itinerary
-    for timestep, (action, _) in agent["itinerary"].items():
-                                 ~~~~~^^^^^^^^^^^^^
-KeyError: 'itinerary'
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 955, in generate_local_itinerary
+    agent = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1649, in sample_intervention_activities
+    self.contact_tracing_agent_ids.append(agentid)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Itinerary' object has no attribute 'contact_tracing_agent_ids'

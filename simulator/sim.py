@@ -24,7 +24,7 @@ params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "year": 2021,
             "quickdebug": True,
             "quicktourismrun": False,
-            "quickitineraryrun": True,
+            "quickitineraryrun": False,
             "visualise": False
          }
 
@@ -118,7 +118,8 @@ if params["loadagents"]:
 
     agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
 
-    contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, False, False)
+    contactnetwork_sum_time_taken = 0
+    contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False)
     epi_util = contactnetwork_util.epi_util
 
     for index, (agent_uid, agent) in enumerate(temp_agents.items()):
@@ -128,10 +129,14 @@ if params["loadagents"]:
             agent["work_cellid"] = -1
             agent["school_cellid"] = -1
             agent["inst_cellid"] = -1
-            agent["symptomatic"] = False
+            # agent["symptomatic"] = False
             agent["tourist_id"] = None 
             agent["state_transition_by_day"] = {}
-            agent["intervention_events_by_day"] = {}
+            # intervention_events_by_day
+            agent["test_day"] = [] # [day,timestep]
+            agent["test_result_day"] = [] # [day,timestep]
+            agent["quarantine_days"] = [] # [[startday,timestep], [endday, timestep]]
+            agent["vaccination_day"] = [] # [day,timestep]
 
             agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
@@ -206,6 +211,8 @@ if params["loadhouseholds"]:
 
     households, cells_households, householdsworkplaces, cells_householdsworkplaces = cell.convert_households(households_original, workplaces, workplaces_cells_params)
 
+    contactnetwork_util.epi_util.cells_households = cells_households
+    
 if params["loadinstitutions"]:
     institutiontypesfile = open("./population/" + population_sub_folder + "institutiontypes.json")
     institutiontypes_original = json.load(institutiontypesfile)
@@ -215,7 +222,9 @@ if params["loadinstitutions"]:
 
     institutions_cells_params = cellsparams["institutions"]
 
-    institutiontypes, cells_institutions = cell.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])    
+    institutiontypes, cells_institutions = cell.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
+
+    contactnetwork_util.epi_util.cells_institutions = cells_institutions  
 
 hh_insts = []
 if params["loadhouseholds"]:
@@ -315,6 +324,7 @@ if params["loadworkplaces"]:
     # handle cell splitting (on workplaces & accommodations)
     industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
+    contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
     # airport_cells_params = cellsparams["airport"]
 
     # cell.create_airport_cell()
@@ -349,17 +359,16 @@ itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], ag
 try:
     itinerary_sum_time_taken = 0
     tourist_itinerary_sum_time_taken = 0
-    contactnetwork_sum_time_taken = 0
+    
     for day in range(1, 365+1):
         weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
         itinerary_util.cells_agents_timesteps = {}
+        itinerary_util.epi_util = epi_util
+        contactnetwork_util.epi_util = epi_util
         contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
         agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
 
-        # workout itineraries
-        # assign tourists (this is the first prototype which assumes tourists checkout/in at 00.00
-        # but with itinerary we can generate random timestep at which tourists checkout/in
         if params["loadtourism"]:
             print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
             start = time.time()
@@ -390,15 +399,10 @@ try:
             print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
 
             if not params["quickitineraryrun"]:
-                print("generate contact network for " + str(len(cells.keys())) + " cells")
-                start = time.time()
-                for cellid in cells.keys():
-                    contactnetwork_util.simulate_contact_network(cellid, day)
+                contactnetwork_util.simulate_contact_network(day, weekday)
 
-                time_taken = time.time() - start
-                contactnetwork_sum_time_taken += time_taken
-                avg_time_taken = contactnetwork_sum_time_taken / day
-                print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+            # contact tracing
+            epi_util.contact_tracing(day)
 except:
     with open('stack_trace.txt', 'w') as f:
         traceback.print_exc(file=f)

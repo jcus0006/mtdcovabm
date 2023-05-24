@@ -1,12 +1,14 @@
 import numpy as np
 import math
+import time
 from copy import copy
 from copy import deepcopy
+from simulator import util
 from simulator.epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, visualise=False, maintain_directcontacts_count=False):
+    def __init__(self, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, visualise=False, maintain_directcontacts_count=False):
         self.agents = agents
 
         self.cells = cells
@@ -18,12 +20,50 @@ class ContactNetwork:
         self.maintain_directcontacts_count = maintain_directcontacts_count
         self.figurecount = 0
 
-        self.epi_util = Epidemiology(epidemiologyparams, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity)
+        self.contactnetwork_sum_time_taken = contact_network_sum_time_taken
 
-    def simulate_contact_network(self, cellid, day):
+        self.agents_directcontacts_by_simcelltype_by_day = {}
+        
+        # it is possible that this may need to be extracted out of the contact network and handled at the next step
+        # because it could be impossible to parallelise otherwise
+        self.epi_util = Epidemiology(epidemiologyparams, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day)
+
+    # full day, all cells context
+    def simulate_contact_network(self, day, weekday):
+        self.agents_directcontacts_by_simcelltype_by_day[day] = {}
+        agents_directcontacts_by_simcelltype_thisday = self.agents_directcontacts_by_simcelltype_by_day[day]
+
+        print("generate contact network for " + str(len(self.cells.keys())) + " cells")
+        start = time.time()
+        for cellid in self.cells.keys():
+            cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+
+            if len(cell_agents_directcontacts) > 0:
+                cell_type = cell["type"]
+
+                sim_cell_type = util.convert_celltype_to_simcelltype(cellid, celltype=cell_type)
+
+                if sim_cell_type not in agents_directcontacts_by_simcelltype_thisday:
+                    agents_directcontacts_by_simcelltype_thisday[sim_cell_type] = set()
+
+                agents_directcontacts_thissimcelltype_thisday = agents_directcontacts_by_simcelltype_thisday[sim_cell_type]
+
+                # agents_directcontacts_thissimcelltype_thisday += list(cell_agents_directcontacts.keys())
+                for key in cell_agents_directcontacts.keys():
+                    agents_directcontacts_thissimcelltype_thisday.add(key)
+
+        time_taken = time.time() - start
+        self.contactnetwork_sum_time_taken += time_taken
+        avg_time_taken = self.contactnetwork_sum_time_taken / day
+        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+    
+    # full day, single cell context
+    def simulate_contact_network_by_cellid(self, cellid, day):
         agents_directcontacts, cell = self.generate_contact_network(cellid)
 
-        self.epi_util.simulate_direct_contacts(agents_directcontacts, cell, day)
+        self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
+
+        return agents_directcontacts, cell
 
     def generate_contact_network(self, cellid):
         print("generating contact network for cell " + str(cellid))
@@ -32,8 +72,8 @@ class ContactNetwork:
         agents_total_timesteps = {} # {agentid : total_num_of_timesteps}
         agents_potentialcontacts_count = {} # {agentid: total_num_of_potential_contats}
         agents_potentialcontacts = {} # {(agentid1, agentid2) : [ (start_ts1, end_ts1), (start_ts2, end_ts2) ]}
-        agents_directcontacts = {}
-        agents_directcontacts_count = {}
+        agents_directcontacts = {} # {(agentid1, agentid2) : [ (start_ts1, end_ts1), (start_ts2, end_ts2) ]}
+        agents_directcontacts_count = {} # {agentid: contact_count}
         population_per_timestep = [0 for i in range(144)]
 
         cell = None
@@ -173,7 +213,7 @@ class ContactNetwork:
                     degree = agents_degrees[i]
 
                     if degree > 0:
-                        potential_contacts = self.get_all_potentialcontacts_ids(agents_ids, agents_potentialcontacts, agents_degrees, agent_id, shuffle=True)
+                        potential_contacts = util.get_all_contacts_ids_by_id(agent_id, agents_potentialcontacts.keys(), agents_ids, agents_degrees, shuffle=True)
 
                         if potential_contacts is not None:
                             if degree > len(potential_contacts):
@@ -249,27 +289,6 @@ class ContactNetwork:
             return (id2, id1)
         
         return None
-    
-    def get_all_potentialcontacts_ids(self, agents_ids, agents_potentialcontacts, agents_degrees, id, shuffle=True):
-        potential_contacts_ids = []
-        for pairid in agents_potentialcontacts.keys():
-            if id in pairid:
-                potential_contact_id = pairid[1] if pairid[0] == id else pairid[0]
-                potential_contact_index = agents_ids.index(potential_contact_id)
-                potential_contact_degree = agents_degrees[potential_contact_index]
-
-                if potential_contact_degree > 0:
-                    potential_contacts_ids.append(potential_contact_id)
-
-        if len(potential_contacts_ids) == 0:
-            return None
-        
-        potential_contacts_ids = np.array(potential_contacts_ids)
-
-        if shuffle:
-            np.random.shuffle(potential_contacts_ids)
-
-        return potential_contacts_ids
         
     def delete_all_pairs_by_id(self, agents_potentialcontacts, id):
         for pairid in list(agents_potentialcontacts.keys()):

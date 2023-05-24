@@ -67,7 +67,7 @@ class Cells:
 
                 households_employees_groups_index += 1
 
-            households[hhid] = { "hhid": hhid, "resident_uids": np.array(member_uids), "employees_uids": np.array(this_hh_employees_uids), "reference_uid": ref_uid, "reference_age": ref_age, "visitor_uids": np.array([])}
+            households[hhid] = { "hhid": hhid, "resident_uids": np.array(member_uids), "staff_uids": np.array(this_hh_employees_uids), "reference_uid": ref_uid, "reference_age": ref_age, "visitor_uids": np.array([])}
             householdsworkplaces[hhid] = households[hhid]
 
             self.cells[self.cellindex] = { "type": "household", "place": households[hhid]}

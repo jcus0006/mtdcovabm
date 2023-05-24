@@ -165,3 +165,61 @@ def set_public_transport_regular(agent, usage_probability):
         agent["pub_transp_reg"] = False
 
     return agent
+
+def convert_celltype_to_simcelltype(cellid, cells=None, celltype=None):
+    if cells is not None and celltype is None:
+        cell = cells[cellid]
+        celltype = cell["type"]
+
+    match celltype:
+        case "household":
+            return "residence"
+        case "workplace":
+            return "workplace"
+        case "accom":
+            return "residence"
+        case "hospital":
+            return "community"
+        case "entertainment":
+            return "community"
+        case "school":
+            return "school"
+        case "institution":
+            return "residence"
+        case "transport":
+            return "community"
+        case "religion":
+            return "community"
+        case "airport":
+            return "community"
+        case _:
+            return "community"
+
+# takes the contact structure in agents_contacts
+# can be used for both potential contacts and direct contacts (as they bear the same structure)
+# if agents_degree is passed (not none), it will only return the contact id if the relevant degree is greater than 0
+# for direct cotacts, agents_degrees may be left out
+def get_all_contacts_ids_by_id(id, agents_contacts_keys, agents_ids = None, agents_degrees = None, shuffle=False):
+    contacts_ids = []
+    for pairid in agents_contacts_keys:
+        if id in pairid:
+            contact_id = pairid[1] if pairid[0] == id else pairid[0]
+
+            if agents_ids is not None and agents_degrees is not None:
+                contact_index = agents_ids.index(contact_id)
+                contact_degree = agents_degrees[contact_index]
+
+                if contact_degree > 0:
+                    contacts_ids.append(contact_id)
+            else:
+                contacts_ids.append(contact_id)
+            
+    if len(contacts_ids) == 0:
+        return None
+    
+    contacts_ids = np.array(contacts_ids)
+
+    if shuffle:
+        np.random.shuffle(contacts_ids)
+
+    return contacts_ids
