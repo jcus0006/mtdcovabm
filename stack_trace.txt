@@ -1,10 +1,7 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 392, in <module>
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 394, in <module>
     itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 955, in generate_local_itinerary
-    agent = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1649, in sample_intervention_activities
-    self.contact_tracing_agent_ids.append(agentid)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'Itinerary' object has no attribute 'contact_tracing_agent_ids'
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 510, in generate_local_itinerary
+    latest_wake_up_hour = same_day_sleep_hour + self.max_sleep_hours
+                          ~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~
+TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'

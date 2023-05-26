@@ -12,7 +12,7 @@ from simulator import contactnetwork
 from simulator.epidemiology import SEIRState
 from simulator import tourism
 
-params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
+params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents1mtourists)
             "timestepmins": 10,
             "loadagents": True,
             "loadhouseholds": True,
@@ -22,7 +22,7 @@ params = {  "popsubfolder": "500kagents1mtourists", # empty takes root
             "loadtourism": True,
             "religiouscells": True,
             "year": 2021,
-            "quickdebug": True,
+            "quickdebug": False,
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False

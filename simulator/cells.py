@@ -141,6 +141,9 @@ class Cells:
             
             testing_hubs_n = round(len(healthcare_workplaces) * test_hub_healthcare_percent)
 
+            if testing_hubs_n == 0:
+                testing_hubs_n = 1
+
             if testing_hubs_n >= len(healthcare_workplaces_keys):
                 testing_hubs_cell_ids = healthcare_workplaces_keys
             else:
@@ -150,6 +153,9 @@ class Cells:
             vacc_hub_cell_size, vacc_hub_cell_size_spare, vacc_hub_healthcare_percent = vaccination_hubs_cells_params[0], vaccination_hubs_cells_params[1], vaccination_hubs_cells_params[2]
             
             vacc_hubs_n = round(len(healthcare_workplaces) * vacc_hub_healthcare_percent)
+
+            if vacc_hubs_n == 0:
+                vacc_hubs_n = 1
 
             if vacc_hubs_n >= len(healthcare_workplaces_keys):
                 vaccination_hubs_cell_ids = healthcare_workplaces_keys

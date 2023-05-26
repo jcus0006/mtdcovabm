@@ -436,13 +436,6 @@ class Epidemiology:
 
         to_schedule_quarantine = True
 
-        if len(quarantine_days) > 0: # to clear quarantine_days when ready from quaratine (in itinerary)
-            st_day_ts = agent["quarantine_days"][0][0]
-            st_day = st_day_ts[0]
-
-            if start_day > st_day:
-                to_schedule_quarantine = False # don't schedule later
-
         if to_schedule_quarantine:
             if quarantine_type == QuarantineType.Positive: # positive
                 end_day = start_day + self.quarantine_positive_duration
@@ -453,8 +446,18 @@ class Epidemiology:
                 start_day += self.contact_tracing_secondary_delay_days
                 end_day = start_day + self.quarantine_secondary_contact_duration
 
-            quarantine_days.append([[start_day, start_timestep], [end_day, start_timestep]])
-            quarantine_scheduled = True
+            if len(quarantine_days) > 0: # to clear quarantine_days when ready from quaratine (in itinerary)
+                st_day_ts = agent["quarantine_days"][0][0]
+                st_day = st_day_ts[0]
+
+                if start_day >= st_day:
+                    to_schedule_quarantine = False # don't schedule same start date or later start date (i.e. dont reschedule quarantine if already quarantined)
+
+            if to_schedule_quarantine:
+                quarantine_days = []
+                quarantine_days.append([[start_day, start_timestep], [end_day, start_timestep]])
+                agent["quarantine_days"] = quarantine_days
+                quarantine_scheduled = True
 
         return agent, quarantine_scheduled
 
