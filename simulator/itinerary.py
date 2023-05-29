@@ -309,17 +309,17 @@ class Itinerary:
                 if simday == quar_end_day:
                     is_quarantine_end_day = True
 
-            if is_quarantined and not is_quarantine_start_day and not is_quarantine_end_day:
-                self.add_to_itinerary(agent, 0, Action.WakeUp, agent["res_cellid"])
-
                 # if is_quarantined_start_day or is_quarantined_end_day still to handle as per usual
                 # to see how to handle the else of this, and structure accordingly
+
+            if "non_daily_activity_recurring" not in agent:
+                agent["non_daily_activity_recurring"] = {}
 
             # always reset on the next day (this is only to be referred to by the guardian and cleared on the next day)
             if "prevday_non_daily_activity_recurring" not in agent or len(agent["prevday_non_daily_activity_recurring"]) > 0:
                 agent["prevday_non_daily_activity_recurring"] = {}
 
-            if "non_daily_activity_recurring" in agent and agent["non_daily_activity_recurring"] is not None and (not is_quarantined or is_quarantine_start_day or is_quarantine_end_day):
+            if "non_daily_activity_recurring" in agent and agent["non_daily_activity_recurring"] is not None: # and (not is_quarantined or is_quarantine_start_day or is_quarantine_end_day)
                 non_daily_activity_recurring = copy(agent["non_daily_activity_recurring"])
 
                 if simday in non_daily_activity_recurring:
@@ -961,6 +961,9 @@ class Itinerary:
                                         elif action == Action.Transport:
                                             self.add_to_itinerary(agent, timestep, action, cellid)
 
+            if sampled_non_daily_activity != NonDailyActivity.Travel and is_quarantined and not is_quarantine_start_day and not is_quarantine_end_day:
+                self.add_to_itinerary(agent, 0, Action.WakeUp, agent["res_cellid"])
+
             start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action = None, None, None, None
             if sampled_non_daily_activity != NonDailyActivity.Travel or (is_departureday or is_arrivalday):
                 if start_work_timestep_with_leeway is not None:
@@ -977,7 +980,7 @@ class Itinerary:
                 
             currently_on_travel_vacation = False
 
-            if sampled_non_daily_activity == NonDailyActivity.Travel and not is_departureday and not is_arrivalday:
+            if sampled_non_daily_activity == NonDailyActivity.Travel and not (is_departureday or is_arrivalday):
                 currently_on_travel_vacation = True
 
             arr_dep_ts = None
@@ -1698,113 +1701,140 @@ class Itinerary:
                     arr_dep_ts = ts
                     break
 
-        if len(agent["test_result_day"]) > 0 and agent["test_result_day"][0] == day:
-            start_ts = agent["test_result_day"][1]
+        if len(agent["test_result_day"]) > 0:
+            test_result_day = agent["test_result_day"][0]
 
-            seir_state = self.epi_util.agents_seir_state[agentid]
-            
-            if seir_state == SEIRState.Exposed or seir_state == SEIRState.Infectious: # this mostly handles asymptomatic cases
-                false_negative_rand = random.random()
+            if day == test_result_day:
+                start_ts = agent["test_result_day"][1]
 
-                is_false_negative = False
-                if false_negative_rand < self.epi_util.testing_false_negative_rate:
-                    is_false_negative = True
+                seir_state = self.epi_util.agents_seir_state[agentid]
+                
+                if seir_state == SEIRState.Exposed or seir_state == SEIRState.Infectious: # this mostly handles asymptomatic cases
+                    false_negative_rand = random.random()
 
-                if not is_false_negative:
-                    self.epi_util.contact_tracing_agent_ids.append(agentid) 
+                    is_false_negative = False
+                    if false_negative_rand < self.epi_util.testing_false_negative_rate:
+                        is_false_negative = True
 
-                    self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
-            else:
-                false_positive_rand = random.random()
+                    if not is_false_negative:
+                        self.epi_util.contact_tracing_agent_ids.append((agentid, start_ts)) 
 
-                is_false_positive = False
-                if false_positive_rand < self.epi_util.testing_false_positive_rate:
-                    is_false_positive = True
+                        self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+                else:
+                    false_positive_rand = random.random()
 
-                if is_false_positive:
-                    self.epi_util.contact_tracing_agent_ids.append(agentid) 
+                    is_false_positive = False
+                    if false_positive_rand < self.epi_util.testing_false_positive_rate:
+                        is_false_positive = True
 
-                    self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+                    if is_false_positive:
+                        self.epi_util.contact_tracing_agent_ids.append((agentid, start_ts)) 
+
+                        self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+            elif day > test_result_day:
+                agent["test_result_day"] = []
         
         quarantine_ts = None
         if len(agent["quarantine_days"]) > 0:
             start_day_ts, end_day_ts = agent["quarantine_days"][0][0], agent["quarantine_days"][0][1]
             start_day, start_ts = start_day_ts[0], start_day_ts[1]
+            end_day, end_ts = end_day_ts[0], end_day_ts[1]
             
             if start_day == day:
+                cancel_itinerary_beyond_quarantine_ts = True
+
                 quarantine_ts = start_ts
                 
                 cancel_vacation = False
                 if not is_tourist and is_departure_day_today and quarantine_ts < arr_dep_ts:
                     cancel_vacation = True
 
-                if is_arrival_day_today and quarantine_ts < arr_dep_ts:
-                    quarantine_ts = arr_dep_ts
+                if is_arrival_day_today:
+                    if arr_dep_ts is not None:
+                        if quarantine_ts < arr_dep_ts:
+                            quarantine_ts = arr_dep_ts
+                    else:
+                        # this would be the case where arrival is beyond midnight quarantine starts from previous day at 6am
+                        agent = self.epi_util.update_quarantine(agent, start_day+1, 36, end_day+1, 36)
+                        cancel_itinerary_beyond_quarantine_ts = False
 
                 if cancel_vacation:
                     agent["non_daily_activity_recurring"] = None
 
-                if not is_departure_day_today or cancel_vacation:
-                    timesteps_to_delete = []
-                    for timestep,  (action, cellid) in agent["itinerary"].items():
-                        if timestep >= quarantine_ts:
-                            timesteps_to_delete.append(timestep)
-                        else:
-                            if action == Action.Sleep:
-                                print("problemitos")
+                if cancel_itinerary_beyond_quarantine_ts:
+                    if not is_departure_day_today or cancel_vacation:
+                        timesteps_to_delete = []
+                        for timestep,  (action, cellid) in agent["itinerary"].items():
+                            if timestep >= quarantine_ts:
+                                timesteps_to_delete.append(timestep)
+                            else:
+                                if action == Action.Sleep:
+                                    print("problemitos")
 
-                    for timestep in timesteps_to_delete:
-                        del agent["itinerary"][timestep]
+                        for timestep in timesteps_to_delete:
+                            del agent["itinerary"][timestep]
 
-                    self.add_to_itinerary(agent, quarantine_ts, Action.Home, agent["res_cellid"])
+                        self.add_to_itinerary(agent, quarantine_ts, Action.Home, agent["res_cellid"])
 
-                    agent["itinerary_nextday"] = {}
+                        agent["itinerary_nextday"] = {}
+            elif end_day == day:
+                agent["quarantine_days"] = []
 
-        if len(agent["test_day"]) > 0 and agent["test_day"][0] == day:
-            reschedule_test = False
-            start_ts = agent["test_day"][1]
-            
-            if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
-                reschedule_test = True
+        if len(agent["test_day"]) > 0:
+            test_day = agent["test_day"][0]
 
-            if not reschedule_test:       
-                cells_testinghub_cellids = list(self.cells_testinghub.keys())
-
-                cells_testinghub_indices = np.arange(len(cells_testinghub_cellids))
-
-                sampled_testinghub_index = self.rng.choice(cells_testinghub_indices, size=1, replace=False)[0]
+            if day == test_day:
+                reschedule_test = False
+                start_ts = agent["test_day"][1]
                 
-                sampled_testinghub_cellid = cells_testinghub_cellids[sampled_testinghub_index]
+                if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
+                    reschedule_test = True
 
-                self.add_to_itinerary(agent, start_ts, Action.Test, sampled_testinghub_cellid)
+                if not reschedule_test:       
+                    cells_testinghub_cellids = list(self.cells_testinghub.keys())
 
-                self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
-            else:
-                if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
-                    agent["test_day"] = [day + 1, start_ts]
+                    cells_testinghub_indices = np.arange(len(cells_testinghub_cellids))
 
-        if len(agent["vaccination_day"]) > 0 and agent["vaccination_day"][0] == day:
-            reschedule_test = False
-            start_ts = agent["vaccination_day"][1]
+                    sampled_testinghub_index = self.rng.choice(cells_testinghub_indices, size=1, replace=False)[0]
+                    
+                    sampled_testinghub_cellid = cells_testinghub_cellids[sampled_testinghub_index]
 
-            if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
-                reschedule_test = True
-            
-            if not reschedule_test:
-                cells_vaccinationhub_cellids = list(self.cells_vaccinationhub.keys())
+                    self.add_to_itinerary(agent, start_ts, Action.Test, sampled_testinghub_cellid)
 
-                cells_vaccinationhub_indices = np.arange(len(cells_vaccinationhub_cellids))
+                    self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
+                else:
+                    if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
+                        agent["test_day"] = [day + 1, start_ts]
+            elif day > test_day:
+                agent["test_day"] = []
 
-                sampled_vaccinationhub_index = self.rng.choice(cells_vaccinationhub_indices, size=1, replace=False)[0]
+        if len(agent["vaccination_day"]) > 0:
+            vaccination_day = agent["vaccination_day"][0]
+
+            if day == vaccination_day:
+                reschedule_test = False
+                start_ts = agent["vaccination_day"][1]
+
+                if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
+                    reschedule_test = True
                 
-                sampled_vaccinationhub_cellid = cells_vaccinationhub_cellids[sampled_vaccinationhub_index]
+                if not reschedule_test:
+                    cells_vaccinationhub_cellids = list(self.cells_vaccinationhub.keys())
 
-                self.add_to_itinerary(agent, start_ts, Action.Vaccine, sampled_vaccinationhub_cellid)
+                    cells_vaccinationhub_indices = np.arange(len(cells_vaccinationhub_cellids))
 
-                self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
-            else:
-                if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
-                    agent["vaccination_day"] = [day + 1, start_ts]
+                    sampled_vaccinationhub_index = self.rng.choice(cells_vaccinationhub_indices, size=1, replace=False)[0]
+                    
+                    sampled_vaccinationhub_cellid = cells_vaccinationhub_cellids[sampled_vaccinationhub_index]
+
+                    self.add_to_itinerary(agent, start_ts, Action.Vaccine, sampled_vaccinationhub_cellid)
+
+                    self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
+                else:
+                    if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
+                        agent["vaccination_day"] = [day + 1, start_ts]
+            elif day > vaccination_day:
+                agent["vaccination_day"] = []
 
         return agent
 

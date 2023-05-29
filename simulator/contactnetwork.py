@@ -8,7 +8,7 @@ from simulator.epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, visualise=False, maintain_directcontacts_count=False):
+    def __init__(self, n_locals, n_tourists, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, visualise=False, maintain_directcontacts_count=False):
         self.agents = agents
 
         self.cells = cells
@@ -26,7 +26,7 @@ class ContactNetwork:
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):
@@ -50,7 +50,28 @@ class ContactNetwork:
 
                 # agents_directcontacts_thissimcelltype_thisday += list(cell_agents_directcontacts.keys())
                 for key in cell_agents_directcontacts.keys():
-                    agents_directcontacts_thissimcelltype_thisday.add(key)
+                    contact_pair_timesteps = cell_agents_directcontacts[key]
+
+                    # min_start_ts, max_end_ts = None
+
+                    # for st_end_ts in contact_pair_timesteps:
+                    #     st_ts, en_ts = st_end_ts[0], st_end_ts[1]
+
+                    #     if min_start_ts is None:
+                    #         min_start_ts = st_ts
+                    #     else:
+                    #         if st_ts < min_start_ts:
+                    #             min_start_ts = st_ts
+
+                    #     if max_end_ts is None:
+                    #         max_end_ts = en_ts
+                    #     else:
+                    #         if en_ts > max_end_ts:
+                    #             max_end_ts = en_ts
+
+                    min_start_ts, max_end_ts = contact_pair_timesteps[0][0], contact_pair_timesteps[len(contact_pair_timesteps) - 1][1]
+                        
+                    agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
 
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken

@@ -30,27 +30,30 @@
 	"testing_false_positive_negative_rates": [0.05, 0.24],
 	"quarantine_duration_parameters": [21, 14, 14],
 	"ignore_quarantine_rules_probability": 0.05,
-	"contact_tracing_parameters": [1, 0.85, 0.4, 0.75, 0.6, 2, 3],
+	"contact_tracing_parameters": [1, 0.95, 0.9, 0.85, 0.75, 2, 3],
 	"contact_tracing_success_probability": [0.95, 0.65, 0.85, 0.25],
-	"masks_hygiene_distancing_parameters": [
-		[0.1, 0.05], 
-		[0.2, 0.10], 
-		[0.3, 0.20], 
-		[0.4, 0.40], 
-		[0.5, 0.60], 
-		[0.6, 0.80]
-	],
+	"intervention_infectiousrate_thresholds": [0.02, 0.025, 0.03],
+	"intervention_day_thresholds": [],
 	"daily_total_vaccinations": 1230,
-	"vaccination_parameters": [
-		[0.1, 0.05], 
-		[0.2, 0.15], 
-		[0.3, 0.25], 
-		[0.4, 0.45], 
-		[0.5, 0.65], 
-		[0.6, 0.88]
+	"vaccination_infectiousrate_thresholds": [
+		[0.01, 0.05], 
+		[0.02, 0.15], 
+		[0.03, 0.25], 
+		[0.04, 0.45], 
+		[0.05, 0.65], 
+		[0.06, 0.88]
 	],
-	"immunity_after_vaccination_multiplier": 0.8
-	
+	"vaccination_day_thresholds": [],
+	"immunity_after_vaccination_multiplier": 0.8,
+	"masks_hygiene_distancing_infectiousrate_thresholds": [
+		[0.01, 0.05], 
+		[0.02, 0.10], 
+		[0.03, 0.20], 
+		[0.04, 0.40], 
+		[0.05, 0.60], 
+		[0.06, 0.80]
+	],
+	"masks_hygiene_distancing_day_thresholds": []
 }
 
 

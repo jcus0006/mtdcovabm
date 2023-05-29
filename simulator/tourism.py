@@ -3,12 +3,13 @@ from copy import copy
 from simulator import util
 
 class Tourism:
-    def __init__(self, tourismparams, cells, agents_n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util):
+    def __init__(self, tourismparams, cells, agents_n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
         self.tourists_arrivals_departures_for_nextday = tourists_arrivals_departures_for_nextday
         self.tourists_active_groupids = tourists_active_groupids
+        self.tourists_active_ids = tourists_active_ids
         self.age_brackets = age_brackets
         self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count = powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count
         self.initial_seir_state_distribution = initial_seir_state_distribution
@@ -41,10 +42,15 @@ class Tourism:
                     accominfo = tourists_group["accominfo"]
                     subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
 
+                    # num_tourists_in_group = 0
+
                     for accinfoindex, accinfo in enumerate(accominfo):
                         accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
 
-                        subgroupmmembers = subgroupsmemberids[accinfoindex] # this room
+                        room_members = subgroupsmemberids[accinfoindex] # this room
+
+                        # num_tourists_in_group += len(room_members)
+                        self.tourists_active_ids.extend(room_members)
 
                         cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
 
@@ -119,7 +125,7 @@ class Tourism:
                     new_agents = {}
                     new_agent_ids = []
                     res_cell_ids = []
-                    num_tourists = 0
+                    num_tourists_in_group = 0
                     group_accom_id = None
                     under_age_agent = False
 
@@ -137,7 +143,7 @@ class Tourism:
 
                         self.cells[cellindex]["place"]["member_uids"] = np.array(room_members) + self.agents_n 
 
-                        num_tourists += len(room_members)
+                        num_tourists_in_group += len(room_members)
 
                         # handle as part of "agents" dict, to avoid having to do checks against 2 dicts
                         for tourist_id in room_members: # tourists ids in room
@@ -171,13 +177,15 @@ class Tourism:
 
                             new_agents[new_agent_id] = new_agent
 
+                            self.tourists_active_ids.append(tourist_id)
+
                         tourists_group["under_age_agent"] = under_age_agent
                         tourists_group["group_accom_id"] = group_accom_id
                         tourists_group["agent_ids"] = new_agent_ids
                         tourists_group["res_cell_ids"] = res_cell_ids
                         tourists_group["pub_transp_reg"] = True
 
-                        avg_age = round(sum(ages) / num_tourists)
+                        avg_age = round(sum(ages) / num_tourists_in_group)
 
                         for i, ab in enumerate(self.age_brackets):
                             if avg_age >= ab[0] and avg_age <= ab[1]:
@@ -191,6 +199,8 @@ class Tourism:
 
                     for index, agent_idx in enumerate(new_agent_ids):
                         self.agents_seir_state[agent_idx] = agents_seir_state_tourists_subset[index]
+
+                    # self.num_active_tourists += num_tourists_in_group
 
     def get_next_available_agent_id(self):
         if not self.agents:

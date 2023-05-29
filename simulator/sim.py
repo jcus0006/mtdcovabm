@@ -84,11 +84,14 @@ agents_infection_severity = {} # handled as dict, because not every agent will b
 # tourism
 tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
 tourists_arrivals_departures_for_nextday = {}
+n_tourists = 0
 
 if params["loadtourism"]:
     touristsfile = open("./population/" + population_sub_folder + "tourists.json")
     tourists = json.load(touristsfile)
     tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
+    
+    n_tourists = len(tourists)
 
     touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
     touristsgroups = json.load(touristsgroupsfile)
@@ -102,7 +105,7 @@ if params["loadagents"]:
     agentsfile = open("./population/" + population_sub_folder + "agents.json")
     agents = json.load(agentsfile)
 
-    n = len(agents)
+    n_locals = len(agents)
 
     # if params["quickdebug"]:
     #     agents = {str(i):agents[str(i)] for i in range(1000)}
@@ -119,11 +122,11 @@ if params["loadagents"]:
     agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
 
     contactnetwork_sum_time_taken = 0
-    contactnetwork_util = contactnetwork.ContactNetwork(agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False)
+    contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False)
     epi_util = contactnetwork_util.epi_util
 
     for index, (agent_uid, agent) in enumerate(temp_agents.items()):
-        if index < n: # ignore tourists for now
+        if index < n_locals: # ignore tourists for now
             agent["curr_cellid"] = -1
             agent["res_cellid"] = -1
             agent["work_cellid"] = -1
@@ -150,7 +153,7 @@ if params["loadagents"]:
 
     temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
 
-    agents_seir_state = epi_util.initialize_agent_states(n, initial_seir_state_distribution, agents_seir_state)
+    agents_seir_state = epi_util.initialize_agent_states(n_locals, initial_seir_state_distribution, agents_seir_state)
 
     agents = temp_agents
 
@@ -290,7 +293,7 @@ if params["loadworkplaces"]:
     accommodations = []
     roomsizes_by_accomid_by_accomtype = {} # {typeid: {accomid: {roomsize: [member_uids]}}} - here member_uids represents room ids
     rooms_by_accomid_by_accomtype = {} # {typeid: {accomid: {roomid: {"roomsize":1, "member_uids":[]}}}} - here member_uids represents tourist ids
-    tourists_active_groupids = []
+    tourists_active_groupids, tourists_active_ids = [], []
     accomgroups = None
 
     if params["loadtourism"]:
@@ -353,7 +356,7 @@ if params["religiouscells"]:
 # if params["quickdebug"]:
 #     agents = {i:agents[i] for i in range(10_000)}
 
-tourist_util = tourism.Tourism(tourismparams, cells, n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util)
+tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util)
 itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util)
 
 try:
@@ -361,6 +364,8 @@ try:
     tourist_itinerary_sum_time_taken = 0
     
     for day in range(1, 365+1):
+        day_start = time.time()
+
         weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
         itinerary_util.cells_agents_timesteps = {}
@@ -380,6 +385,12 @@ try:
             tourist_itinerary_sum_time_taken += time_taken
             avg_time_taken = tourist_itinerary_sum_time_taken / day
             print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+
+        epi_util.tourists_active_ids = tourist_util.tourists_active_ids
+
+        if not params["quickitineraryrun"]:
+            if day == 1: # from day 2 onwards always calculated at eod
+                epi_util.refresh_dynamic_parameters(day)
 
         if not params["quicktourismrun"]:
             # should be cell based, but for testing purposes, traversing all agents here
@@ -403,6 +414,11 @@ try:
 
             # contact tracing
             epi_util.contact_tracing(day)
+
+            epi_util.refresh_dynamic_parameters(day)
+
+        day_time_taken = time.time() - day_start
+        print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(epi_util.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
 except:
     with open('stack_trace.txt', 'w') as f:
         traceback.print_exc(file=f)

@@ -223,3 +223,37 @@ def get_all_contacts_ids_by_id(id, agents_contacts_keys, agents_ids = None, agen
         np.random.shuffle(contacts_ids)
 
     return contacts_ids
+
+def get_all_contacts_ids_by_id_and_timesteprange(id, agents_contacts_keys, traced_ts, min_ts, max_ts, agents_ids = None, agents_degrees = None, shuffle=False):
+    contacts_ids = []
+
+    if max_ts is None:
+        max_ts = traced_ts # when contact tracing is done, start from that timestep until 0
+    
+    if min_ts is None:
+        min_ts = traced_ts # when contact tracing is traced for e.g. 24 hours, trace until the same timestep on X prev days
+
+    for pairid, (st_ts, _) in agents_contacts_keys:
+        if (id in pairid and 
+            (st_ts >= min_ts) and 
+            (st_ts <= max_ts)):
+            contact_id = pairid[1] if pairid[0] == id else pairid[0]
+
+            if agents_ids is not None and agents_degrees is not None:
+                contact_index = agents_ids.index(contact_id)
+                contact_degree = agents_degrees[contact_index]
+
+                if contact_degree > 0:
+                    contacts_ids.append(contact_id)
+            else:
+                contacts_ids.append(contact_id)
+            
+    if len(contacts_ids) == 0:
+        return None
+    
+    contacts_ids = np.array(contacts_ids)
+
+    if shuffle:
+        np.random.shuffle(contacts_ids)
+
+    return contacts_ids
