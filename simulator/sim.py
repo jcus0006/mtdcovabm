@@ -25,7 +25,8 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "quickdebug": False,
             "quicktourismrun": False,
             "quickitineraryrun": False,
-            "visualise": False
+            "visualise": False,
+            "fullpop": 519562
          }
 
 figure_count = 0
@@ -80,6 +81,7 @@ agents_seir_state = [] # whole population with following states, 0: undefined, 1
 agents_seir_state_transition_for_day = {} # handled as dict, because it will only apply for a subset of agents per day
 agents_infection_type = {} # handled as dict, because not every agent will be infected
 agents_infection_severity = {} # handled as dict, because not every agent will be infected
+agents_vaccination_doses = [] # number of doses per agent
 
 # tourism
 tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
@@ -112,6 +114,10 @@ if params["loadagents"]:
 
     temp_agents = {int(k): v for k, v in agents.items()}
 
+    agents_vaccination_doses = np.array([0 for i in range(n_locals)])
+
+    locals_ratio_to_full_pop = n_locals / params["fullpop"]
+
     if params["loadtourism"]:
         largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
 
@@ -122,7 +128,7 @@ if params["loadagents"]:
     agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
 
     contactnetwork_sum_time_taken = 0
-    contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False)
+    contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, agents_vaccination_doses, False, False)
     epi_util = contactnetwork_util.epi_util
 
     for index, (agent_uid, agent) in enumerate(temp_agents.items()):
@@ -138,8 +144,8 @@ if params["loadagents"]:
             # intervention_events_by_day
             agent["test_day"] = [] # [day,timestep]
             agent["test_result_day"] = [] # [day,timestep]
-            agent["quarantine_days"] = [] # [[startday,timestep], [endday, timestep]]
-            agent["vaccination_day"] = [] # [day,timestep]
+            agent["quarantine_days"] = [] # [[[startday,timestep], [endday, timestep]]]
+            agent["vaccination_days"] = [] # [[day,timestep]]
 
             agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
@@ -414,6 +420,9 @@ try:
 
             # contact tracing
             epi_util.contact_tracing(day)
+
+            # vaccinations
+            epi_util.schedule_vaccinations(day)
 
             epi_util.refresh_dynamic_parameters(day)
 

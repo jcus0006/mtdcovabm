@@ -1689,7 +1689,7 @@ class Itinerary:
         # test_result_day: [day,timestep]
         # quarantine_days: [[startday,timestep], [endday, timestep]]
         # test_day: [day,timestep]
-        # vaccination_day: [day,timestep]
+        # vaccination_days: [[day,timestep]]
 
         if is_arrival_day_today or is_departure_day_today and arr_dep_ts is None:
             itinerary_timesteps = sorted(list(agent["itinerary"].keys()), reverse=True)
@@ -1808,12 +1808,13 @@ class Itinerary:
             elif day > test_day:
                 agent["test_day"] = []
 
-        if len(agent["vaccination_day"]) > 0:
-            vaccination_day = agent["vaccination_day"][0]
-
+        if "vaccination_days" in agent and len(agent["vaccination_days"]) > 0: # does not apply for tourists
+            vaccination_day_ts = agent["vaccination_days"][len(agent["vaccination_days"]) - 1] # get last date, in case of more than 1 dose (right now only 1 dose)
+            vaccination_day, vaccination_ts = vaccination_day_ts[0], vaccination_day_ts[1]
+            
             if day == vaccination_day:
                 reschedule_test = False
-                start_ts = agent["vaccination_day"][1]
+                start_ts = vaccination_ts
 
                 if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
                     reschedule_test = True
@@ -1832,9 +1833,9 @@ class Itinerary:
                     self.modify_wakeup_sleep_work_school_for_interventions(agent, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
                 else:
                     if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
-                        agent["vaccination_day"] = [day + 1, start_ts]
+                        agent["vaccination_days"][len(agent["vaccination_days"]) - 1] = [day + 1, start_ts]
             elif day > vaccination_day:
-                agent["vaccination_day"] = []
+                agent["vaccination_days"] = [] # for now this is acceptable because there cannot be double vaccinations dated scheduled. but would be a problem if it overwrites multiple dates
 
         return agent
 

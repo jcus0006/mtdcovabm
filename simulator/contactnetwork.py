@@ -8,7 +8,7 @@ from simulator.epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, n_locals, n_tourists, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, visualise=False, maintain_directcontacts_count=False):
+    def __init__(self, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, agents_vaccination_doses, visualise=False, maintain_directcontacts_count=False):
         self.agents = agents
 
         self.cells = cells
@@ -26,7 +26,7 @@ class ContactNetwork:
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):
@@ -195,7 +195,7 @@ class ContactNetwork:
                         if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
                             potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
 
-                        agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"]
+                        agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.masks_hygiene_distancing_multiplier)
 
                 agents_degrees_sum = round(np.sum(agents_degrees))
                 

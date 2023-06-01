@@ -5,6 +5,7 @@
 	"school_infection_probability": 0.03,
 	"community_infection_probability": 0.005,
 	"superspreader_infection_probability": 0.1,
+	"tourist_entry_infection_probability": 0.05,
 	"susceptibility_progression_mortality_probs_by_age": [
 		[0.34,	  0.67,		1,		 1,		  1,	   1,		1,		 1.24,	  1.47,	   1.47,   1],
 		[0.5,	  0.55,		0.6,	 0.65,	  0.7,	   0.75,	0.8,	 0.85,	  0.9,	   0.9,	   0.625],
@@ -25,8 +26,8 @@
 		[196,	2.0]
 	],
 	"testing_after_symptoms_probability": 0.75,
-	"testing_days_distribution_parameters": [2.0, 3.0],
-	"testing_results_days_distribution_parameters": [1.5, 2.0],
+	"testing_days_distribution_parameters": [3, 1.5],
+	"testing_results_days_distribution_parameters": [1.5, 1],
 	"testing_false_positive_negative_rates": [0.05, 0.24],
 	"quarantine_duration_parameters": [21, 14, 14],
 	"ignore_quarantine_rules_probability": 0.05,
@@ -34,24 +35,24 @@
 	"contact_tracing_success_probability": [0.95, 0.65, 0.85, 0.25],
 	"intervention_infectiousrate_thresholds": [0.02, 0.025, 0.03],
 	"intervention_day_thresholds": [],
-	"daily_total_vaccinations": 1230,
+	"daily_vaccinations_parameters": [2000, 500],
 	"vaccination_infectiousrate_thresholds": [
 		[0.01, 0.05], 
 		[0.02, 0.15], 
-		[0.03, 0.25], 
-		[0.04, 0.45], 
-		[0.05, 0.65], 
-		[0.06, 0.88]
+		[0.04, 0.25], 
+		[0.06, 0.45], 
+		[0.08, 0.65], 
+		[0.10, 0.88]
 	],
 	"vaccination_day_thresholds": [],
 	"immunity_after_vaccination_multiplier": 0.8,
 	"masks_hygiene_distancing_infectiousrate_thresholds": [
 		[0.01, 0.05], 
 		[0.02, 0.10], 
-		[0.03, 0.20], 
-		[0.04, 0.40], 
-		[0.05, 0.60], 
-		[0.06, 0.80]
+		[0.04, 0.15], 
+		[0.06, 0.20], 
+		[0.08, 0.30], 
+		[0.10, 0.40]
 	],
 	"masks_hygiene_distancing_day_thresholds": []
 }

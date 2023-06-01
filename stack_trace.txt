@@ -1,6 +1,15 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 413, in <module>
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 419, in <module>
     contactnetwork_util.simulate_contact_network(day, weekday)
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 74, in simulate_contact_network
-    agents_directcontacts_thissimcelltype_thisday.add([key, (min_start_ts, max_end_ts)])
-TypeError: unhashable type: 'list'
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 39, in simulate_contact_network
+    cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 85, in simulate_contact_network_by_cellid
+    self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 406, in simulate_direct_contacts
+    exposed_agent, agent_state_transition_by_day, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index)
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 517, in simulate_seir_state_transition
+    exposed_agent, test_scheduled, test_result_day = self.schedule_test(exposed_agent, exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
+                                                                        ^^^^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'exposed_agent' where it is not associated with a value
