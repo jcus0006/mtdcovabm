@@ -408,7 +408,8 @@ class Epidemiology:
     def simulate_seir_state_transition(self, exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index):
         symptomatic_day = -1
         recovered = False # if below condition is hit, False means Dead, True means recovered. 
-    
+        hospitalisation_days = []
+        
         self.agents_seir_state[exposed_agent_id] = SEIRState.Exposed
         self.agents_infection_severity[exposed_agent_id] = Severity.Undefined
 
@@ -443,6 +444,8 @@ class Epidemiology:
 
                 incremental_days += symp_to_sev_days
 
+                hospitalisation_days.append([incremental_days, sampled_exposed_timestep])
+
                 agent_state_transition_by_day[incremental_days] = (SEIRStateTransition.SymptomaticToSevere, sampled_exposed_timestep)
 
                 critical_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.CriticalProbability][agent_epi_age_bracket_index]
@@ -465,12 +468,16 @@ class Epidemiology:
 
                         incremental_days += cri_to_death_days
 
+                        hospitalisation_days.append([incremental_days, sampled_exposed_timestep])
+
                         agent_state_transition_by_day[incremental_days] = (SEIRStateTransition.CriticalToDeath, sampled_exposed_timestep)
                     else:
                         # critical
                         cri_to_rec_days = util.sample_log_normal(self.cri_to_rec_mean, self.cri_to_rec_std, 1, True)
 
                         incremental_days += cri_to_rec_days
+
+                        hospitalisation_days.append([incremental_days, sampled_exposed_timestep])
 
                         agent_state_transition_by_day[incremental_days] = (SEIRStateTransition.CriticalToRecovery, sampled_exposed_timestep)
 
@@ -480,6 +487,8 @@ class Epidemiology:
                     sev_to_rec_days = util.sample_log_normal(self.sev_to_rec_mean, self.sev_to_rec_std, 1, True)
 
                     incremental_days += sev_to_rec_days
+
+                    hospitalisation_days.append([incremental_days, sampled_exposed_timestep])
 
                     agent_state_transition_by_day[incremental_days] = (SEIRStateTransition.SevereToRecovery, sampled_exposed_timestep)
 
@@ -512,6 +521,9 @@ class Epidemiology:
 
             agent_state_transition_by_day[incremental_days] = (SEIRStateTransition.RecoveredToExposed, sampled_exposed_timestep)
 
+        if len(hospitalisation_days) > 0:
+            exposed_agent = self.schedule_hospitalisation(exposed_agent, hospitalisation_days)
+        
         if symptomatic_day > -1:
             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
             exposed_agent, test_scheduled, test_result_day = self.schedule_test(exposed_agent, exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
@@ -620,6 +632,11 @@ class Epidemiology:
         quarantine_days = agent["quarantine_days"]
 
         quarantine_days[0, 1] = [new_end_day, new_end_timestep]
+
+        return agent
+
+    def schedule_hospitalisation(self, agent, hospitalisation_days):
+        agent["hospitalisation_days"] = hospitalisation_days
 
         return agent
     

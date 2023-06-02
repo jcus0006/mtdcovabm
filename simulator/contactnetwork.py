@@ -8,10 +8,13 @@ from simulator.epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, agents_vaccination_doses, visualise=False, maintain_directcontacts_count=False):
+    def __init__(self, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, agents_vaccination_doses, visualise=False, maintain_directcontacts_count=False, max_no_processes=4):
         self.agents = agents
 
         self.cells = cells
+
+        self.mp_cells_keys = []
+
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
         self.contactnetworkparams = contactnetworkparams
         self.ageactivitycontactmatrix = np.array(self.contactnetworkparams["ageactivitycontactmatrix"])
@@ -29,13 +32,20 @@ class ContactNetwork:
         self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses)
 
     # full day, all cells context
-    def simulate_contact_network(self, day, weekday):
+    def simulate_contact_network(self, params):
+        day, weekday, mp_index = params
+        
         self.agents_directcontacts_by_simcelltype_by_day[day] = {}
         agents_directcontacts_by_simcelltype_thisday = self.agents_directcontacts_by_simcelltype_by_day[day]
+        
+        if mp_index >= 0:
+            sp_cells_keys = self.mp_cells_keys[mp_index]
+        else:
+            sp_cells_keys = list(self.cells_agents_timesteps.keys()) # single process without multi-processing
 
-        print("generate contact network for " + str(len(self.cells.keys())) + " cells")
+        print("generate contact network for " + str(len(sp_cells_keys)) + " cells on process: " + str(mp_index))
         start = time.time()
-        for cellid in self.cells.keys():
+        for cellid in sp_cells_keys:
             cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
 
             if len(cell_agents_directcontacts) > 0:
@@ -52,23 +62,6 @@ class ContactNetwork:
                 for key in cell_agents_directcontacts.keys():
                     contact_pair_timesteps = cell_agents_directcontacts[key]
 
-                    # min_start_ts, max_end_ts = None
-
-                    # for st_end_ts in contact_pair_timesteps:
-                    #     st_ts, en_ts = st_end_ts[0], st_end_ts[1]
-
-                    #     if min_start_ts is None:
-                    #         min_start_ts = st_ts
-                    #     else:
-                    #         if st_ts < min_start_ts:
-                    #             min_start_ts = st_ts
-
-                    #     if max_end_ts is None:
-                    #         max_end_ts = en_ts
-                    #     else:
-                    #         if en_ts > max_end_ts:
-                    #             max_end_ts = en_ts
-
                     min_start_ts, max_end_ts = contact_pair_timesteps[0][0], contact_pair_timesteps[len(contact_pair_timesteps) - 1][1]
                         
                     agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
@@ -76,7 +69,7 @@ class ContactNetwork:
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
         avg_time_taken = self.contactnetwork_sum_time_taken / day
-        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time.time() - start) + ", avg time taken: " + str(avg_time_taken))
+        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(mp_index))
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
@@ -87,7 +80,7 @@ class ContactNetwork:
         return agents_directcontacts, cell
 
     def generate_contact_network(self, cellid):
-        print("generating contact network for cell " + str(cellid))
+        # print("generating contact network for cell " + str(cellid))
         agents_ids = [] # each index represents an agent ID
         agents_degrees = [] # each index represents an agent degree, maps to agents_ids indices
         agents_total_timesteps = {} # {agentid : total_num_of_timesteps}
@@ -238,14 +231,14 @@ class ContactNetwork:
 
                         if potential_contacts is not None:
                             if degree > len(potential_contacts):
-                                print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: " + str(len(potential_contacts)))
+                                # print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: " + str(len(potential_contacts)))
                                 degree = len(potential_contacts)
 
                             direct_contacts_ids = np.random.choice(potential_contacts, size=degree, replace=False)
 
                             agents_directcontacts, agents_potentialcontacts, agents_directcontacts_count = self.create_contacts(agents_ids, agents_degrees, i, agent_id, degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts, agents_directcontacts_count, self.maintain_directcontacts_count)
-                        else:
-                            print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: 0")
+                        # else:
+                            # print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: 0")
                 
                 if self.visualise and self.maintain_directcontacts_count and len(agents_ids) > 500:
                     self.figurecount += 1
@@ -255,9 +248,7 @@ class ContactNetwork:
                     plt.ylabel("Count")
                     plt.show(block=False)
 
-                print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
-
-                # print("direct contacts: " + str(agents_directcontacts))
+                # print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
 
         return agents_directcontacts, cell
 
