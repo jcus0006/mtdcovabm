@@ -14,7 +14,7 @@ from simulator import tourism
 import multiprocessing as mp
 
 if __name__ == '__main__':
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents1mtourists)
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,

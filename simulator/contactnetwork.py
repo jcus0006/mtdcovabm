@@ -45,7 +45,7 @@ class ContactNetwork:
 
         print("generate contact network for " + str(len(sp_cells_keys)) + " cells on process: " + str(mp_index))
         start = time.time()
-        for cellid in sp_cells_keys:
+        for sp_cell_index, cellid in enumerate(sp_cells_keys):
             cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
 
             if len(cell_agents_directcontacts) > 0:
@@ -90,165 +90,165 @@ class ContactNetwork:
         agents_directcontacts_count = {} # {agentid: contact_count}
         population_per_timestep = [0 for i in range(144)]
 
-        cell = None
-        if cellid in self.cells_agents_timesteps:
-            cell = self.cells[cellid]
+        # cell = None
+        # if cellid in self.cells_agents_timesteps:
+        cell = self.cells[cellid]
 
-            cell_agents_timesteps = self.cells_agents_timesteps[cellid]
+        cell_agents_timesteps = self.cells_agents_timesteps[cellid]
 
-            indid = None
+        indid = None
 
-            if cell["type"] == "workplace":
-                if "indid" in cell["place"]:
-                    indid = cell["place"]["indid"]
+        if cell["type"] == "workplace":
+            if "indid" in cell["place"]:
+                indid = cell["place"]["indid"]
 
-            ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"], indid)
+        ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"], indid)
+        
+        agents_timesteps_sum = 0
+
+        for agentid, starttimestep, endtimestep in cell_agents_timesteps:
+            if agentid not in agents_ids:
+                agents_ids.append(agentid)
+                agents_degrees.append(0)
+
+            if agentid not in agents_total_timesteps:
+                agents_total_timesteps[agentid] = 0
+
+            for timestep in range(starttimestep, endtimestep+1):
+                population_per_timestep[timestep] += 1
+
+            total_timesteps = len(range(starttimestep, endtimestep+1))
+            agents_timesteps_sum += total_timesteps
+
+            agents_total_timesteps[agentid] += total_timesteps
+        
+            # pre computation of potential contacts
+            for ag_id, st_ts, end_ts in cell_agents_timesteps:
+                if ag_id != agentid and not self.pair_already_computed_in_agentspotentialcontacts(agents_potentialcontacts, agentid, ag_id):
+                    overlapping_range = self.get_overlapping_range(starttimestep, endtimestep, st_ts, end_ts)
+
+                    if agentid not in agents_potentialcontacts_count:
+                        agents_potentialcontacts_count[agentid] = 0
+
+                    if ag_id not in agents_potentialcontacts_count:
+                        agents_potentialcontacts_count[ag_id] = 0
+                    
+                    if overlapping_range is not None:
+                        if not self.pair_exists_in_agentspotentialcontacts(agents_potentialcontacts, agentid, ag_id):
+                            agents_potentialcontacts_count[agentid] += 1
+                            agents_potentialcontacts_count[ag_id] += 1
+
+                        pair_key = (agentid, ag_id)
+                        if pair_key not in agents_potentialcontacts:
+                            agents_potentialcontacts[pair_key] = []
+
+                        agents_potentialcontacts[pair_key].append(overlapping_range)
+
+        if len(agents_potentialcontacts) > 0:
+            if self.visualise and len(agents_ids) > 500:
+                self.figurecount += 1
+                plt.figure(self.figurecount)
+                plt.hist(agents_potentialcontacts_count.values(), bins=10)
+                plt.xlabel("Potential Contacts")
+                plt.ylabel("Count")
+                plt.show(block=False)
+        
+            # population_per_timestep_no_zeros = np.array([pop_per_ts for pop_per_ts in population_per_timestep if pop_per_ts > 0])
+
+            # n = round(np.median(population_per_timestep_no_zeros)) # max/median population during the day (if using median remove 0s as they would be outliers and take middle value)      
+            n = len(agents_ids)
+
+            avg_contacts_activity_agegroups_col = np.array(self.ageactivitycontactmatrix[:, 2 + ageactivitycontact_cm_activityid]) # start from 4th column onwards, ageactivitycontact_cm_activityid min = 1
+
+            k = round(np.mean(avg_contacts_activity_agegroups_col)) # average for activity across all age groups
+
+            max_degree = round((k * n)) # should this be k * n / 2 ?
+
+            avg_agents_timestep_counts = agents_timesteps_sum / n
+
+            agents_potentialcontacts_count_np = np.array(list(agents_potentialcontacts_count.values()))
+            avg_potential_contacts_count = np.mean(agents_potentialcontacts_count_np)
+            std_potential_contacts_count = np.std(agents_potentialcontacts_count_np)
             
-            agents_timesteps_sum = 0
+            # create degrees per agent
+            for agentindex, agentid in enumerate(agents_ids):
+                agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
 
-            for agentid, starttimestep, endtimestep in cell_agents_timesteps:
-                if agentid not in agents_ids:
-                    agents_ids.append(agentid)
-                    agents_degrees.append(0)
+                if agent_potentialcontacts_count > 0:
+                    agent = self.agents[agentid]
 
-                if agentid not in agents_total_timesteps:
-                    agents_total_timesteps[agentid] = 0
+                    agent_timestep_count = agents_total_timesteps[agentid]
 
-                for timestep in range(starttimestep, endtimestep+1):
-                    population_per_timestep[timestep] += 1
+                    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[agent["age_bracket_index"], 2 + ageactivitycontact_cm_activityid]
 
-                total_timesteps = len(range(starttimestep, endtimestep+1))
-                agents_timesteps_sum += total_timesteps
+                    timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
 
-                agents_total_timesteps[agentid] += total_timesteps
+                    potential_contacts_count_multiplier = 1
+                    
+                    if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
+                        potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
+
+                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.masks_hygiene_distancing_multiplier)
+
+            agents_degrees_sum = round(np.sum(agents_degrees))
             
-                # pre computation of potential contacts
-                for ag_id, st_ts, end_ts in cell_agents_timesteps:
-                    if ag_id != agentid and not self.pair_already_computed_in_agentspotentialcontacts(agents_potentialcontacts, agentid, ag_id):
-                        overlapping_range = self.get_overlapping_range(starttimestep, endtimestep, st_ts, end_ts)
+            # normalize against "max_degree" i.e. k * n, and ensure agent specific degrees do not exceed number of potential contacts
+            for i in range(len(agents_degrees)):
+                degree = agents_degrees[i]
 
-                        if agentid not in agents_potentialcontacts_count:
-                            agents_potentialcontacts_count[agentid] = 0
+                agentid = agents_ids[i]
 
-                        if ag_id not in agents_potentialcontacts_count:
-                            agents_potentialcontacts_count[ag_id] = 0
-                        
-                        if overlapping_range is not None:
-                            if not self.pair_exists_in_agentspotentialcontacts(agents_potentialcontacts, agentid, ag_id):
-                                agents_potentialcontacts_count[agentid] += 1
-                                agents_potentialcontacts_count[ag_id] += 1
+                agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
 
-                            pair_key = (agentid, ag_id)
-                            if pair_key not in agents_potentialcontacts:
-                                agents_potentialcontacts[pair_key] = []
+                if agents_degrees_sum > max_degree:
+                    degree = min(agent_potentialcontacts_count, round((degree / agents_degrees_sum) * max_degree))
+                else:
+                    degree = min(agent_potentialcontacts_count, round(degree))
 
-                            agents_potentialcontacts[pair_key].append(overlapping_range)
+                agents_degrees[i] = degree
 
-            if len(agents_potentialcontacts) > 0:
-                if self.visualise and len(agents_ids) > 500:
-                    self.figurecount += 1
-                    plt.figure(self.figurecount)
-                    plt.hist(agents_potentialcontacts_count.values(), bins=10)
-                    plt.xlabel("Potential Contacts")
-                    plt.ylabel("Count")
-                    plt.show(block=False)
+            if self.visualise and len(agents_ids) > 500:
+                self.figurecount += 1
+                plt.figure(self.figurecount)
+                plt.hist(agents_degrees, bins=10)
+                plt.xlabel("Expected Direct Contacts")
+                plt.ylabel("Count")
+                plt.show(block=False)
+
+            agents_degrees_backup = copy(agents_degrees) # these are final degrees, to save. agents_degrees will be deducted from below.
+            agents_potentialcontacts_backup = deepcopy(agents_potentialcontacts)
+
+            agents_degrees, agents_ids = zip(*sorted(zip(agents_degrees, agents_ids), reverse=True))
+
+            agents_degrees, agents_ids = list(agents_degrees), list(agents_ids)
+
+            for i in range(len(agents_degrees)):
+                agent_id = agents_ids[i]
+                degree = agents_degrees[i]
+
+                if degree > 0:
+                    potential_contacts = util.get_all_contacts_ids_by_id(agent_id, agents_potentialcontacts.keys(), agents_ids, agents_degrees, shuffle=True)
+
+                    if potential_contacts is not None:
+                        if degree > len(potential_contacts):
+                            # print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: " + str(len(potential_contacts)))
+                            degree = len(potential_contacts)
+
+                        direct_contacts_ids = np.random.choice(potential_contacts, size=degree, replace=False)
+
+                        agents_directcontacts, agents_potentialcontacts, agents_directcontacts_count = self.create_contacts(agents_ids, agents_degrees, i, agent_id, degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts, agents_directcontacts_count, self.maintain_directcontacts_count)
+                    # else:
+                        # print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: 0")
             
-                # population_per_timestep_no_zeros = np.array([pop_per_ts for pop_per_ts in population_per_timestep if pop_per_ts > 0])
+            if self.visualise and self.maintain_directcontacts_count and len(agents_ids) > 500:
+                self.figurecount += 1
+                plt.figure(self.figurecount)
+                plt.hist(agents_directcontacts_count.values(), bins=10)
+                plt.xlabel("Actual Direct Contacts")
+                plt.ylabel("Count")
+                plt.show(block=False)
 
-                # n = round(np.median(population_per_timestep_no_zeros)) # max/median population during the day (if using median remove 0s as they would be outliers and take middle value)      
-                n = len(agents_ids)
-
-                avg_contacts_activity_agegroups_col = np.array(self.ageactivitycontactmatrix[:, 2 + ageactivitycontact_cm_activityid]) # start from 4th column onwards, ageactivitycontact_cm_activityid min = 1
-
-                k = round(np.mean(avg_contacts_activity_agegroups_col)) # average for activity across all age groups
-
-                max_degree = round((k * n)) # should this be k * n / 2 ?
-
-                avg_agents_timestep_counts = agents_timesteps_sum / n
-
-                agents_potentialcontacts_count_np = np.array(list(agents_potentialcontacts_count.values()))
-                avg_potential_contacts_count = np.mean(agents_potentialcontacts_count_np)
-                std_potential_contacts_count = np.std(agents_potentialcontacts_count_np)
-                
-                # create degrees per agent
-                for agentindex, agentid in enumerate(agents_ids):
-                    agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
-
-                    if agent_potentialcontacts_count > 0:
-                        agent = self.agents[agentid]
-
-                        agent_timestep_count = agents_total_timesteps[agentid]
-
-                        avg_contacts_by_age_activity = self.ageactivitycontactmatrix[agent["age_bracket_index"], 2 + ageactivitycontact_cm_activityid]
-
-                        timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
-
-                        potential_contacts_count_multiplier = 1
-                        
-                        if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
-                            potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
-
-                        agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.masks_hygiene_distancing_multiplier)
-
-                agents_degrees_sum = round(np.sum(agents_degrees))
-                
-                # normalize against "max_degree" i.e. k * n, and ensure agent specific degrees do not exceed number of potential contacts
-                for i in range(len(agents_degrees)):
-                    degree = agents_degrees[i]
-
-                    agentid = agents_ids[i]
-
-                    agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
-
-                    if agents_degrees_sum > max_degree:
-                        degree = min(agent_potentialcontacts_count, round((degree / agents_degrees_sum) * max_degree))
-                    else:
-                        degree = min(agent_potentialcontacts_count, round(degree))
-
-                    agents_degrees[i] = degree
-
-                if self.visualise and len(agents_ids) > 500:
-                    self.figurecount += 1
-                    plt.figure(self.figurecount)
-                    plt.hist(agents_degrees, bins=10)
-                    plt.xlabel("Expected Direct Contacts")
-                    plt.ylabel("Count")
-                    plt.show(block=False)
-
-                agents_degrees_backup = copy(agents_degrees) # these are final degrees, to save. agents_degrees will be deducted from below.
-                agents_potentialcontacts_backup = deepcopy(agents_potentialcontacts)
-
-                agents_degrees, agents_ids = zip(*sorted(zip(agents_degrees, agents_ids), reverse=True))
-
-                agents_degrees, agents_ids = list(agents_degrees), list(agents_ids)
-
-                for i in range(len(agents_degrees)):
-                    agent_id = agents_ids[i]
-                    degree = agents_degrees[i]
-
-                    if degree > 0:
-                        potential_contacts = util.get_all_contacts_ids_by_id(agent_id, agents_potentialcontacts.keys(), agents_ids, agents_degrees, shuffle=True)
-
-                        if potential_contacts is not None:
-                            if degree > len(potential_contacts):
-                                # print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: " + str(len(potential_contacts)))
-                                degree = len(potential_contacts)
-
-                            direct_contacts_ids = np.random.choice(potential_contacts, size=degree, replace=False)
-
-                            agents_directcontacts, agents_potentialcontacts, agents_directcontacts_count = self.create_contacts(agents_ids, agents_degrees, i, agent_id, degree, direct_contacts_ids, agents_potentialcontacts, agents_directcontacts, agents_directcontacts_count, self.maintain_directcontacts_count)
-                        # else:
-                            # print("expected to find " + str(degree) + " direct contacts for agent: " + str(agent_id) + ", found: 0")
-                
-                if self.visualise and self.maintain_directcontacts_count and len(agents_ids) > 500:
-                    self.figurecount += 1
-                    plt.figure(self.figurecount)
-                    plt.hist(agents_directcontacts_count.values(), bins=10)
-                    plt.xlabel("Actual Direct Contacts")
-                    plt.ylabel("Count")
-                    plt.show(block=False)
-
-                # print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
+            # print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
 
         return agents_directcontacts, cell
 
