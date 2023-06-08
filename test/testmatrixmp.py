@@ -315,7 +315,7 @@ if __name__ == '__main__':
     # pool = CustomPool(result_queue=result_queue)
 
     # main_single(result_queue, 16384, 10)
-    # main_processes(result_queue, 16384, 12, 10)
-    # main_pool(pool, result_queue, 16384, 12, 10)
-    main_processes_shared_mem(result_queue, 16384, 12, 10)
-    # main_pool_sharedmem(pool, result_queue, 16384, 12, 10, use_map=False)
+    # main_processes(result_queue, 16384, 12, 10) # by reference
+    # main_pool(pool, result_queue, 16384, 12, 10) # by value
+    main_processes_shared_mem(result_queue, 16384, 12, 10) # by reference (shared memory)
+    # main_pool_sharedmem(pool, result_queue, 16384, 12, 10, use_map=False) # by value (shared memory)

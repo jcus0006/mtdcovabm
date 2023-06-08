@@ -14,7 +14,7 @@ from simulator import tourism
 import multiprocessing as mp
 
 if __name__ == '__main__':
-    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019)
+    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -368,7 +368,7 @@ if __name__ == '__main__':
     #     agents = {i:agents[i] for i in range(10_000)}
 
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util)
-    itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util, tourist_entry_infection_probability)
+    itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util, tourist_entry_infection_probability)
 
     try:
         itinerary_sum_time_taken = 0
