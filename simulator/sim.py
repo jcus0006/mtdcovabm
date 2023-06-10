@@ -14,7 +14,7 @@ from simulator import tourism
 import multiprocessing as mp
 
 if __name__ == '__main__':
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -208,7 +208,7 @@ if __name__ == '__main__':
         #     malesbyindustries[industry] = malesbyindustry
         #     femalesbyindustries[industry] = femalesbyindustry
 
-    cell = Cells(agents, cells, cellindex)
+    cells_util = Cells(agents, cells, cellindex)
 
     if params["loadhouseholds"]:
         householdsfile = open("./population/" + population_sub_folder + "households.json")
@@ -223,7 +223,7 @@ if __name__ == '__main__':
 
             workplaces_cells_params = cellsparams["workplaces"]
 
-        households, cells_households, householdsworkplaces, cells_householdsworkplaces = cell.convert_households(households_original, workplaces, workplaces_cells_params)
+        households, cells_households, householdsworkplaces, cells_householdsworkplaces = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
 
         contactnetwork_util.epi_util.cells_households = cells_households
         
@@ -236,7 +236,7 @@ if __name__ == '__main__':
 
         institutions_cells_params = cellsparams["institutions"]
 
-        institutiontypes, cells_institutions = cell.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
+        institutiontypes, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
 
         contactnetwork_util.epi_util.cells_institutions = cells_institutions  
 
@@ -298,7 +298,7 @@ if __name__ == '__main__':
         accom_cells_params = cellsparams["accommodation"]
         entertainment_acitvity_dist = cellsparams["entertainmentactivitydistribution"]
 
-        transport, cells_transport = cell.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
+        transport, cells_transport = cells_util.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
 
         # cells_accommodation_by_accomid = {} # {accomid: [{cellid: {cellinfo}}]}
         accommodations = []
@@ -336,7 +336,7 @@ if __name__ == '__main__':
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cell.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
+        industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
         contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
@@ -351,17 +351,17 @@ if __name__ == '__main__':
 
         schools_cells_params = cellsparams["schools"]
 
-        min_nts_size, max_nts_size, min_classroom_size, max_classroom_size = cell.get_min_max_school_sizes(schools)
+        min_nts_size, max_nts_size, min_classroom_size, max_classroom_size = cells_util.get_min_max_school_sizes(schools)
 
         print("Min classroom size: " + str(min_classroom_size) + ", Max classroom size: " + str(max_classroom_size))
         print("Min non-teaching staff size: " + str(min_nts_size) + ", Max classroom size: " + str(max_nts_size))
 
-        schooltypes, cells_schools, cells_classrooms = cell.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
+        schooltypes, cells_schools, cells_classrooms = cells_util.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
 
     if params["religiouscells"]:
         religious_cells_params = cellsparams["religious"]
 
-        churches, cells_religious = cell.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
+        churches, cells_religious = cells_util.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
     # this might cause problems when referring to related agents, by household, workplaces etc
     # if params["quickdebug"]:
@@ -451,12 +451,29 @@ if __name__ == '__main__':
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
 
                 # contact tracing
+                print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
+                start = time.time()
+
                 epi_util.contact_tracing(day)
 
+                time_taken = time.time() - start
+                print("contact_tracing time taken: " + str(time_taken))
+
                 # vaccinations
+                print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
+                start = time.time()
+
                 epi_util.schedule_vaccinations(day)
 
+                time_taken = time.time() - start
+                print("schedule_vaccinations time taken: " + str(time_taken))
+
+                print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
+                start = time.time()
                 epi_util.refresh_dynamic_parameters(day)
+
+                time_taken = time.time() - start
+                print("refresh_dynamic_parameters time taken: " + str(time_taken))
 
             day_time_taken = time.time() - day_start
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(epi_util.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))

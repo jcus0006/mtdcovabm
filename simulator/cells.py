@@ -600,6 +600,7 @@ class Cells:
                 # np.random.shuffle(residents)
                 
                 staff_start = 0
+                resident_start = 0
                 for index, this_cell_count in enumerate(cell_sizes):
 
                     # first assign staff
@@ -609,14 +610,16 @@ class Cells:
 
                     temp_staff = staff[staff_start:staff_end]
 
-                    staff_start = staff_end
+                    staff_start = staff_end # for next iteration
                     
                     # then assign residents
                     resident_count = res_cell_sizes[index]
-                    resident_start = index * resident_count
+
                     resident_end = resident_start + resident_count
 
                     temp_residents = residents[resident_start:resident_end]
+
+                    resident_start = resident_end # for next iteration
 
                     cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": temp_residents, "staff_uids": temp_staff }
 

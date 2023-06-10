@@ -1,6 +1,13 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 417, in <module>
-    itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1115, in generate_local_itinerary
-    (not is_quarantined_or_hospitalised or is_quarantine_hospital_start_day )
-TypeError: 'bool' object is not callable
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 446, in <module>
+    contactnetwork_util.simulate_contact_network(params_list)
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 49, in simulate_contact_network
+    cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 76, in simulate_contact_network_by_cellid
+    agents_directcontacts, cell = self.generate_contact_network(cellid)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 95, in generate_contact_network
+    cell = self.cells[cellid]
+           ~~~~~~~~~~^^^^^^^^
+KeyError: -1

@@ -699,6 +699,7 @@ class Epidemiology:
 
                                 for index, contact_id in enumerate(sampled_traced_contact_ids):
                                     positive_contact_agent = None
+                                    quarantine_reference_agent = None
 
                                     if index in sampled_quarantine_indices and contact_id not in quarantine_scheduled_ids:
                                         positive_contact_agent = self.agents[contact_id]
@@ -707,6 +708,7 @@ class Epidemiology:
 
                                         if quarantine_scheduled:
                                             quarantine_scheduled_ids.append(contact_id)
+                                            quarantine_reference_agent = positive_contact_agent
 
                                     if index in sampled_test_indices and contact_id not in test_scheduled_ids:
                                         if positive_contact_agent is None:
@@ -778,7 +780,12 @@ class Epidemiology:
                                                 else:
                                                     sampled_sec_test_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_tests, replace=False)
 
-                                                quar_start_day, quar_start_timestep, quar_end_day = positive_contact_agent["quarantine_days"][0][0][0], positive_contact_agent["quarantine_days"][0][0][1], positive_contact_agent["quarantine_days"][0][1][0]
+                                                quar_start_day, quar_start_timestep, quar_end_day = None, None, None
+                                                if quarantine_reference_agent is not None:
+                                                    quar_start_day, quar_start_timestep, quar_end_day = quarantine_reference_agent["quarantine_days"][0][0][0], quarantine_reference_agent["quarantine_days"][0][0][1], quarantine_reference_agent["quarantine_days"][0][1][0]
+                                                else:
+                                                    quar_start_day = day
+                                                    quar_start_timestep = np.random.choice(self.timestep_options, size=1)[0]
 
                                                 for sec_index, sec_contact_id in enumerate(secondary_contact_ids):
                                                     secondary_contact_agent = None
@@ -790,6 +797,9 @@ class Epidemiology:
 
                                                         if quarantine_scheduled:
                                                             quarantine_scheduled_ids.append(sec_contact_id)
+
+                                                            if quarantine_reference_agent is None:
+                                                                quarantine_reference_agent = secondary_contact_agent
 
                                                     if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids:
                                                         if secondary_contact_agent is None:

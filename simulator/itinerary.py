@@ -1110,7 +1110,7 @@ class Itinerary:
                 if len(agent["quarantine_days"]) > 0:
                     agent["prev_day_quarantine_days"] = copy(agent["quarantine_days"])
                     
-                if sampled_non_daily_activity != NonDailyActivity.Travel or is_departureday:
+                if sampled_non_daily_activity != NonDailyActivity.Travel or is_departureday or is_arrivalday: # is_arrivalday
                     if sampled_non_daily_activity != NonDailyActivity.Sick and guardian is None:
                         self.sample_transport_cells(agent, prev_day_last_event)
 
