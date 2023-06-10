@@ -3,26 +3,58 @@ import multiprocessing.shared_memory as shm
 import numpy as np
 import time
 import logging
+import traceback
 
 term_flag = None
+shared_res = None
 
-def calculate_row_sum(result_queue, matrix, start_row, end_row, process_index):
+# def calculate_row_sum(result_queue, matrix, start_row, end_row, process_index, is_shared=False):
+#     start = time.time()
+
+#     result = {}
+#     for i in range(10): # simulation of computation
+#         for row in range(start_row, end_row):
+#             row_sum = np.sum(matrix[row])
+
+#             result[row] = row_sum
+
+#         for col in range(start_row, end_row):
+#             col_sum = np.sum(matrix[:, col])
+
+#             result[col] -= col_sum
+
+#     result_queue.put((start_row, result))
+
+#     time_taken = time.time() - start
+#     print("process " + str(process_index) + ": " + str(time_taken))
+
+def calculate_row_sum(result_queue, matrix, start_row, end_row, process_index, is_shared=False):
+    global shared_res
     start = time.time()
 
     result = {}
-    for i in range(10): # just simulation of computation
+    for i in range(10): # simulation of computation
         for row in range(start_row, end_row):
             row_sum = np.sum(matrix[row])
-            result[row] = row_sum
+
+            if not is_shared:
+                result[row] = row_sum
+            else:
+                shared_res[row] = row_sum
 
         for col in range(start_row, end_row):
             col_sum = np.sum(matrix[:, col])
-            result[col] -= col_sum
 
-    result_queue.put((start_row, result))
+            if not is_shared:
+                result[col] -= col_sum
+            else:
+                shared_res[col] -= col_sum
+
+    if not is_shared:
+        result_queue.put((start_row, result))
 
     time_taken = time.time() - start
-    # print("process " + str(process_index) + ": " + str(time_taken))
+    print("process " + str(process_index) + ": " + str(time_taken))
 
 def worker(params):
     result_queue, matrix, start_row, end_row, process_index = params
@@ -30,15 +62,26 @@ def worker(params):
     calculate_row_sum(result_queue, matrix, start_row, end_row, process_index)
 
 def worker_shm(params):
-    result_queue, shm_name, shape, dtype, start_row, end_row, process_index = params
-    shm_matrix = shm.SharedMemory(name=shm_name)
-    matrix = np.ndarray(shape, dtype=dtype, buffer=shm_matrix.buf)
-    calculate_row_sum(result_queue, matrix, start_row, end_row, process_index)
+    try:
+        result_queue, shm_name, shape, dtype, start_row, end_row, process_index, is_shared = params
+        shm_matrix = shm.SharedMemory(name=shm_name)
+        matrix = np.ndarray(shape, dtype=dtype, buffer=shm_matrix.buf)
+        calculate_row_sum(result_queue, matrix, start_row, end_row, process_index, is_shared)
+    except:
+        with open('testmp_stack_trace.txt', 'w') as f:
+            traceback.print_exc(file=f)
 
-def init_worker_keepalive(termination_flag):
+# def init_worker_keepalive(termination_flag):
+#     global term_flag
+
+#     term_flag = termination_flag
+
+def init_worker_keepalive(termination_flag, shared_results):
     global term_flag
+    global shared_res
 
     term_flag = termination_flag
+    shared_res = shared_results
 
 def worker_keepalive(params): # start_row, end_row, process_index
     worker_queue, result_queue, shm_name, shape, dtype, process_index = params
@@ -183,7 +226,7 @@ def main_processes_shared_mem(result_queue, num_rows, num_processes, int_range):
         if process_index == num_processes - 1:
             # Adjust end row for the last process to include remaining rows
             end_row = num_rows
-        process = mp.Process(target=worker_shm, args=((result_queue, shm_name,  matrix.shape, matrix.dtype, start_row, end_row, process_index),))
+        process = mp.Process(target=worker_shm, args=((result_queue, shm_name,  matrix.shape, matrix.dtype, start_row, end_row, process_index, False),))
         process.start()
         processes.append(process)
     
@@ -260,76 +303,85 @@ def main_pool(pool, result_queue, num_rows, num_processes, int_range, use_map=Tr
     time_taken = time.time() - start
     print("combined: " + str(time_taken))
 
-def main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=True):
-    # Create a 1024 x 1024 matrix with random integers
-    matrix = np.random.randint(0, int_range, size=(num_rows, num_rows))
+def main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=True, use_shared_results=False, shared_results=None):
+    try:
+        # Create a 1024 x 1024 matrix with random integers
+        matrix = np.random.randint(0, int_range, size=(num_rows, num_rows))
 
-    # Number of processes
-    # num_processes = mp.cpu_count()
+        # Number of processes
+        # num_processes = mp.cpu_count()
 
-    # Calculate number of rows per process
-    rows_per_process = num_rows // num_processes
+        # Calculate number of rows per process
+        rows_per_process = num_rows // num_processes
 
-    # Create shared memory to hold the matrix data
-    shm_matrix = shm.SharedMemory(create=True, size=matrix.nbytes)
+        # Create shared memory to hold the matrix data
+        shm_matrix = shm.SharedMemory(create=True, size=matrix.nbytes)
 
-    # Map the shared memory to a numpy array
-    shared_array = np.ndarray(matrix.shape, dtype=matrix.dtype, buffer=shm_matrix.buf)
+        # Map the shared memory to a numpy array
+        shared_array = np.ndarray(matrix.shape, dtype=matrix.dtype, buffer=shm_matrix.buf)
 
-    # Copy the matrix data to the shared memory
-    np.copyto(shared_array, matrix)
+        # Copy the matrix data to the shared memory
+        np.copyto(shared_array, matrix)
 
-    # Get the name of the shared memory
-    shm_name = shm_matrix.name
+        # Get the name of the shared memory
+        shm_name = shm_matrix.name
 
-    start = time.time()
+        start = time.time()
 
-    # Create a pool of processes
-    # pool = mp.Pool(num_processes)
+        # Create a pool of processes
+        # pool = mp.Pool(num_processes)
 
-    params = []
-    # Spawn processes to calculate row sums
-    for process_index in range(num_processes):
-        start_row = process_index * rows_per_process
-        end_row = start_row + rows_per_process
-        if process_index == num_processes - 1:
-            # Adjust end row for the last process to include remaining rows
-            end_row = num_rows
+        params = []
+        # Spawn processes to calculate row sums
+        for process_index in range(num_processes):
+            start_row = process_index * rows_per_process
+            end_row = start_row + rows_per_process
+            if process_index == num_processes - 1:
+                # Adjust end row for the last process to include remaining rows
+                end_row = num_rows
+
+            if use_map:
+                params.append((result_queue, shm_name, matrix.shape, matrix.dtype, start_row, end_row, process_index, use_shared_results))
+            else:
+                pool.apply_async(worker_shm, args=((result_queue, shm_name,  matrix.shape, matrix.dtype, start_row, end_row, process_index, use_shared_results),))
 
         if use_map:
-            params.append((result_queue, shm_name, matrix.shape, matrix.dtype, start_row, end_row, process_index))
+            # Call the worker method in parallel
+            results = pool.map(worker_shm, iter(params))
+
+        results = {}
+        if not use_shared_results:
+            for _ in range(num_processes):
+                start_index, result = result_queue.get()
+                results[start_index] = result
+
+        # Close the pool of processes
+        pool.close()
+        pool.join()
+
+        time_taken = time.time() - start
+        print("all: " + str(time_taken))
+
+        if not use_shared_results:
+            start = time.time()
+            start_indices_keys = sorted(list(results.keys()))
+            combined_result = [result for start_index in start_indices_keys for result in results[start_index].values()]
+            # print(combined_result)
+
+            time_taken = time.time() - start
+            print("combined: " + str(time_taken))
         else:
-            pool.apply_async(worker_shm, args=((result_queue, shm_name,  matrix.shape, matrix.dtype, start_row, end_row, process_index),))
+            print("shared results can be used. length: " + str(len(shared_results)))
 
-    if use_map:
-        # Call the worker method in parallel
-        results = pool.map(worker_shm, iter(params))
+        # Close the shared memory
+        shm_matrix.close()
 
-    results = {}
-    for _ in range(num_processes):
-        start_index, result = result_queue.get()
-        results[start_index] = result
+        # Optionally, unlink and remove the shared memory
+        shm_matrix.unlink()
 
-    # Close the pool of processes
-    pool.close()
-    pool.join()
-
-    # Close the shared memory
-    shm_matrix.close()
-
-    # Optionally, unlink and remove the shared memory
-    shm_matrix.unlink()
-
-    time_taken = time.time() - start
-    print("all: " + str(time_taken))
-
-    start = time.time()
-    start_indices_keys = sorted(list(results.keys()))
-    combined_result = [result for start_index in start_indices_keys for result in results[start_index].values()]
-    # print(combined_result)
-
-    time_taken = time.time() - start
-    print("combined: " + str(time_taken))
+    except:
+        with open('testmp_stack_trace.txt', 'w') as f:
+            traceback.print_exc(file=f)
 
 def main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_flag, num_rows, num_processes, row_steps_per_msg, int_range, use_map=True, create_new_processes=True, terminate_now=True, shm_matrix=None):   
     use_map = False # pool.map is blocking, use apply_async
@@ -413,43 +465,58 @@ def main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_
     return shm_matrix
 
 if __name__ == '__main__':
+    num_rows = 16384
+    int_range = 10
+    num_processes = 4
+
     manager = mp.Manager()
 
     result_queue = manager.Queue()
 
     worker_queue = manager.Queue()
 
+    # to be used with keep_alive
     termination_flag = mp.Value("i", 0)
 
-    pool = mp.Pool(initializer=init_worker_keepalive, initargs=(termination_flag,))
+    # to be used with shared data structures
+    shared_results = mp.Array('i', num_rows)
 
-    # main_single(result_queue, 16384, 10)
-    # main_processes(result_queue, 16384, 12, 10) # by reference
-    # main_pool(pool, result_queue, 16384, 12, 10) # by value
-    # main_processes_shared_mem(result_queue, 16384, 12, 10) # by reference (shared memory)
-    # main_pool_sharedmem(pool, result_queue, 16384, 12, 10, use_map=False) # by value (shared memory)
-    # main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_flag, 16384, 8, 2048, 10, use_map=False) # by value (keep alive / shared memory)
+    # pool = mp.Pool(initializer=init_worker_keepalive, initargs=(termination_flag,))
+    pool = mp.Pool(initializer=init_worker_keepalive, initargs=(termination_flag, shared_results,))
 
-    sum_time_taken = 0
-    n = 10
-    shm_matrix = ""
+    # pool = mp.Pool()
 
-    for i in range(n):
-        start = time.time()
+    # main_single(result_queue, num_rows, int_range)
+    # main_processes(result_queue, num_rows, num_processes, int_range) # by reference
+    # main_pool(pool, result_queue, num_rows, num_processes, int_range) # by value
+    # main_processes_shared_mem(result_queue, num_rows, num_processes, int_range) # by reference (shared memory)
+    # main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=False) # by value (shared memory)
+    # main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_flag, num_rows, num_processes, 2048, int_range, use_map=False) # by value (keep alive / shared memory)
 
-        create_new_processes = False
-        terminate_now = False
+    # shared_mem keep alive
+    # sum_time_taken = 0
+    # n = 10
+    # shm_matrix = ""
 
-        if i == 0:
-            create_new_processes = True
+    # for i in range(n):
+    #     start = time.time()
 
-        if i == n-1:
-            terminate_now = True
+    #     create_new_processes = False
+    #     terminate_now = False
 
-        shm_matrix = main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_flag, 16384, 8, 2048, 10, use_map=False, create_new_processes=create_new_processes, terminate_now=terminate_now, shm_matrix=shm_matrix) # by value (keep alive / shared memory)
+    #     if i == 0:
+    #         create_new_processes = True
 
-        time_taken = time.time() - start
-        sum_time_taken += time_taken
+    #     if i == n-1:
+    #         terminate_now = True
+
+    #     shm_matrix = main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_flag, num_rows, num_processes, 2048, int_range, use_map=False, create_new_processes=create_new_processes, terminate_now=terminate_now, shm_matrix=shm_matrix) # by value (keep alive / shared memory)
+
+    #     time_taken = time.time() - start
+    #     sum_time_taken += time_taken
         
-    avg_time_taken = sum_time_taken / n
-    print("average time taken: " + str(avg_time_taken))
+    # avg_time_taken = sum_time_taken / n
+    # print("average time taken: " + str(avg_time_taken))
+    # end - shared_mem keep alive
+
+    main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=False, use_shared_results=True, shared_results=shared_results) # by value (shared memory)
