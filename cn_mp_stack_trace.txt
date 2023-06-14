@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 57, in contactnetwork_worker
+    contact_network_util.simulate_contact_network(day, weekday)
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 77, in simulate_contact_network
+    cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 104, in simulate_contact_network_by_cellid
+    agents_directcontacts, cell = self.generate_contact_network(cellid)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 218, in generate_contact_network
+    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.masks_hygiene_distancing_multiplier)
+                                                                                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Epidemiology' object has no attribute 'masks_hygiene_distancing_multiplier'

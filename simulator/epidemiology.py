@@ -6,7 +6,7 @@ from simulator import util
 from enum import IntEnum
 
 class Epidemiology:
-    def __init__(self, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids=None, cells_households=None, cells_institutions=None, cells_accommodation=None):
+    def __init__(self, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dyn_params):
         self.n_locals = n_locals
         self.n_tourists = n_tourists
         self.locals_ratio_to_full_pop = locals_ratio_to_full_pop
@@ -44,25 +44,10 @@ class Epidemiology:
         self.contact_tracing_positive_delay_days, self.contact_tracing_secondary_delay_days = contact_tracing_params[5], contact_tracing_params[6]
         contact_tracing_success_probability = epidemiologyparams["contact_tracing_success_probability"]
         self.contact_tracing_residence_probability, self.contact_tracing_work_probability, self.contact_tracing_school_probability, self.contact_tracing_community_probability = contact_tracing_success_probability[0], contact_tracing_success_probability[1], contact_tracing_success_probability[2], contact_tracing_success_probability[3]
-        self.intervention_infectiousrate_thresholds = epidemiologyparams["intervention_infectiousrate_thresholds"]
-        self.intervention_day_thresholds = epidemiologyparams["intervention_day_thresholds"]
         self.daily_vaccinations_parameters = epidemiologyparams["daily_vaccinations_parameters"]
-        self.vaccination_infectiousrate_thresholds = epidemiologyparams["vaccination_infectiousrate_thresholds"]
-        self.masks_hygiene_distancing_infectiousrate_thresholds = epidemiologyparams["masks_hygiene_distancing_infectiousrate_thresholds"]
-        self.vaccination_day_thresholds = epidemiologyparams["vaccination_day_thresholds"]
-        self.masks_hygiene_distancing_day_thresholds = epidemiologyparams["masks_hygiene_distancing_day_thresholds"]
-        self.immunity_after_vaccination_multiplier = epidemiologyparams["immunity_after_vaccination_multiplier"]       
+        self.immunity_after_vaccination_multiplier = epidemiologyparams["immunity_after_vaccination_multiplier"]  
 
-        self.quarantine_enabled = False
-        self.testing_enabled = False
-        self.contact_tracing_enabled = False
-        self.masks_hygiene_distancing_multiplier = 0
-        self.vaccination_propensity = 0
-        self.last_vaccination_propensity = self.vaccination_propensity
-        self.num_agents_to_be_vaccinated = 0
-
-        # daily refreshed statistics here
-        self.infectious_rate = 0
+        self.dyn_params = dyn_params     
 
         self.agents = agents
         self.agents_seir_state = agents_seir_state
@@ -79,219 +64,6 @@ class Epidemiology:
 
         self.timestep_options = np.arange(42, 121) # 7.00 - 20.00
         self.contact_tracing_agent_ids = []
-
-    def initialize_agent_states(self, n, initial_seir_state_distribution, agents_seir_state):
-        partial_agents_seir_state = agents_seir_state[:n]
-
-        for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
-            seirid = seirindex + 1
-
-            total_to_assign_this_state = round(n * seirstate_percent)
-
-            seirstate = SEIRState(seirid)
-
-            undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
-
-            if len(undefined_indices) > 0:
-                undefined_indices = np.array(undefined_indices)
-
-            this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
-
-            if len(this_state_indices) > 0:
-                partial_agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
-            else:
-                partial_agents_seir_state = []
-
-        undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
-
-        for index in undefined_indices:
-            random_state = random.randint(1, 4)
-
-            random_seir_state = SEIRState(random_state)
-
-            partial_agents_seir_state[index] = random_seir_state
-
-        return agents_seir_state
-
-    # to be called at the beginning of itinerary generation per day, per agent
-    # if day is in agent["state_transition_by_day"]
-    #   - update agent state (as required) - to be logged
-    #   - clear agent["state_transition_by_day"] for day
-    def update_agent_state(self, agentid, agent, day):
-        if day in agent["state_transition_by_day"]:
-            seir_state_transition, timestep = agent["state_transition_by_day"][day]
-            current_seir_state = self.agents_seir_state[agentid]
-            current_infection_type = self.agents_infection_type[agentid]
-            current_infection_severity = self.agents_infection_severity[agentid]
-
-            new_seir_state, new_infection_type, new_infection_severity = self.convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition)
-
-            if new_seir_state != current_seir_state: # to be logged
-                self.agents_seir_state[agentid] = new_seir_state
-
-            if new_infection_type != current_infection_type: # to be logged
-                self.agents_infection_type[agentid] = new_infection_type
-
-            if new_infection_severity != current_infection_severity: # to be logged
-                self.agents_infection_severity[agentid] = new_infection_severity
-                
-            del agent["state_transition_by_day"][day]
-
-            return new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
-
-        return None
-    
-    def refresh_infectious_rate(self):
-        n_total = self.n_locals + self.n_tourists
-
-        n_infectious = 0
-        n_inactive = 0
-        for index, state in enumerate(self.agents_seir_state):
-            if index < self.n_locals or index in self.tourists_active_ids:
-                if state == SEIRState.Infectious:
-                    n_infectious += 1
-                elif state == SEIRState.Deceased:
-                    n_inactive += 1
-            else:
-                n_inactive += 1
-
-        n_active = n_total - n_inactive
-
-        self.infectious_rate = n_infectious / n_active
-    
-    def refresh_dynamic_parameters(self, day, force_infectious_rate_refresh=True):
-        infectious_rate_refreshed = False
-
-        if force_infectious_rate_refresh:
-            self.refresh_infectious_rate()
-            infectious_rate_refreshed = True
-
-        if len(self.masks_hygiene_distancing_day_thresholds) > 0:
-            self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(day, self.masks_hygiene_distancing_day_thresholds)
-
-            # for threshold, propensity in self.masks_hygiene_distancing_day_thresholds:
-            #     if day >= threshold:
-            #         self.masks_hygiene_distancing_propensity = propensity
-        else:
-            if not infectious_rate_refreshed:
-                self.refresh_infectious_rate()
-                infectious_rate_refreshed = True
-
-            self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(self.infectious_rate, self.masks_hygiene_distancing_infectiousrate_thresholds)
-            # for threshold, propensity in self.masks_hygiene_distancing_infectiousrate_thresholds:
-            #     if self.infectious_rate >= threshold:
-            #         self.masks_hygiene_distancing_propensity = propensity
-            #         break
-
-        if len(self.vaccination_day_thresholds) > 0:
-            self.vaccination_propensity = self.get_value_by_rate_in_threshold(day, self.vaccination_day_thresholds)
-
-            # for threshold, propensity in self.vaccination_day_thresholds:
-            #     if day >= threshold:
-            #         self.vaccination_propensity = propensity
-            #         break
-        else:
-            if not infectious_rate_refreshed:
-                self.refresh_infectious_rate()
-                infectious_rate_refreshed = True
-
-            self.vaccination_propensity = self.get_value_by_rate_in_threshold(self.infectious_rate, self.vaccination_infectiousrate_thresholds)        
-            # for threshold, propensity in self.vaccination_infectiousrate_thresholds:
-            #     if self.infectious_rate >= threshold:
-            #         self.vaccination_propensity = propensity
-            #         break
-
-        if len(self.intervention_day_thresholds) > 0:
-            quarantine, testing, contacttracing = self.intervention_day_thresholds[0], self.intervention_day_thresholds[1], self.intervention_day_thresholds[2]
-
-            if day >= quarantine:
-                self.quarantine_enabled = True
-            else:
-                self.quarantine_enabled = False
-
-            if day >= testing:
-                self.testing_enabled = True
-            else:
-                self.testing_enabled = False
-
-            if day >= contacttracing:
-                self.contact_tracing_enabled = True
-            else:
-                self.contact_tracing_enabled = False
-        else:
-            if not infectious_rate_refreshed:
-                self.refresh_infectious_rate()
-                infectious_rate_refreshed = True
-            
-            quarantine, testing, contacttracing = self.intervention_infectiousrate_thresholds[0], self.intervention_infectiousrate_thresholds[1], self.intervention_infectiousrate_thresholds[2]
-
-            if self.infectious_rate >= quarantine:
-                self.quarantine_enabled = True
-            else:
-                self.quarantine_enabled = False
-
-            if self.infectious_rate >= testing:
-                self.testing_enabled = True
-            else:
-                self.testing_enabled = False
-
-            if self.infectious_rate >= contacttracing:
-                self.contact_tracing_enabled = True
-            else:
-                self.contact_tracing_enabled = False
-
-    def get_value_by_rate_in_threshold(self, rate, params, none_val=0):
-        val = None
-        for index, param in enumerate(params):
-            if rate > param[0]:
-                if index + 1 < len(params):
-                    next_param = params[index+1]
-
-                    if rate < next_param[0]:
-                        val = param[1] # smaller than next
-                        break
-                else:
-                    val = param[1] # end of array
-                    break
-
-        if val is None:
-            val=none_val
-
-        return val
-
-    # returns new: (state, infection_type, severity)
-    def convert_state_transition_to_new_state(self, current_seir_state, current_infection_type, current_infection_severity, seir_state_transition):
-        match seir_state_transition:
-            case SEIRStateTransition.ExposedToInfectious:
-                new_infection_type = current_infection_type
-                if current_infection_type == InfectionType.PreAsymptomatic:
-                    new_infection_type = InfectionType.Asymptomatic
-                # if PreSymptomatic, infection type will already be assigned, but is only to be considered infectious, if SEIR State is Infectious
-                return SEIRState.Infectious, new_infection_type, current_infection_severity
-            case SEIRStateTransition.InfectiousToSymptomatic:
-                new_infection_type = current_infection_type
-                if current_infection_type == InfectionType.PreSymptomatic:
-                    new_infection_type = InfectionType.Symptomatic
-
-                return InfectionType.Symptomatic, new_infection_type, current_infection_severity
-            case SEIRStateTransition.SymptomaticToSevere:
-                return current_seir_state, current_infection_type, Severity.Severe
-            case SEIRStateTransition.SevereToCritical:
-                return current_seir_state, current_infection_type, Severity.Critical
-            case SEIRStateTransition.CriticalToDeath:
-                return SEIRState.Deceased, current_infection_type, current_infection_severity
-            case SEIRStateTransition.AsymptomaticToRecovery:
-                return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-            case SEIRStateTransition.MildToRecovery:
-                return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-            case SEIRStateTransition.SevereToRecovery:
-                return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-            case SEIRStateTransition.CriticalToRecovery:
-                return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-            case SEIRStateTransition.RecoveredToExposed:
-                return SEIRState.Exposed, current_infection_type, current_infection_severity
-            case _:
-                return SEIRState.Undefined, InfectionType.Undefined, Severity.Undefined
 
     def simulate_direct_contacts(self, agents_directcontacts, cellid, cell, day):
         for pairid, timesteps in agents_directcontacts.items():
@@ -397,7 +169,7 @@ class Epidemiology:
 
                     infection_multiplier = max(1, math.log(contact_duration)) # to check how this affects covasim base probs
 
-                    infection_probability *= infection_multiplier * susceptibility_multiplier * (1 - self.masks_hygiene_distancing_multiplier)
+                    infection_probability *= infection_multiplier * susceptibility_multiplier * (1 - self.dyn_params.masks_hygiene_distancing_multiplier)
 
                     exposed_rand = random.random()
 
@@ -546,7 +318,7 @@ class Epidemiology:
         test_scheduled = False
         test_result_day = -1
 
-        if self.testing_enabled:
+        if self.dyn_params.testing_enabled:
             test_already_scheduled = False
             if len(agent["test_day"]) > 0:
                 if abs(agent["test_day"][0] - incremental_days) < 5:
@@ -591,7 +363,7 @@ class Epidemiology:
     def schedule_quarantine(self, agent, start_day, start_timestep, quarantine_type, end_day=None): # True if positive
         quarantine_scheduled = False
 
-        if self.quarantine_enabled:
+        if self.dyn_params.quarantine_enabled:
             quarantine_days = agent["quarantine_days"]
 
             to_schedule_quarantine = True
@@ -648,7 +420,7 @@ class Epidemiology:
     # a percentage of the secondary contacts (people that share the same residence), based on the simcelltype "residence" probability will also be traced
     # quarantine and tests will be scheduled accordingly according to the relevant percentages in the "contact_tracing_parameters"
     def contact_tracing(self, day):
-        if self.contact_tracing_enabled:
+        if self.dyn_params.contact_tracing_enabled:
             quarantine_scheduled_ids = []
             test_scheduled_ids = []
 
@@ -816,32 +588,32 @@ class Epidemiology:
 
     # currently handling not vaccinated / vaccinated, but can also handle first/second dose in a similar manner
     def schedule_vaccinations(self, day):
-        if self.vaccination_propensity > 0:
+        if self.dyn_params.vaccination_propensity > 0:
             not_vaccinated_indices = np.where(self.agents_vaccination_doses == 0)[0]
 
             num_already_vaccinated = self.n_locals - len(not_vaccinated_indices)
 
-            if self.vaccination_propensity != self.last_vaccination_propensity:
-                if self.num_agents_to_be_vaccinated == 0:
-                    self.num_agents_to_be_vaccinated = round(len(not_vaccinated_indices) * self.vaccination_propensity)
+            if self.dyn_params.vaccination_propensity != self.dyn_params.last_vaccination_propensity:
+                if self.dyn_params.num_agents_to_be_vaccinated == 0:
+                    self.dyn_params.num_agents_to_be_vaccinated = round(len(not_vaccinated_indices) * self.dyn_params.vaccination_propensity)
 
-                    if self.num_agents_to_be_vaccinated == 0:
-                        self.num_agents_to_be_vaccinated = 1
+                    if self.dyn_params.num_agents_to_be_vaccinated == 0:
+                        self.dyn_params.num_agents_to_be_vaccinated = 1
                 else:
-                    change_in_propensity = self.vaccination_propensity - self.last_vaccination_propensity
+                    change_in_propensity = self.dyn_params.vaccination_propensity - self.dyn_params.last_vaccination_propensity
 
                     diff_num_agents_to_be_vaccinated = round(len(not_vaccinated_indices) * change_in_propensity)
 
                     if diff_num_agents_to_be_vaccinated == 0:
                         diff_num_agents_to_be_vaccinated = 1
 
-                    self.num_agents_to_be_vaccinated += diff_num_agents_to_be_vaccinated
+                    self.dyn_params.num_agents_to_be_vaccinated += diff_num_agents_to_be_vaccinated
 
-                self.last_vaccination_propensity = self.vaccination_propensity
+                self.dyn_params.last_vaccination_propensity = self.dyn_params.vaccination_propensity
 
             num_vaccinations_today = round(util.sample_log_normal(self.daily_vaccinations_parameters[0], self.daily_vaccinations_parameters[1], 1, True) * self.locals_ratio_to_full_pop)
 
-            num_remaining_agents_to_be_vaccinated = self.num_agents_to_be_vaccinated - num_already_vaccinated
+            num_remaining_agents_to_be_vaccinated = self.dyn_params.num_agents_to_be_vaccinated - num_already_vaccinated
 
             if num_vaccinations_today > num_remaining_agents_to_be_vaccinated:
                 num_vaccinations_today = num_remaining_agents_to_be_vaccinated
@@ -904,30 +676,6 @@ class Epidemiology:
                 return self.community_infection_probability
             case _:
                 return self.community_infection_probability
-            
-    def get_sus_mort_prog_age_bracket_index(self, age):
-        if age < 0 or age > 100:
-            return None
-        elif age < 10:
-            return 0
-        elif age < 20:
-            return 1
-        elif age < 30:
-            return 2
-        elif age < 40:
-            return 3
-        elif age < 50:
-            return 4
-        elif age < 60:
-            return 5
-        elif age < 70:
-            return 6
-        elif age < 80:
-            return 7
-        elif age < 90:
-            return 8
-        else:
-            return 9
 
 class SEIRState(IntEnum):
     Undefined = 0

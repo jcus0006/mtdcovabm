@@ -8,12 +8,37 @@ from simulator.epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
-    def __init__(self, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contact_network_sum_time_taken, agents_vaccination_doses, visualise=False, maintain_directcontacts_count=False, max_no_processes=4):
+    def __init__(self, 
+                n_locals, 
+                n_tourists, 
+                locals_ratio_to_full_pop, 
+                agents, 
+                agents_directcontacts_by_simcelltype_by_day, 
+                agents_seir_state, 
+                agents_seir_state_transition_for_day, 
+                agents_infection_type, 
+                agents_infection_severity, 
+                agents_vaccination_doses, 
+                cells, 
+                cells_agents_timesteps, 
+                tourists_active_ids, 
+                cells_households, 
+                cells_institutions, 
+                cells_accommodation, 
+                contactnetworkparams, 
+                epidemiologyparams, 
+                dynparams,
+                contact_network_sum_time_taken=0, 
+                visualise=False, 
+                maintain_directcontacts_count=False, 
+                process_index=-1, 
+                result_queue=None):
+        
         self.agents = agents
 
         self.cells = cells
 
-        self.mp_cells_keys = []
+        # self.mp_cells_keys = []
 
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
         self.contactnetworkparams = contactnetworkparams
@@ -25,27 +50,30 @@ class ContactNetwork:
 
         self.contactnetwork_sum_time_taken = contact_network_sum_time_taken
 
-        self.agents_directcontacts_by_simcelltype_by_day = {}
+        self.agents_directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
+
+        self.process_index = process_index
+        self.result_queue = result_queue
+
+        self.population_per_timestep = [0 for i in range(144)]
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams)
 
     # full day, all cells context
-    def simulate_contact_network(self, params):
-        day, weekday, mp_index = params
-        
+    def simulate_contact_network(self, day, weekday):        
         self.agents_directcontacts_by_simcelltype_by_day[day] = {}
         agents_directcontacts_by_simcelltype_thisday = self.agents_directcontacts_by_simcelltype_by_day[day]
         
-        if mp_index >= 0:
-            sp_cells_keys = self.mp_cells_keys[mp_index]
-        else:
-            sp_cells_keys = list(self.cells_agents_timesteps.keys()) # single process without multi-processing
+        # if self.process_index >= 0:
+        #     sp_cells_keys = self.mp_cells_keys[self.process_index]
+        # else:
+        #     sp_cells_keys = list(self.cells_agents_timesteps.keys()) # single process without multi-processing
 
-        print("generate contact network for " + str(len(sp_cells_keys)) + " cells on process: " + str(mp_index))
+        print("generate contact network for " + str(len(self.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
         start = time.time()
-        for sp_cell_index, cellid in enumerate(sp_cells_keys):
+        for cellindex, cellid in enumerate(self.cells_agents_timesteps.keys()):
             cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
 
             if len(cell_agents_directcontacts) > 0:
@@ -69,7 +97,7 @@ class ContactNetwork:
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
         avg_time_taken = self.contactnetwork_sum_time_taken / day
-        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(mp_index))
+        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
@@ -84,11 +112,10 @@ class ContactNetwork:
         agents_ids = [] # each index represents an agent ID
         agents_degrees = [] # each index represents an agent degree, maps to agents_ids indices
         agents_total_timesteps = {} # {agentid : total_num_of_timesteps}
-        agents_potentialcontacts_count = {} # {agentid: total_num_of_potential_contats}
+        agents_potentialcontacts_count = {} # {agentid: total_num_of_potential_contacts}
         agents_potentialcontacts = {} # {(agentid1, agentid2) : [ (start_ts1, end_ts1), (start_ts2, end_ts2) ]}
         agents_directcontacts = {} # {(agentid1, agentid2) : [ (start_ts1, end_ts1), (start_ts2, end_ts2) ]}
         agents_directcontacts_count = {} # {agentid: contact_count}
-        population_per_timestep = [0 for i in range(144)]
 
         # cell = None
         # if cellid in self.cells_agents_timesteps:
@@ -115,7 +142,7 @@ class ContactNetwork:
                 agents_total_timesteps[agentid] = 0
 
             for timestep in range(starttimestep, endtimestep+1):
-                population_per_timestep[timestep] += 1
+                self.population_per_timestep[timestep] += 1
 
             total_timesteps = len(range(starttimestep, endtimestep+1))
             agents_timesteps_sum += total_timesteps
@@ -153,9 +180,9 @@ class ContactNetwork:
                 plt.ylabel("Count")
                 plt.show(block=False)
         
-            # population_per_timestep_no_zeros = np.array([pop_per_ts for pop_per_ts in population_per_timestep if pop_per_ts > 0])
+            # self.population_per_timestep_no_zeros = np.array([pop_per_ts for pop_per_ts in self.population_per_timestep if pop_per_ts > 0])
 
-            # n = round(np.median(population_per_timestep_no_zeros)) # max/median population during the day (if using median remove 0s as they would be outliers and take middle value)      
+            # n = round(np.median(self.population_per_timestep_no_zeros)) # max/median population during the day (if using median remove 0s as they would be outliers and take middle value)      
             n = len(agents_ids)
 
             avg_contacts_activity_agegroups_col = np.array(self.ageactivitycontactmatrix[:, 2 + ageactivitycontact_cm_activityid]) # start from 4th column onwards, ageactivitycontact_cm_activityid min = 1
@@ -168,7 +195,7 @@ class ContactNetwork:
 
             agents_potentialcontacts_count_np = np.array(list(agents_potentialcontacts_count.values()))
             avg_potential_contacts_count = np.mean(agents_potentialcontacts_count_np)
-            std_potential_contacts_count = np.std(agents_potentialcontacts_count_np)
+            # std_potential_contacts_count = np.std(agents_potentialcontacts_count_np)
             
             # create degrees per agent
             for agentindex, agentid in enumerate(agents_ids):
@@ -215,8 +242,9 @@ class ContactNetwork:
                 plt.ylabel("Count")
                 plt.show(block=False)
 
-            agents_degrees_backup = copy(agents_degrees) # these are final degrees, to save. agents_degrees will be deducted from below.
-            agents_potentialcontacts_backup = deepcopy(agents_potentialcontacts)
+            # commented as not being used
+            # agents_degrees_backup = copy(agents_degrees) # these are final degrees, to save. agents_degrees will be deducted from below.
+            # agents_potentialcontacts_backup = deepcopy(agents_potentialcontacts)
 
             agents_degrees, agents_ids = zip(*sorted(zip(agents_degrees, agents_ids), reverse=True))
 

@@ -1,9 +1,9 @@
 import numpy as np
 from copy import copy
-from simulator import util
+from simulator import util, seirstateutil
 
 class Tourism:
-    def __init__(self, tourismparams, cells, agents_n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util):
+    def __init__(self, tourismparams, cells, agents_n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -13,7 +13,6 @@ class Tourism:
         self.age_brackets = age_brackets
         self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count = powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count
         self.initial_seir_state_distribution = initial_seir_state_distribution
-        self.epi_util = epi_util
 
         incoming_airport_duration_dist_params = tourismparams["incoming_airport_duration_distribution_params"]
         outgoing_airport_duration_dist_params = tourismparams["outgoing_airport_duration_distribution_params"]
@@ -165,7 +164,7 @@ class Tourism:
                             if tourist["age"] < 16:
                                 under_age_agent = True
 
-                            epi_age_bracket_index = self.epi_util.get_sus_mort_prog_age_bracket_index(tourist["age"])
+                            epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
                             new_agent = self.agents[new_agent_id]
 
@@ -195,7 +194,7 @@ class Tourism:
                     new_agents = util.generate_sociability_rate_powerlaw_dist(new_agents, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
 
                     agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
-                    agents_seir_state_tourists_subset = self.epi_util.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
+                    agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
                     for index, agent_idx in enumerate(new_agent_ids):
                         self.agents_seir_state[agent_idx] = agents_seir_state_tourists_subset[index]

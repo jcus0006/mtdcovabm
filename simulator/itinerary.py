@@ -4,18 +4,53 @@ from enum import Enum
 from enum import IntEnum
 from copy import deepcopy
 from copy import copy
-from simulator.epidemiology import Epidemiology
-from simulator.epidemiology import SEIRState
-from simulator.epidemiology import QuarantineType
+from simulator import util, seirstateutil
+from simulator.epidemiology import Epidemiology, SEIRState, QuarantineType
 
 class Itinerary:
-    def __init__(self, params, timestepmins, n_locals, n_tourists, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util, tourist_entry_infection_probability):
+    def __init__(self, 
+                params, 
+                timestepmins, 
+                n_locals, 
+                n_tourists, 
+                locals_ratio_to_full_pop,
+                agents, 
+                tourists, 
+                cells, 
+                industries, 
+                workplaces, 
+                cells_restaurants, 
+                cells_schools, 
+                cells_hospital, 
+                cells_testinghub, 
+                cells_vaccinationhub, 
+                cells_entertainment, 
+                cells_religious, 
+                cells_households, 
+                cells_accommodation_by_accomid, 
+                cells_breakfast_by_accomid, 
+                cells_airport, 
+                cells_transport, 
+                cells_institutions, 
+                cells_accommodation, 
+                cells_agents_timesteps, 
+                tourist_entry_infection_probability,
+                epidemiologyparams,
+                dynparams,
+                agents_seir_state,
+                agents_seir_state_transition_for_day,
+                agents_infection_type,
+                agents_infection_severity,
+                agents_directcontacts_by_simcelltype_by_day,
+                agents_vaccination_doses,
+                tourists_active_ids):
+        
         self.rng = np.random.default_rng(seed=6)
 
         self.one_to_two_hours = np.arange(6, 13)
 
         self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
-        self.epi_util = epi_util
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams)
 
         self.params = params
         self.timestepmins = timestepmins
@@ -262,7 +297,7 @@ class Itinerary:
                 new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
 
                 # this updates the state, infection type and severity (such that the itinery may also handle public health interventions)
-                new_states = self.epi_util.update_agent_state(agentid, agent, simday)
+                new_states = seirstateutil.update_agent_state(self.epi_util.agents_seir_state, self.epi_util.agents_infection_type, self.epi_util.agents_infection_severity, agentid, agent, simday)
 
                 if new_states is not None:
                     new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
@@ -1300,7 +1335,7 @@ class Itinerary:
                     new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
 
                     # this updates the state, infection type and severity (such that the itinery may also handle public health interventions)
-                    new_states = self.epi_util.update_agent_state(agentid, agent, simday)
+                    new_states = seirstateutil.update_agent_state(self.epi_util.agents_seir_state, self.epi_util.agents_infection_type, self.epi_util.agents_infection_severity, agentid, agent, simday)
 
                     if new_states is not None:
                         new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]

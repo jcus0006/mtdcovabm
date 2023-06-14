@@ -6,15 +6,13 @@ import matplotlib.pyplot as plt
 import random
 import traceback
 from cells import Cells
-from simulator import util
-from simulator import itinerary
-from simulator import contactnetwork
+from simulator import util, itinerary, contactnetwork_mp, tourism, seirstateutil
 from simulator.epidemiology import SEIRState
-from simulator import tourism
+from simulator.dynamicparams import DynamicParams
 import multiprocessing as mp
 
 if __name__ == '__main__':
-    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -29,7 +27,7 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 1
+                "numprocesses": 10
             }
 
     figure_count = 0
@@ -131,9 +129,9 @@ if __name__ == '__main__':
 
         agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
 
-        contactnetwork_sum_time_taken = 0
-        contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, agents_vaccination_doses, False, False, params["numprocesses"])
-        epi_util = contactnetwork_util.epi_util
+        # contactnetwork_sum_time_taken = 0
+        # contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False, params["numprocesses"])
+        # epi_util = contactnetwork_util.epi_util
 
         for index, (agent_uid, agent) in enumerate(temp_agents.items()):
             if index < n_locals: # ignore tourists for now
@@ -154,7 +152,7 @@ if __name__ == '__main__':
 
                 agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
-                agent["epi_age_bracket_index"] = epi_util.get_sus_mort_prog_age_bracket_index(age)
+                agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
 
                 agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
             else:
@@ -164,16 +162,16 @@ if __name__ == '__main__':
 
         temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
 
-        agents_seir_state = epi_util.initialize_agent_states(n_locals, initial_seir_state_distribution, agents_seir_state)
+        agents_seir_state = seirstateutil.initialize_agent_states(n_locals, initial_seir_state_distribution, agents_seir_state)
 
         agents = temp_agents
 
         temp_agents = None
 
-        contactnetwork_util.agents = None
-        epi_util.agents = None
-        contactnetwork_util.agents = agents
-        epi_util.agents = agents
+        # contactnetwork_util.agents = None
+        # epi_util.agents = None
+        # contactnetwork_util.agents = agents
+        # epi_util.agents = agents
 
         # maleagents = {k:v for k, v in agents.items() if v["gender"] == 0}
         # femaleagents = {k:v for k, v in agents.items() if v["gender"] == 1}
@@ -225,7 +223,7 @@ if __name__ == '__main__':
 
         households, cells_households, householdsworkplaces, cells_householdsworkplaces = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
 
-        contactnetwork_util.epi_util.cells_households = cells_households
+        # contactnetwork_util.epi_util.cells_households = cells_households
         
     if params["loadinstitutions"]:
         institutiontypesfile = open("./population/" + population_sub_folder + "institutiontypes.json")
@@ -238,7 +236,7 @@ if __name__ == '__main__':
 
         institutiontypes, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
 
-        contactnetwork_util.epi_util.cells_institutions = cells_institutions  
+        # contactnetwork_util.epi_util.cells_institutions = cells_institutions  
 
     hh_insts = []
     if params["loadhouseholds"]:
@@ -338,7 +336,7 @@ if __name__ == '__main__':
         # handle cell splitting (on workplaces & accommodations)
         industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
-        contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
+        # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
 
         # cell.create_airport_cell()
@@ -367,9 +365,8 @@ if __name__ == '__main__':
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
-    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, epi_util)
-    itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_agents_timesteps, epi_util, tourist_entry_infection_probability)
-
+    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
+    dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
     try:
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -380,11 +377,14 @@ if __name__ == '__main__':
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
-            itinerary_util.cells_agents_timesteps = {}
-            itinerary_util.epi_util = epi_util
-            contactnetwork_util.epi_util = epi_util
-            contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
+            # itinerary_util.cells_agents_timesteps = {}
+            # itinerary_util.epi_util = epi_util
+            # contactnetwork_util.epi_util = epi_util
+            # contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
             agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
+            agents_directcontacts_by_simcelltype_by_day = {}
+
+            itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
 
             if params["loadtourism"]:
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
@@ -398,11 +398,11 @@ if __name__ == '__main__':
                 avg_time_taken = tourist_itinerary_sum_time_taken / day
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
 
-            epi_util.tourists_active_ids = tourist_util.tourists_active_ids
+            # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
             if not params["quickitineraryrun"]:
                 if day == 1: # from day 2 onwards always calculated at eod
-                    epi_util.refresh_dynamic_parameters(day)
+                    dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
 
             if not params["quicktourismrun"]:
                 # should be cell based, but for testing purposes, traversing all agents here
@@ -425,25 +425,27 @@ if __name__ == '__main__':
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
                     start = time.time()
 
-                    if params["numprocesses"] > 1:
-                        cells_agents_timesteps_keys = list(contactnetwork_util.cells_agents_timesteps.keys())
-                        np.random.shuffle(cells_agents_timesteps_keys)
-                        contactnetwork_util.mp_cells_keys = np.array_split(cells_agents_timesteps_keys, params["numprocesses"])
+                    # if params["numprocesses"] > 1:
+                    #     cells_agents_timesteps_keys = list(contactnetwork_util.cells_agents_timesteps.keys())
+                    #     np.random.shuffle(cells_agents_timesteps_keys)
+                    #     contactnetwork_util.mp_cells_keys = np.array_split(cells_agents_timesteps_keys, params["numprocesses"])
 
-                        # Create a pool of processes
-                        pool = mp.Pool(params["numprocesses"])
+                    #     # Create a pool of processes
+                    #     pool = mp.Pool(params["numprocesses"])
                         
-                        params_list = [(day, weekday, mp_index) for mp_index in range(params["numprocesses"])]
+                    #     params_list = [(day, weekday, mp_index) for mp_index in range(params["numprocesses"])]
             
-                        # Call the worker method in parallel
-                        results = pool.map(contactnetwork_util.simulate_contact_network, params_list)
+                    #     # Call the worker method in parallel
+                    #     results = pool.map(contactnetwork_util.simulate_contact_network, params_list)
 
-                        # Close the pool of processes
-                        pool.close()
-                        pool.join()
-                    else:
-                        params_list = [day, weekday, -1]
-                        contactnetwork_util.simulate_contact_network(params_list)
+                    #     # Close the pool of processes
+                    #     pool.close()
+                    #     pool.join()
+                    # else:
+                    #     params_list = [day, weekday, -1]
+                    #     contactnetwork_util.simulate_contact_network(params_list)            
+
+                    contactnetwork_mp.contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dyn_params, contactnetwork_sum_time_taken, params["numprocesses"])
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -454,7 +456,7 @@ if __name__ == '__main__':
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                epi_util.contact_tracing(day)
+                # epi_util.contact_tracing(day) # TO REVIEW
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))
@@ -463,20 +465,20 @@ if __name__ == '__main__':
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                epi_util.schedule_vaccinations(day)
+                # epi_util.schedule_vaccinations(day) # TO REVIEW
 
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))
 
                 print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
-                epi_util.refresh_dynamic_parameters(day)
+                dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids)
 
                 time_taken = time.time() - start
                 print("refresh_dynamic_parameters time taken: " + str(time_taken))
 
             day_time_taken = time.time() - day_start
-            print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(epi_util.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
+            print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
     except:
         with open('stack_trace.txt', 'w') as f:
             traceback.print_exc(file=f)

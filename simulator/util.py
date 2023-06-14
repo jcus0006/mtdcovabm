@@ -257,3 +257,27 @@ def get_all_contacts_ids_by_id_and_timesteprange(id, agents_contacts_keys, trace
         np.random.shuffle(contacts_ids)
 
     return contacts_ids
+
+def get_sus_mort_prog_age_bracket_index(age):
+        if age < 0 or age > 100:
+            return None
+        elif age < 10:
+            return 0
+        elif age < 20:
+            return 1
+        elif age < 30:
+            return 2
+        elif age < 40:
+            return 3
+        elif age < 50:
+            return 4
+        elif age < 60:
+            return 5
+        elif age < 70:
+            return 6
+        elif age < 80:
+            return 7
+        elif age < 90:
+            return 8
+        else:
+            return 9
