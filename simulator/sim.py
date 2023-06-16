@@ -27,13 +27,15 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 10
+                "numprocesses": 4
             }
-
+    
+    manager = mp.Manager()
+    
     figure_count = 0
 
     cellindex = 0
-    cells = {}
+    cells = manager.dict()
 
     cellsfile = open("./data/cells.json")
     cellsparams = json.load(cellsfile)
@@ -71,39 +73,39 @@ if __name__ == '__main__':
         population_sub_folder = params["popsubfolder"] + "/"
 
     # load agents and all relevant JSON files on each node
-    agents = {}
-    agents_ids_by_ages = {}
-    agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
+    agents = {} # will be modified as manager.dict() later
+    agents_ids_by_ages = manager.dict()
+    agents_ids_by_agebrackets = manager.dict({i:[] for i in range(len(age_brackets))})
 
     # contact network model
     cells_agents_timesteps = {} # {cellid: (agentid, starttimestep, endtimestep)}
 
     # transmission model
     agents_seir_state = [] # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
-    agents_seir_state_transition_for_day = {} # handled as dict, because it will only apply for a subset of agents per day
-    agents_infection_type = {} # handled as dict, because not every agent will be infected
-    agents_infection_severity = {} # handled as dict, because not every agent will be infected
+    agents_seir_state_transition_for_day = manager.dict() # handled as dict, because it will only apply for a subset of agents per day
+    agents_infection_type = manager.dict() # handled as dict, because not every agent will be infected
+    agents_infection_severity = manager.dict() # handled as dict, because not every agent will be infected
     agents_vaccination_doses = [] # number of doses per agent
 
     # tourism
-    tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
-    tourists_arrivals_departures_for_nextday = {}
+    tourists_arrivals_departures_for_day = manager.dict() # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
+    tourists_arrivals_departures_for_nextday = manager.dict()
     n_tourists = 0
 
     if params["loadtourism"]:
         touristsfile = open("./population/" + population_sub_folder + "tourists.json")
         tourists = json.load(touristsfile)
-        tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
+        tourists = manager.dict({tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists})
         
         n_tourists = len(tourists)
 
         touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
         touristsgroups = json.load(touristsgroupsfile)
-        touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
+        touristsgroups = manager.dict({tg["groupid"]:manager.dict({"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]}) for tg in touristsgroups})
 
         touristsgroupsdaysfile = open("./population/" + population_sub_folder + "touristsgroupsdays.json")
         touristsgroupsdays = json.load(touristsgroupsdaysfile)
-        touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
+        touristsgroupsdays = manager.dict({day["dayid"]:day["member_uids"] for day in touristsgroupsdays})
 
     if params["loadagents"]:
         agentsfile = open("./population/" + population_sub_folder + "agents.json")
@@ -142,13 +144,16 @@ if __name__ == '__main__':
                 agent["inst_cellid"] = -1
                 # agent["symptomatic"] = False
                 agent["tourist_id"] = None 
-                agent["state_transition_by_day"] = {}
+                agent["state_transition_by_day"] = manager.dict()
                 # intervention_events_by_day
                 agent["test_day"] = [] # [day, timestep]
                 agent["test_result_day"] = [] # [day, timestep]
                 agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]]
                 agent["vaccination_days"] = [] # [[day, timestep]]
                 agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]]
+
+                if agent["empstatus"] == 0:
+                    agent["working_schedule"] = manager.dict()
 
                 agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
@@ -164,7 +169,7 @@ if __name__ == '__main__':
 
         agents_seir_state = seirstateutil.initialize_agent_states(n_locals, initial_seir_state_distribution, agents_seir_state)
 
-        agents = temp_agents
+        agents = manager.dict(temp_agents)
 
         temp_agents = None
 
@@ -206,7 +211,7 @@ if __name__ == '__main__':
         #     malesbyindustries[industry] = malesbyindustry
         #     femalesbyindustries[industry] = femalesbyindustry
 
-    cells_util = Cells(agents, cells, cellindex)
+    cells_util = Cells(manager, agents, cells, cellindex)
 
     if params["loadhouseholds"]:
         householdsfile = open("./population/" + population_sub_folder + "households.json")
@@ -381,10 +386,10 @@ if __name__ == '__main__':
             # itinerary_util.epi_util = epi_util
             # contactnetwork_util.epi_util = epi_util
             # contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
-            agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
-            agents_directcontacts_by_simcelltype_by_day = {}
+            agents_seir_state_transition_for_day = manager.dict() # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
+            agents_directcontacts_by_simcelltype_by_day = manager.dict()
 
-            itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
+            itinerary_util = itinerary.Itinerary(manager, itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
 
             if params["loadtourism"]:
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
@@ -450,7 +455,7 @@ if __name__ == '__main__':
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
                     avg_time_taken = contactnetwork_sum_time_taken / day
-                    print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
+                    print("(main) simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
 
                 # contact tracing
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))

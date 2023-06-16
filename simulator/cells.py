@@ -5,9 +5,11 @@ import copy
 import bisect
 from classes.accomgroup import AccomGroup
 from simulator import util
+import multiprocessing as mp
 
 class Cells:
-    def __init__(self, agents, cells, cellindex, seed=6):
+    def __init__(self, manager, agents, cells, cellindex, seed=6):
+        self.manager = manager
         self.agents = agents
         self.cells = cells
         self.cellindex = cellindex
@@ -19,10 +21,10 @@ class Cells:
     # this method also returns the households to be assigned as employers; the only criteria being used is that the first "household_as_employer_count" where the education is tertiary will be assigned
     # had more fine-grained data been available in terms of net worth or income, this could have also been used
     def convert_households(self, households_original, workplaces, workplaces_params):
-        households = {}
-        householdscells = {}
-        householdsworkplaces = {}
-        householdsworkplacescells = {}
+        households = self.manager.dict()
+        householdscells = self.manager.dict()
+        householdsworkplaces = self.manager.dict()
+        householdsworkplacescells = self.manager.dict()
 
         households_employees_groups = []
 
@@ -89,17 +91,17 @@ class Cells:
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
     def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccination_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_activity_dist):
-        industries_by_indid = {}
-        workplacescells = {}
-        restaurantcells = {}
-        hospitalcells = {}
-        testinghubcells = {}
-        vaccinationhubcells = {}
-        accommodationcells = {}
-        accommodationcells_by_accomid = {}
-        breakfastcells_by_accomid = {}
-        entertainmentcells = {}
-        airportcells = {}
+        industries_by_indid = self.manager.dict()
+        workplacescells = self.manager.dict()
+        restaurantcells = self.manager.dict()
+        hospitalcells = self.manager.dict()
+        testinghubcells = self.manager.dict()
+        vaccinationhubcells = self.manager.dict()
+        accommodationcells = self.manager.dict()
+        accommodationcells_by_accomid = self.manager.dict()
+        breakfastcells_by_accomid = self.manager.dict()
+        entertainmentcells = self.manager.dict()
+        airportcells = self.manager.dict()
 
         airport_industries = [7, 8, 9, 19]
         airport_ensure_workplace_per_industry = [False, False, False, False] # [7, 8, 9, 19]
@@ -168,8 +170,8 @@ class Cells:
         hospital_id = 0
 
         for workplace in workplaces:
-            workplaces_by_wpid = {}
-            cells_by_cellid = {}
+            workplaces_by_wpid = self.manager.dict()
+            cells_by_cellid = self.manager.dict()
 
             employees = workplace["member_uids"]
             wpid = workplace["wpid"]
@@ -263,7 +265,7 @@ class Cells:
                         accommodationcells_by_accomid[accomid].append(self.cells[self.cellindex])
 
                         if accomid not in breakfastcells_by_accomid:
-                            breakfastcells_by_accomid[accomid] = {}
+                            breakfastcells_by_accomid[accomid] = self.manager.dict()
 
                         accomid_breakfastcells = breakfastcells_by_accomid[accomid] 
                                 
@@ -291,7 +293,7 @@ class Cells:
                         self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
                         if sampled_activity not in entertainmentcells:
-                            entertainmentcells[sampled_activity] = {}
+                            entertainmentcells[sampled_activity] = self.manager.dict()
 
                         entertainmentcells_by_activity = entertainmentcells[sampled_activity]
 
@@ -366,7 +368,7 @@ class Cells:
 
                             if accom_breakfast_cell_count > 0:
                                 if accomid not in breakfastcells_by_accomid:
-                                    breakfastcells_by_accomid[accomid] = {}
+                                    breakfastcells_by_accomid[accomid] = self.manager.dict()
 
                                 accomid_breakfastcells = breakfastcells_by_accomid[accomid] 
                                 
@@ -396,7 +398,7 @@ class Cells:
                             self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
                             if sampled_activity not in entertainmentcells:
-                                entertainmentcells[sampled_activity] = {}
+                                entertainmentcells[sampled_activity] = self.manager.dict()
 
                             entertainmentcells_by_activity = entertainmentcells[sampled_activity]
 
@@ -447,13 +449,13 @@ class Cells:
     # non-teaching staff are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are as balanced and as close to max_members as possible
     def split_schools_by_cellsize(self, schools, cellsize, cellsizespare):
-        schools_by_type = {}
-        schoolscells = {}
-        classroomscells = {}
+        schools_by_type = self.manager.dict()
+        schoolscells = self.manager.dict()
+        classroomscells = self.manager.dict()
 
         for school in schools:
-            schools_by_scid = {}
-            cells_by_cellid = {}
+            schools_by_scid = self.manager.dict()
+            cells_by_cellid = self.manager.dict()
 
             scid = school["scid"]
             sctype = school["sc_type"]
@@ -549,12 +551,12 @@ class Cells:
     # residents and staff are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are as balanced and as close to max_members as possible
     def split_institutions_by_cellsize(self, institutions, cellsize, cellsizespare):
-        institutions_by_type = {}
-        institutionscells = {}
+        institutions_by_type = self.manager.dict()
+        institutionscells = self.manager.dict()
 
         for institution in institutions:
-            institutions_by_id = {}
-            cells_by_cellid = {}
+            institutions_by_id = self.manager.dict()
+            cells_by_cellid = self.manager.dict()
 
             residents = institution["resident_uids"]
             staff = institution["staff_uids"]
@@ -660,8 +662,8 @@ class Cells:
         return self.cells[self.cellindex]
 
     def create_transport_cells(self, buscount, cellsize, cellsizespare, bus_capacities, bus_capacities_dist): 
-        transport_by_id = {}
-        cells_transport = {}
+        transport_by_id = self.manager.dict()
+        cells_transport = self.manager.dict()
 
         max_members = int(cellsize * (1 - cellsizespare))
 
@@ -669,7 +671,7 @@ class Cells:
         sampled_bus_categories = np.random.choice(bus_categories, buscount, p=bus_capacities_dist)
 
         for busid in range(0, buscount):
-            cells_by_cellid = {}
+            cells_by_cellid = self.manager.dict()
 
             sampled_bus_capacity = bus_capacities[sampled_bus_categories[busid]]
 
@@ -741,11 +743,11 @@ class Cells:
     def create_religious_cells(self, churchcount, cellsize, cellsizespare, mean_church_capacity, std_dev): # dynamic cell. data for religion as an industry was not available, so created as a form of "dynamic" contact hub       
         sampled_church_sizes = np.round(np.random.normal(mean_church_capacity, std_dev, churchcount)).astype(int)
 
-        churchcells = {}
-        churches = {}
+        churchcells = self.manager.dict()
+        churches = self.manager.dict()
 
         for church_id, sampled_size in enumerate(sampled_church_sizes):
-            cells_by_cellid = {}
+            cells_by_cellid = self.manager.dict()
 
             max_members = int(cellsize * (1 - cellsizespare))
 

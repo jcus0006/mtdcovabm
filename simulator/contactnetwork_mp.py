@@ -4,10 +4,13 @@ import traceback
 from simulator import contactnetwork
 
 def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, num_processes=4):
-    manager = mp.Manager()
-    result_queue = manager.Queue()
+    use_pool = True
 
+    result_queue = None
+        
     if num_processes > 1:
+        manager = mp.Manager()
+        result_queue = manager.Queue()
         # pool = mp.Pool(initializer=init_worker_keepalive, initargs=(termination_flag,))
         pool = mp.Pool()
 
@@ -16,6 +19,8 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
         cells_agents_timesteps_keys = list(cells_agents_timesteps.keys())
         np.random.shuffle(cells_agents_timesteps_keys)
         mp_cells_keys = np.array_split(cells_agents_timesteps_keys, num_processes)
+
+        processes = []
 
         for process_index in range(num_processes):
             # cells_partial = {}
@@ -30,11 +35,21 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
                 # cells_partial[cell_key] = cell
                 cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
 
-            pool.apply_async(contactnetwork_worker, args=((result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps_partial, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index),))
+            args = (result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps_partial, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index)
+            if use_pool:
+                pool.apply_async(contactnetwork_worker, args=(args,))
+            else:
+                process = mp.Process(target=contactnetwork_worker, args=(args,))
+                process.start()
+                processes.append(process)
 
-        # Close the pool of processes
-        pool.close()
-        pool.join()
+        if use_pool:
+            # Close the pool of processes
+            pool.close()
+            pool.join()
+        else:
+            for process in processes:
+                process.join()
     else:
         params = result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1
 
