@@ -1,10 +1,10 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 422, in <module>
-    itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1025, in generate_local_itinerary
-    self.sample_activities(weekday, agent, agent["res_cellid"], sleep_timestep, activity_timestep_ranges, age_bracket_index)
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1809, in sample_activities
-    sampled_cell_id = self.rng.choice(potential_cells)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "_generator.pyx", line 729, in numpy.random._generator.Generator.choice
-ValueError: a cannot be empty unless no samples are taken
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 401, in <module>
+    itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1392, in generate_tourist_itinerary
+    tourists_group, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
+                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1477, in handle_tourism_itinerary
+    prev_day_last_ts = prev_day_itinerary_timesteps[0]
+                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range

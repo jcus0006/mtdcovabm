@@ -66,6 +66,7 @@ class Cells:
                         agent["wpid"] = None
                         agent["hhwpid"] = hhid 
                         agent["work_cellid"] = self.cellindex
+                        self.agents[uid] = agent
 
                 households_employees_groups_index += 1
 
@@ -81,6 +82,7 @@ class Cells:
                     agent = self.agents[uid]
                     agent["res_cellid"] = self.cellindex
                     agent["curr_cellid"] = self.cellindex
+                    self.agents[uid] = agent
 
             self.cellindex += 1
 
@@ -314,6 +316,7 @@ class Cells:
                             agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                             agent["work_cellid"] = self.cellindex
                             agent["ent_activity"] = sampled_activity
+                            self.agents[uid] = agent
 
                     self.cellindex += 1
                 else:
@@ -419,6 +422,7 @@ class Cells:
                                 agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                                 agent["work_cellid"] = self.cellindex
                                 agent["ent_activity"] = sampled_activity
+                                self.agents[uid] = agent
                         
                         self.cellindex += 1
 
@@ -478,6 +482,7 @@ class Cells:
                     for uid in nonteachingstaff:
                         agent = self.agents[uid]
                         agent["school_cellid"] = self.cellindex
+                        self.agents[uid] = agent
 
                 self.cellindex += 1
             else:
@@ -508,6 +513,7 @@ class Cells:
                             agent = self.agents[uid]
                             agent["school_cellid"] = self.cellindex
                             agent["work_cellid"] = self.cellindex
+                            self.agents[uid] = agent
 
                     self.cellindex += 1
 
@@ -525,11 +531,13 @@ class Cells:
                     for uid in students:
                         agent = self.agents[uid]
                         agent["school_cellid"] = self.cellindex
+                        self.agents[uid] = agent
 
                     for uid in teachers:
                         agent = self.agents[uid]
                         agent["school_cellid"] = self.cellindex
                         agent["work_cellid"] = self.cellindex
+                        self.agents[uid] = agent
 
                 self.cellindex += 1
                 
@@ -584,10 +592,12 @@ class Cells:
                         agent["inst_cellid"] = self.cellindex
                         agent["res_cellid"] = self.cellindex
                         agent["curr_cellid"] = self.cellindex
+                        self.agents[uid] = agent
 
                     for uid in staff:
                         agent = self.agents[uid]
                         agent["inst_cellid"] = self.cellindex
+                        self.agents[uid] = agent
 
                 self.cellindex += 1
             else:
@@ -634,10 +644,12 @@ class Cells:
                             agent["inst_cellid"] = self.cellindex
                             agent["res_cellid"] = self.cellindex
                             agent["curr_cellid"] = self.cellindex
+                            self.agents[uid] = agent
 
                         for uid in temp_staff:
                             agent = self.agents[uid]
                             agent["inst_cellid"] = self.cellindex
+                            self.agents[uid] = agent
 
                     self.cellindex += 1
             

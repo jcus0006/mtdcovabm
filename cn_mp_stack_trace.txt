@@ -7,7 +7,10 @@ Traceback (most recent call last):
   File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 104, in simulate_contact_network_by_cellid
     agents_directcontacts, cell = self.generate_contact_network(cellid)
                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 218, in generate_contact_network
-    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)
-                                                                                                                            ~~~~~^^^^^^^^^^^^
-KeyError: 'soc_rate'
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 122, in generate_contact_network
+    cell = self.cells[cellid]
+           ~~~~~~~~~~^^^^^^^^
+  File "<string>", line 2, in __getitem__
+  File "C:\Program Files\Python3112\Lib\multiprocessing\managers.py", line 837, in _callmethod
+    raise convert_to_error(kind, result)
+KeyError: -1

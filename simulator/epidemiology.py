@@ -177,6 +177,8 @@ class Epidemiology:
                     if exposed_rand < infection_probability: # exposed (infected but not yet infectious)
                         exposed_agent, agent_state_transition_by_day, recovered = self.simulate_seir_state_transition(exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index)
 
+                    self.agents[exposed_agent_id] = exposed_agent
+
     def simulate_seir_state_transition(self, exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index):
         symptomatic_day = -1
         recovered = False # if below condition is hit, False means Dead, True means recovered. 
@@ -492,6 +494,9 @@ class Epidemiology:
                                         if test_scheduled:
                                             test_scheduled_ids.append(contact_id)
 
+                                    if positive_contact_agent is not None:
+                                        self.agents[contact_id] = positive_contact_agent
+
                                     if simcelltype != "residence" and positive_contact_agent is not None: # compute secondary contacts (residential), if not residential
                                         res_cell_id = positive_contact_agent["res_cellid"]
 
@@ -582,6 +587,9 @@ class Epidemiology:
 
                                                         if test_scheduled:
                                                             test_scheduled_ids.append(contact_id)
+
+                                                    if secondary_contact_agent is not None:
+                                                            self.agents[sec_contact_id] = secondary_contact_agent
         
         # clear for next day
         self.contact_tracing_agent_ids = [] # still being cleared for next day regardless to whether contact tracing is enabled or not
@@ -632,6 +640,8 @@ class Epidemiology:
                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
 
                     agent["vaccination_days"].append([day + 1, sampled_timestep])
+
+                    self.agents[agentid] = agent
 
                     self.agents_vaccination_doses[agentid] += 1
 

@@ -27,7 +27,7 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 4
+                "numprocesses": 10
             }
     
     manager = mp.Manager()
@@ -142,6 +142,7 @@ if __name__ == '__main__':
                 agent["work_cellid"] = -1
                 agent["school_cellid"] = -1
                 agent["inst_cellid"] = -1
+                agent["soc_rate"] = 0
                 # agent["symptomatic"] = False
                 agent["tourist_id"] = None 
                 agent["state_transition_by_day"] = manager.dict()
@@ -284,6 +285,7 @@ if __name__ == '__main__':
                     else:
                         print("big problem")
 
+                    agents[agentid] = agent
 
     if params["loadworkplaces"]:
         if len(workplaces) == 0:

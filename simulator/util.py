@@ -147,12 +147,17 @@ def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebracke
                     agent = temp_agents[agent_id]
 
                     agent["soc_rate"] = normalized_arr[index]
+
+                    temp_agents[agent_id] = agent
+
             else: # this will never be hit, but in a single case, would favour the lower end of the range with a gamma dist
                 single_agent_id = agents_ids_in_bracket[0]
 
                 agent = temp_agents[single_agent_id]             
 
                 agent["soc_rate"] = sample_gamma_reject_out_of_range(0.5, sociability_rate_min, sociability_rate_max, useNp=True)
+
+                temp_agents[single_agent_id] = agent
 
     return temp_agents
 
