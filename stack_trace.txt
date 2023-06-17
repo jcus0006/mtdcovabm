@@ -1,7 +1,7 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 448, in <module>
-    contactnetwork_mp.contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dyn_params, contactnetwork_sum_time_taken, params["numprocesses"])
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 39, in contactnetwork_parallel
-    params = result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       ^^^^^^^^^^^^^
-UnboundLocalError: cannot access local variable 'process_index' where it is not associated with a value
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 426, in <module>
+    itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 206, in generate_working_days_for_week_residence
+    previous_day_start_hour = previous_day_schedule[0]
+                              ~~~~~~~~~~~~~~~~~~~~~^^^
+IndexError: list index out of range

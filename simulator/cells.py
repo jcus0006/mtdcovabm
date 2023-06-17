@@ -62,7 +62,7 @@ class Cells:
                     for uid in this_hh_employees_uids:
                         agent = self.agents[uid]
                         agent["wpid"] = None
-                        agent["hhwpid"] = hhid 
+                        # agent["hhwpid"] = hhid 
                         agent["work_cellid"] = self.cellindex
 
                 households_employees_groups_index += 1
