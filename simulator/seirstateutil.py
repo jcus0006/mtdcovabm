@@ -64,7 +64,7 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
     return None
 
 # returns new: (state, infection_type, severity)
-def convert_state_transition_to_new_state(self, current_seir_state, current_infection_type, current_infection_severity, seir_state_transition):
+def convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition):
     match seir_state_transition:
         case SEIRStateTransition.ExposedToInfectious:
             new_infection_type = current_infection_type
