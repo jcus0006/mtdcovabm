@@ -407,9 +407,14 @@ if __name__ == '__main__':
             if not params["quicktourismrun"]:
                 # should be cell based, but for testing purposes, traversing all agents here
                 if day == 1 or weekdaystr == "Monday":
+                    print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
+                    start = time.time()
                     for hh_inst in hh_insts:
                         print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
                         itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+
+                    time_taken = time.time() - start
+                    print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
                 
                 print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
