@@ -281,3 +281,28 @@ def get_sus_mort_prog_age_bracket_index(age):
             return 8
         else:
             return 9
+        
+def get_keys_from_multidim_array(arr, idx=0):
+    keys = []
+
+    if arr is not None:
+        keys = [a[idx] for a in arr]
+
+    return keys
+
+def is_key_in_multidim_array(arr, key, idx=0):
+    return key in get_keys_from_multidim_array(arr, idx)
+
+def get_row_from_multidim_array_by_key(arr, key, idx=0):
+    keys = get_keys_from_multidim_array(arr, idx)
+
+    key_idx = keys.index(key)
+
+    return arr[key_idx]
+
+def del_row_from_multidim_array_by_key(arr, key, idx=0):
+    keys = get_keys_from_multidim_array(arr, idx)
+
+    key_idx = keys.index(key)
+
+    del arr[key_idx]

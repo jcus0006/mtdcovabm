@@ -39,9 +39,10 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 # if day is in agent["state_transition_by_day"]
 #   - update agent state (as required) - to be logged
 #   - clear agent["state_transition_by_day"] for day
-def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, day):
-    if day in agent["state_transition_by_day"]:
-        seir_state_transition, timestep = agent["state_transition_by_day"][day]
+# must guarantee a maximum of 1 state transition per day
+def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agent_state_transition_by_day, agentid, day):
+    if agent_state_transition_by_day is not None and agent_state_transition_by_day[0] is not None and agent_state_transition_by_day[0][0] == day:
+        seir_state_transition, timestep = agent_state_transition_by_day[0][0]
         current_seir_state = agents_seir_state[agentid]
         current_infection_type = agents_infection_type[agentid]
         current_infection_severity = agents_infection_severity[agentid]
@@ -57,9 +58,9 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
         if new_infection_severity != current_infection_severity: # to be logged
             agents_infection_severity[agentid] = new_infection_severity
             
-        del agent["state_transition_by_day"][day]
+        del agent_state_transition_by_day[0]
 
-        return new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
+        return agent_state_transition_by_day, new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
 
     return None
 

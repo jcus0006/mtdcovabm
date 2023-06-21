@@ -1,7 +1,7 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 426, in <module>
-    itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 206, in generate_working_days_for_week_residence
-    previous_day_start_hour = previous_day_schedule[0]
-                              ~~~~~~~~~~~~~~~~~~~~~^^^
-IndexError: list index out of range
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 434, in <module>
+    itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 347, in generate_local_itinerary
+    prev_day_itinerary_timesteps, prev_day_itinerary = (list(t) for t in zip(*sorted(zip(prev_day_itinerary_timesteps, prev_day_itinerary), reverse=True)))
+                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not iterable

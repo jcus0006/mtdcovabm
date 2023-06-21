@@ -22,7 +22,7 @@ class Agents:
         self.working_age_bracket_index = []
         self.soc_rate = []
         self.guardian_id = []
-        self.working_schedule = [] # work or school schedule - to change to array
+        self.working_schedule = [] # work or school schedule - to change to array (done)
         self.isshiftbased = []
         self.pub_transp_reg = []
         self.ent_activity = []
@@ -32,13 +32,13 @@ class Agents:
         self.non_daily_activity_recurring = []
         self.prevday_non_daily_activity_recurring = []
 
-        # self.busdriver - to be handled differently
-        # self.state_transition_by_day - will need to handle differently
-        # self.test_day
-        # self.test_result_day
-        # self.quarantine_days
-        # self.hospitalisation_days
-        # self.vaccination_days
+        self.busdriver = []
+        self.state_transition_by_day = []
+        self.test_day = []
+        self.test_result_day = []
+        self.quarantine_days = []
+        self.hospitalisation_days = []
+        self.vaccination_days = []
 
     def populate(self, data):
         for agent_id, properties in data.items():
@@ -73,6 +73,14 @@ class Agents:
             self.itinerary_nextday.append(None)
             self.non_daily_activity_recurring.append(None)
             self.prevday_non_daily_activity_recurring.append(None)
+
+            self.busdriver.append(None)
+            self.state_transition_by_day.append(None)
+            self.test_day.append(None)
+            self.test_result_day.append(None)
+            self.quarantine_days.append(None)
+            self.hospitalisation_days.append(None)
+            self.vaccination_days.append(None)
 
     def get(self, index, name):
         return getattr(self, name)[index]
@@ -128,3 +136,17 @@ class Agents:
             self.wpid[index] = value
         elif name == "empstatus":
             self.empstatus[index] = value
+        elif name == "busdriver":
+            self.busdriver[index] = value
+        elif name =="state_transition_by_day":
+            self.state_transition_by_day[index] = value
+        elif name == "test_day":
+            self.test_day[index] = value
+        elif name == "test_result_day":
+            self.test_result_day[index] = value
+        elif name == "quarantine_days":
+            self.quarantine_days[index] = value
+        elif name == "hospitalisation_days":
+            self.hospitalisation_days[index] = value
+        elif name == "vaccination_days":
+            self.vaccination_days[index] = value
