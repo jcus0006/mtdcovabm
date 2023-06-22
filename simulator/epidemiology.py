@@ -339,7 +339,7 @@ class Epidemiology:
 
             test_day = self.agents_mp.get(agent_id, "test_day")
 
-            if len(test_day) > 0:
+            if test_day is not None and len(test_day) > 0:
                 if abs(test_day[0] - incremental_days) < 5:
                     test_already_scheduled
 
@@ -401,7 +401,7 @@ class Epidemiology:
                         start_day += self.contact_tracing_secondary_delay_days
                         end_day = start_day + self.quarantine_secondary_contact_duration
 
-                if len(quarantine_days) > 0: # to clear quarantine_days when ready from quaratine (in itinerary)
+                if quarantine_days is not None and len(quarantine_days) > 0: # to clear quarantine_days when ready from quaratine (in itinerary)
                     st_day_ts = quarantine_days[0][0]
                     st_day = st_day_ts[0]
 

@@ -4,10 +4,14 @@ Traceback (most recent call last):
   File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 77, in simulate_contact_network
     cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 104, in simulate_contact_network_by_cellid
-    agents_directcontacts, cell = self.generate_contact_network(cellid)
-                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 211, in generate_contact_network
-    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[agent_age_bracket_index, 2 + ageactivitycontact_cm_activityid]
-                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-IndexError: only integers, slices (`:`), ellipsis (`...`), numpy.newaxis (`None`) and integer or boolean arrays are valid indices
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 106, in simulate_contact_network_by_cellid
+    self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 182, in simulate_direct_contacts
+    agent_state_transition_by_day, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 313, in simulate_seir_state_transition
+    self.schedule_hospitalisation(exposed_agent_id, hospitalisation_days)
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 437, in schedule_hospitalisation
+    agent_hospitalisation_days.extend(hospitalisation_days)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'extend'
