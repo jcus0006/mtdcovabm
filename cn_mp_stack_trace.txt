@@ -1,5 +1,5 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 57, in contactnetwork_worker
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 72, in contactnetwork_worker
     contact_network_util.simulate_contact_network(day, weekday)
   File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 77, in simulate_contact_network
     cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
@@ -9,9 +9,12 @@ Traceback (most recent call last):
   File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 182, in simulate_direct_contacts
     agent_state_transition_by_day, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 313, in simulate_seir_state_transition
-    self.schedule_hospitalisation(exposed_agent_id, hospitalisation_days)
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 437, in schedule_hospitalisation
-    agent_hospitalisation_days.extend(hospitalisation_days)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'NoneType' object has no attribute 'extend'
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 329, in simulate_seir_state_transition
+    _, _ = self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Positive, quarantine_days=agent_quarantine_days)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 414, in schedule_quarantine
+    self.agents_mp.set_shm(agent_id, "quarantine_days", quarantine_days)
+  File "c:\AppsPy\mtdcovabm\simulator\agents.py", line 295, in set_shm
+    self.quarantine_days[0][index] = value
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+TypeError: 'NoneType' object does not support item assignment

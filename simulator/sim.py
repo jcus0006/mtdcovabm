@@ -29,7 +29,7 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 1
+                "numprocesses": 4
             }
 
     figure_count = 0
@@ -142,16 +142,16 @@ if __name__ == '__main__':
             agent["school_cellid"] = None
             agent["inst_cellid"] = None
             agent["ent_activity"] = None
-            agent["working_schedule"] = []
+            agent["working_schedule"] = None
             # agent["symptomatic"] = False
             agent["tourist_id"] = None 
             agent["state_transition_by_day"] = []
             # intervention_events_by_day
             agent["test_day"] = [] # [day, timestep]
             agent["test_result_day"] = [] # [day, timestep]
-            agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]]
+            agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
             agent["vaccination_days"] = [] # [[day, timestep]]
-            agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]]
+            agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
 
             if index < n_locals: # age related properties for tourists are set later
                 agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
@@ -373,7 +373,12 @@ if __name__ == '__main__':
     #     agents = {i:agents[i] for i in range(10_000)}
 
     agents_mp = Agents()
-    agents_mp.populate(agents)
+    agents_mp.populate(agents, n_locals, n_tourists)
+
+    agents_mp.convert_to_shared_memory_readonly()
+    agents_mp.clear_non_shared_memory_readonly()
+
+    agents_mp.convert_from_shared_memory_readonly()
 
     print("agents_mp size: " + str(getsizeof(agents_mp)) + " bytes") 
 
@@ -400,6 +405,11 @@ if __name__ == '__main__':
                 if day == 1: # from day 2 onwards always calculated at eod
                     dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
             
+            agents_mp.convert_to_shared_memory_dynamic()
+            agents_mp.clear_non_shared_memory_dynamic()
+
+            agents_mp.convert_from_shared_memory_dynamic() # this will need to be called from multiple processes when parallelised
+
             itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
 
             # if params["loadtourism"]:
@@ -427,11 +437,39 @@ if __name__ == '__main__':
 
                     time_taken = time.time() - start
                     print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
-                
+
+                    print("converting working_schedule to shared_memory")
+                    start = time.time()
+                    agents_mp.convert_to_shared_memory_workingschedule()
+                    agents_mp.clear_non_shared_memory_workingschedule()
+
+                    time_taken = time.time() - start
+                    print("convert_to_shared_memory_workingschedule for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
+
+                    start = time.time()
+                    agents_mp.convert_from_shared_memory_workingschedule()
+                    time_taken = time.time() - start
+                    print("convert_from_shared_memory_workingschedule for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
+
                 print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
-                start = time.time()
+                start = time.time()                    
+
+                agents_mp.convert_from_shared_memory_dynamic() # this will have to be called from multiple processes when parallelised
                 for hh_inst in hh_insts:
                     itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
+
+                start_sync = time.time()
+
+                agents_mp.convert_to_shared_memory_dynamic(is_itinerary=True)
+                agents_mp.clear_non_shared_memory_dynamic()
+
+                time_taken_sync = time.time() - start_sync
+
+                print("convert_to_shared_memory_dynamic, time taken: " + str(time_taken_sync))
+
+                if day == 1:
+                    agents_mp.convert_to_shared_memory_isshiftbased()
+                    agents_mp.clear_non_shared_memory_isshiftbased()
 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -440,27 +478,7 @@ if __name__ == '__main__':
 
                 if not params["quickitineraryrun"]:
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
-                    start = time.time()
-
-                    # if params["numprocesses"] > 1:
-                    #     cells_agents_timesteps_keys = list(contactnetwork_util.cells_agents_timesteps.keys())
-                    #     np.random.shuffle(cells_agents_timesteps_keys)
-                    #     contactnetwork_util.mp_cells_keys = np.array_split(cells_agents_timesteps_keys, params["numprocesses"])
-
-                    #     # Create a pool of processes
-                    #     pool = mp.Pool(params["numprocesses"])
-                        
-                    #     params_list = [(day, weekday, mp_index) for mp_index in range(params["numprocesses"])]
-            
-                    #     # Call the worker method in parallel
-                    #     results = pool.map(contactnetwork_util.simulate_contact_network, params_list)
-
-                    #     # Close the pool of processes
-                    #     pool.close()
-                    #     pool.join()
-                    # else:
-                    #     params_list = [day, weekday, -1]
-                    #     contactnetwork_util.simulate_contact_network(params_list)            
+                    start = time.time()        
 
                     contactnetwork_mp.contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dyn_params, contactnetwork_sum_time_taken, params["numprocesses"])
 
@@ -493,6 +511,10 @@ if __name__ == '__main__':
 
                 time_taken = time.time() - start
                 print("refresh_dynamic_parameters time taken: " + str(time_taken))
+
+            # parallel methods will need to have updated shared_memory directly
+            # agents_mp.convert_to_shared_memory_dynamic(is_itinerary=False)
+            # agents_mp.clear_non_shared_memory_dynamic()
 
             day_time_taken = time.time() - day_start
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))

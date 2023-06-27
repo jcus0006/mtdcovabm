@@ -43,14 +43,15 @@ class Itinerary:
                 agents_infection_severity,
                 agents_directcontacts_by_simcelltype_by_day,
                 agents_vaccination_doses,
-                tourists_active_ids):
+                tourists_active_ids,
+                result_queue=None):
         
         self.rng = np.random.default_rng(seed=6)
 
         self.one_to_two_hours = np.arange(6, 13)
 
         self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams, result_queue)
 
         self.params = params
         self.timestepmins = timestepmins
@@ -159,7 +160,7 @@ class Itinerary:
                     is_shift_based = self.agents_mp.get(agentid, "isshiftbased")
                     empftpt = self.agents_mp.get(agentid, "empftpt")
                     # employed
-                    working_schedule = [[] for i in range(7)] # {workingday:(start,end)}
+                    working_schedule = [] # {workingday:(start,end)}
 
                     # working_schedule = agent["working_schedule"]
                     
@@ -195,24 +196,24 @@ class Itinerary:
                         working_days = sorted(working_days)
 
                         for index, day in enumerate(working_days):
-                            if (index == 0 and len(prev_working_schedule) > 0 and len(prev_working_schedule[6]) > 0) or (working_days[index - 1] == day-1):
-                                if index == 0 and len(prev_working_schedule) > 0 and len(prev_working_schedule[6]) > 0:
-                                    previous_day_schedule = prev_working_schedule[6]
+                            if (index == 0 and prev_working_schedule is not None and len(prev_working_schedule) > 0 and prev_working_schedule[-1][0] == 6) or (working_days[index - 1] == day-1):
+                                if index == 0 and prev_working_schedule is not None and len(prev_working_schedule) > 0 and prev_working_schedule[-1][0] == 6:
+                                    previous_day_schedule = prev_working_schedule[-1]
                                 else:
-                                    previous_day_schedule = working_schedule[working_days[index - 1] - 1]
+                                    previous_day_schedule = util.get_row_from_multidim_array_by_key(working_schedule, working_days[index - 1] - 1)
 
-                                previous_day_start_hour = previous_day_schedule[0]
+                                previous_day_start_hour = previous_day_schedule[1]
 
                                 for shift_working_hour_option in self.shift_working_hours:
                                     if shift_working_hour_option[1] == previous_day_start_hour: # if starting hour is the same, it ensures 24 hours would have passed
-                                        working_schedule[day-1] = [shift_working_hour_option[1], shift_working_hour_option[2]]
+                                        working_schedule.append([day-1, shift_working_hour_option[1], shift_working_hour_option[2]])
                                         break
                             else:
                                 working_hours_options = np.arange(len(self.shift_working_hours))
                                 
                                 sampled_working_hours_option = self.rng.choice(working_hours_options, size=1)[0]
 
-                                working_schedule[day-1] = [self.shift_working_hours[sampled_working_hours_option][1], self.shift_working_hours[sampled_working_hours_option][2]]
+                                working_schedule.append([day-1, self.shift_working_hours[sampled_working_hours_option][1], self.shift_working_hours[sampled_working_hours_option][2]])
                     else:
                         is_full_time = empftpt == 0 or empftpt == 1
 
@@ -258,9 +259,9 @@ class Itinerary:
                                     else:
                                         end_hour = start_hour + 4
 
-                                    working_schedule[day-1] = [start_hour, end_hour]
+                                    working_schedule.append([day-1, start_hour, end_hour])
                                 else:
-                                    working_schedule[day-1] = [industry_start_work_hour, industry_end_work_hour]
+                                    working_schedule.append([day-1, industry_start_work_hour, industry_end_work_hour])
                             else: # part time
                                 possible_slots = int(industry_working_hours / 4)
                                 options = np.arange(possible_slots)
@@ -279,9 +280,9 @@ class Itinerary:
                                 if actual_end_hour > 24:
                                     actual_end_hour = actual_end_hour - 24
 
-                                working_schedule[day-1] = [actual_start_hour, actual_end_hour]
+                                working_schedule.append([day-1, actual_start_hour, actual_end_hour])
 
-                            self.agents_mp.set(agentid, "working_schedule", working_schedule)
+                    self.agents_mp.set(agentid, "working_schedule", working_schedule)
 
     def generate_local_itinerary(self, simday, weekday, agents_ids_by_ages, resident_uids):
         guardian_id, guardian_hospitalisation_days, guardian_quarantine_days, guardian_non_daily_activity_recurring, guardian_prevday_non_daily_activity_recurring, guardian_itinerary, guardian_itinerary_nextday = None, None, None, None, None, None, None
@@ -323,7 +324,7 @@ class Itinerary:
                 if new_states is not None:
                     agent_state_transition_by_day, new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
 
-                    self.agents_mp.set(agentid, "state_transition_by_day", agent_state_transition_by_day)
+                    # self.agents_mp.set(agentid, "state_transition_by_day", agent_state_transition_by_day)
 
                     self.epi_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
 
@@ -376,19 +377,19 @@ class Itinerary:
                     #     guardian_itinerary_nextday = self.agents_mp.get(agent_guardian_id, "itinerary_nextday")
 
                     if guardian_hospitalisation_days is not None and len(guardian_hospitalisation_days) > 0:
-                        hosp_start_day_ts, hosp_end_day_ts = guardian_hospitalisation_days[0], guardian_hospitalisation_days[1]
+                        hosp_start_day, hosp_end_day = guardian_hospitalisation_days[0], guardian_hospitalisation_days[2]
 
-                        hosp_start_day = hosp_start_day_ts[0]
-                        hosp_end_day = hosp_end_day_ts[0]
+                        # hosp_start_day = hosp_start_day_ts[0]
+                        # hosp_end_day = hosp_end_day_ts[0]
 
                         if simday >= hosp_start_day and simday <= hosp_end_day:
                             is_guardian_hospitalised = True
 
                     if guardian_quarantine_days is not None and len(guardian_quarantine_days) > 0:
-                        quar_start_day_ts, quar_end_day_ts = guardian_quarantine_days[0][0], guardian_quarantine_days[0][1]
+                        quar_start_day, quar_end_day = guardian_quarantine_days[0], guardian_quarantine_days[2]
 
-                        quar_start_day = quar_start_day_ts[0]
-                        quar_end_day = quar_end_day_ts[0]
+                        # quar_start_day = quar_start_day_ts[0]
+                        # quar_end_day = quar_end_day_ts[0]
 
                         if simday >= quar_start_day and simday <= quar_end_day:
                             is_guardian_quarantined = True
@@ -405,10 +406,10 @@ class Itinerary:
                 quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
 
                 if agent_hospitalisation_days is not None and len(agent_hospitalisation_days) > 0:
-                    hosp_start_day_ts, hosp_end_day_ts = agent_hospitalisation_days[0], agent_hospitalisation_days[1]
+                    hosp_start_day, hosp_end_day = agent_hospitalisation_days[0], agent_hospitalisation_days[2]
 
-                    hosp_start_day = hosp_start_day_ts[0]
-                    hosp_end_day = hosp_end_day_ts[0]
+                    # hosp_start_day = hosp_start_day_ts[0]
+                    # hosp_end_day = hosp_end_day_ts[0]
 
                     if simday >= hosp_start_day and simday <= hosp_end_day:
                         # print("is hospitalised")
@@ -428,10 +429,10 @@ class Itinerary:
                     #     is_nextday_quar_hosp_start_day = True
 
                 if agent_quarantine_days is not None and len(agent_quarantine_days) > 0:
-                    quar_start_day_ts, quar_end_day_ts = agent_quarantine_days[0][0], agent_quarantine_days[0][1]
+                    quar_start_day, quar_end_day = agent_quarantine_days[0], agent_quarantine_days[2]
 
-                    quar_start_day = quar_start_day_ts[0]
-                    quar_end_day = quar_end_day_ts[0]
+                    # quar_start_day = quar_start_day_ts[0]
+                    # quar_end_day = quar_end_day_ts[0]
 
                     if simday >= quar_start_day and simday <= quar_end_day:
                         # print("is quarantined")
@@ -453,12 +454,12 @@ class Itinerary:
                     # if is_quarantined_start_day or is_quarantined_end_day still to handle as per usual
                     # to see how to handle the else of this, and structure accordingly
 
-                if agent_non_daily_activity_recurring is None:
-                    agent_non_daily_activity_recurring = []
+                # if agent_non_daily_activity_recurring is None:
+                #     agent_non_daily_activity_recurring = []
 
                 # always reset on the next day (this is only to be referred to by the guardian and cleared on the next day)
                 if agent_prevday_non_daily_activity_recurring is not None and len(agent_prevday_non_daily_activity_recurring) > 0:
-                    agent_prevday_non_daily_activity_recurring = []
+                    agent_prevday_non_daily_activity_recurring = None
 
                 # if "non_daily_activity_recurring" not in agent:
                 #     agent["non_daily_activity_recurring"] = {}
@@ -470,12 +471,12 @@ class Itinerary:
                 if agent_prevday_non_daily_activity_recurring is not None: # and (not is_quarantined or is_quarantine_start_day or is_quarantine_end_day)
                     agent_non_daily_activity_recurring = copy(agent_prevday_non_daily_activity_recurring)
 
-                    if util.is_key_in_multidim_array(agent_non_daily_activity_recurring, simday):
-                        _, sampled_non_daily_activity = util.get_row_from_multidim_array_by_key(agent_non_daily_activity_recurring, simday)
+                    if simday >= agent_non_daily_activity_recurring[0] and simday <= agent_non_daily_activity_recurring[2]:
+                        sampled_non_daily_activity = agent_non_daily_activity_recurring[1]
 
                     if sampled_non_daily_activity is None:
-                        if simday-1 in agent_non_daily_activity_recurring:
-                            _, prevday_non_daily_end_activity = copy(util.get_row_from_multidim_array_by_key(agent_non_daily_activity_recurring, simday-1))
+                        if simday-1 >= agent_non_daily_activity_recurring[0] and simday-1 <= agent_non_daily_activity_recurring[2]:
+                            prevday_non_daily_end_activity = agent_non_daily_activity_recurring[1]
                             agent_prevday_non_daily_activity_recurring = agent_non_daily_activity_recurring
                             agent_non_daily_activity_recurring = None
                             
@@ -531,7 +532,7 @@ class Itinerary:
                             agent_itinerary = [] # [timestep: cellindex]
                             agent_itinerary_nextday = []
                             
-                            prevday_non_daily_activity_recurring_keys = util.get_keys_from_multidim_array(agent_prevday_non_daily_activity_recurring)
+                            prevday_non_daily_activity_recurring_keys = list(range(agent_prevday_non_daily_activity_recurring[0], agent_prevday_non_daily_activity_recurring[2] + 1))
                             departure_day = prevday_non_daily_activity_recurring_keys[0]
                             # potential_arrival_timesteps = np.arange(0, 144)
 
@@ -555,7 +556,7 @@ class Itinerary:
                             else:
                                 wakeup_timestep = arrive_home_timestep
                         else:
-                            prevday_non_daily_activity_recurring_keys = util.get_keys_from_multidim_array(guardian_prevday_non_daily_activity_recurring)
+                            prevday_non_daily_activity_recurring_keys = list(range(guardian_prevday_non_daily_activity_recurring[0], guardian_prevday_non_daily_activity_recurring[2] + 1))
                             departure_day = prevday_non_daily_activity_recurring_keys[0]
 
                             agent_itinerary = deepcopy(guardian_itinerary) # create a copy by value, so it can be extended without affecting guardian and vice versa
@@ -586,7 +587,7 @@ class Itinerary:
 
                             # agent_state_transition_by_day = self.agents_mp.get(agentid, "state_transition_by_day")
                             agent_epi_age_bracket_index = self.agents_mp.get(agentid, "epi_age_bracket_index")
-                            agent_quarantine_days = self.agents_mp.get(agentid, "quarantine_days")
+                            # agent_quarantine_days = self.agents_mp.get(agentid, "quarantine_days")
 
                             agent_state_transition_by_day, _ = self.epi_util.simulate_seir_state_transition(agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
                     else:
@@ -645,12 +646,12 @@ class Itinerary:
                     # set wake up hour
                     start_work_school_hour = None
                     wakeup_hour = None
-                    working_schedule = None
+                    agent_working_schedule = None
 
                     if prevday_non_daily_end_activity == NonDailyActivity.Travel and next_day_sleep_timestep is not None and agent_guardian_id is None:
                         self.add_to_itinerary(agent_itinerary, agent_itinerary_nextday, next_day_sleep_timestep, Action.Sleep, res_cellid, next_day=True)                        
 
-                    working_schedule = None
+                    # working_schedule = None
                     # if "working_schedule" in agent:
                     #     working_schedule = agent["working_schedule"]
 
@@ -658,13 +659,13 @@ class Itinerary:
                         if wakeup_timestep is None:
                             if agent_empstatus == 0 or agent_sc_student == 1:
                                 if agent_empstatus == 0:
-                                    working_schedule = self.agents_mp.get(agentid, "working_schedule")
+                                    agent_working_schedule = self.agents_mp.get(agentid, "working_schedule")
 
                                     if agent_work_cellid is None:
                                         agent_work_cellid = self.agents_mp.get(agentid, "work_cellid")
 
-                                    if weekday in working_schedule: # will not be possible 2 days after each other for shift
-                                        start_work_school_hour = working_schedule[weekday-1][0]
+                                    if util.is_key_in_multidim_array(agent_working_schedule, weekday-1): # will not be possible 2 days after each other for shift
+                                        start_work_school_hour = util.get_row_from_multidim_array_by_key(agent_working_schedule, weekday-1)[1]
 
                                         if prev_night_sleep_hour is not None:
                                             latest_wake_up_hour = prev_night_sleep_hour + self.max_sleep_hours
@@ -746,17 +747,17 @@ class Itinerary:
 
                             # ensure travel recurring activity (skip if non travel)
                             if (len(guardian_non_daily_activity_recurring) > 0 and 
-                                guardian_non_daily_activity_recurring[util.get_keys_from_multidim_array(guardian_non_daily_activity_recurring)[0]] == NonDailyActivity.Travel):
+                                guardian_non_daily_activity_recurring[1] == NonDailyActivity.Travel):
                                 # if kid within non daily activity of his/her own, skip
                                 # if "non_daily_activity_recurring" not in agent or agent["non_daily_activity_recurring"] is None or agent["non_daily_activity_recurring"] == guardian["non_daily_activity_recurring"]:
                                 guardian_sampled_non_daily_activity, guardian_sampled_non_daily_activity_departure_day = None, None
 
                                 if guardian_non_daily_activity_recurring is not None:           
-                                    if simday in guardian_non_daily_activity_recurring:
-                                        if not util.is_key_in_multidim_array(guardian_non_daily_activity_recurring, simday-1): # if first day of non_daily_activity_recurring
-                                            guardian_sampled_non_daily_activity_departure_day = util.get_row_from_multidim_array_by_key(guardian_non_daily_activity_recurring, simday)
+                                    if simday >= guardian_non_daily_activity_recurring[0] and simday <= guardian_non_daily_activity_recurring[2]:
+                                        if not (simday-1 >= guardian_non_daily_activity_recurring[0] and simday-1 <= guardian_non_daily_activity_recurring[2]): # if first day of non_daily_activity_recurring
+                                            guardian_sampled_non_daily_activity_departure_day = guardian_non_daily_activity_recurring[1]
                                         else:
-                                            guardian_sampled_non_daily_activity = util.get_row_from_multidim_array_by_key(guardian_non_daily_activity_recurring, simday)
+                                            guardian_sampled_non_daily_activity = guardian_non_daily_activity_recurring[1]
 
                                     if guardian_sampled_non_daily_activity_departure_day is not None:
                                         is_departureday = True
@@ -770,13 +771,15 @@ class Itinerary:
                             # set the working / school hours
                             if agent_empstatus == 0: # 0: employed, 1: unemployed, 2: inactive
                                 # employed. consider workingday/ vacationlocal/ vacationtravel/ sickleave
+                                if agent_work_cellid is None:
+                                    agent_work_cellid = self.agents_mp.get(agentid, "work_cellid")
                                 
-                                if weekday in working_schedule: # working day
+                                if util.is_key_in_multidim_array(agent_working_schedule, weekday-1): # working day
                                     is_work_or_school_day = True
 
-                                    working_hours = working_schedule[weekday-1]
-                                    start_work_hour = working_hours[0]
-                                    end_work_hour = working_hours[1]
+                                    working_hours = util.get_row_from_multidim_array_by_key(agent_working_schedule, weekday-1)
+                                    start_work_hour = working_hours[1]
+                                    end_work_hour = working_hours[2]
 
                                     start_work_timestep_with_leeway, end_work_timestep_with_leeway = self.get_timestep_by_hour(start_work_hour, 2), self.get_timestep_by_hour(end_work_hour, 3)
 
@@ -921,10 +924,10 @@ class Itinerary:
 
                                 sampled_num_days = self.rng.poisson(mean_num_days)
 
-                                agent_non_daily_activity_recurring = []
+                                agent_non_daily_activity_recurring = [simday, sampled_non_daily_activity, simday+sampled_num_days]
 
-                                for day in range(simday, simday+sampled_num_days+1):
-                                    agent_non_daily_activity_recurring.append([day, sampled_non_daily_activity])
+                                # for day in range(simday, simday+sampled_num_days+1):
+                                #     agent_non_daily_activity_recurring.append([day, sampled_non_daily_activity])
                             
                         # if not sick and not travelling (local or normal work/school day), sample sleep timestep
                         # fill in activity_timestep_ranges, representing "free time"
@@ -1232,12 +1235,23 @@ class Itinerary:
                     print("something wrong")
 
                 if agent_is_guardian:
-                    guardian_hospitalisation_days = agent_hospitalisation_days
-                    guardian_quarantine_days = agent_quarantine_days
-                    guardian_non_daily_activity_recurring = agent_non_daily_activity_recurring
-                    guardian_prevday_non_daily_activity_recurring = agent_prevday_non_daily_activity_recurring
-                    guardian_itinerary = agent_itinerary
-                    guardian_itinerary_nextday = agent_itinerary_nextday
+                    guardian_hospitalisation_days = copy(agent_hospitalisation_days)
+                    guardian_quarantine_days = copy(agent_quarantine_days)
+                    guardian_non_daily_activity_recurring = copy(agent_non_daily_activity_recurring)
+                    guardian_prevday_non_daily_activity_recurring = copy(agent_prevday_non_daily_activity_recurring)
+                    guardian_itinerary = copy(agent_itinerary)
+                    guardian_itinerary_nextday = copy(agent_itinerary_nextday)
+
+                self.agents_mp.set(agentid, "itinerary", agent_itinerary)
+                self.agents_mp.set(agentid, "itinerary_nextday", agent_itinerary_nextday)
+                self.agents_mp.set(agentid, "non_daily_activity_recurring", agent_non_daily_activity_recurring)
+                self.agents_mp.set(agentid, "prevday_non_daily_activity_recurring", agent_prevday_non_daily_activity_recurring)
+                self.agents_mp.set(agentid, "state_transition_by_day", agent_state_transition_by_day)
+                self.agents_mp.set(agentid, "test_day", agent_test_day)
+                self.agents_mp.set(agentid, "test_result_day", agent_test_result_day)
+                self.agents_mp.set(agentid, "quarantine_days", agent_quarantine_days)
+                self.agents_mp.set(agentid, "hospitalisation_days", agent_hospitalisation_days)
+                self.agents_mp.set(agentid, "vaccination_days", agent_vaccination_days)
 
                 # test_itinerary_keys = sorted(list(agent["itinerary"].keys()), reverse=True)
                 # test_itinerarynextday_keys = sorted(list(agent["itinerary_nextday"].keys()), reverse=True)
@@ -1416,10 +1430,10 @@ class Itinerary:
                         self.epi_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
 
                     if len(agent["hospitalisation_days"]) > 0:
-                        hosp_start_day_ts, hosp_end_day_ts = agent["hospitalisation_days"][0], agent["hospitalisation_days"][1]
+                        hosp_start_day, hosp_end_day = agent["hospitalisation_days"][0], agent["hospitalisation_days"][2]
 
-                        hosp_start_day = hosp_start_day_ts[0]
-                        hosp_end_day = hosp_end_day_ts[0]
+                        # hosp_start_day = hosp_start_day_ts[0]
+                        # hosp_end_day = hosp_end_day_ts[0]
 
                         if simday >= hosp_start_day and simday <= hosp_end_day:
                             # print("is hospitalised")
@@ -1434,10 +1448,10 @@ class Itinerary:
                             is_quarantine_hospital_end_day = True
 
                     if len(agent["quarantine_days"]) > 0:
-                        quar_start_day_ts, quar_end_day_ts = agent["quarantine_days"][0][0], agent["quarantine_days"][0][1]
+                        quar_start_day, quar_end_day = agent["quarantine_days"][0], agent["quarantine_days"][2]
 
-                        quar_start_day = quar_start_day_ts[0]
-                        quar_end_day = quar_end_day_ts[0]
+                        # quar_start_day = quar_start_day_ts[0]
+                        # quar_end_day = quar_end_day_ts[0]
 
                         if simday >= quar_start_day and simday <= quar_end_day:
                             # print("is quarantined")
@@ -1897,7 +1911,7 @@ class Itinerary:
                 if next_timestep - 143 < sleep_timestep and (airport_timestep is None or next_timestep - 143 < airport_timestep): # next_timestep could be slightly larger than sleep_timestep due to rounding, in that case ignore going back Home
                     self.add_to_itinerary(agent_itinerary, agent_itinerary_nextday, next_timestep - 143, Action.Home, res_cell_id, next_day=True)
 
-            return agent_itinerary, agent_itinerary_nextday
+        return agent_itinerary, agent_itinerary_nextday
 
     def sample_airport_activities(self, agent_itinerary, agent_itinerary_nextday, res_cell_id, timestep_range_in_airport, inbound, is_departurenextday, groupid):
         activity_id = 3 # entertainment (indoor)
@@ -2076,9 +2090,9 @@ class Itinerary:
         hospitalisation_ts = None
         hospitalisation_end_day = False
         if agent_hospitalisation_days is not None and len(agent_hospitalisation_days) > 0:
-            start_day_ts, end_day_ts = agent_hospitalisation_days[0], agent_hospitalisation_days[1]
-            start_day, start_ts = start_day_ts[0], start_day_ts[1]
-            end_day, end_ts = end_day_ts[0], end_day_ts[1]
+            start_day, start_ts, end_day = agent_hospitalisation_days[0], agent_hospitalisation_days[1], agent_hospitalisation_days[2]
+            # start_day, start_ts = start_day_ts[0], start_day_ts[1]
+            # end_day, end_ts = end_day_ts[0], end_day_ts[1]
             
             if start_day == day:
                 cancel_itinerary_beyond_hospitalisation_ts = True
@@ -2095,7 +2109,7 @@ class Itinerary:
                             hospitalisation_ts = arr_dep_ts
                     else:
                         # this would be the case where arrival is beyond midnight quarantine starts from previous day at 6am
-                        hospitalisation_days = [[start_day+1, 36], [end_day+1, 36]]
+                        hospitalisation_days = [start_day+1, 36, end_day+1]
                         self.epi_util.schedule_hospitalisation(agentid, hospitalisation_days)
                         cancel_itinerary_beyond_hospitalisation_ts = False
 
@@ -2137,9 +2151,9 @@ class Itinerary:
         quarantine_ts = None
         quarantine_end_day = False
         if agent_quarantine_days is not None and len(agent_quarantine_days) > 0:
-            start_day_ts, end_day_ts = agent_quarantine_days[0][0], agent_quarantine_days[0][1]
-            start_day, start_ts = start_day_ts[0], start_day_ts[1]
-            end_day, end_ts = end_day_ts[0], end_day_ts[1]
+            start_day, start_ts, end_day = agent_quarantine_days[0], agent_quarantine_days[1], agent_quarantine_days[2]
+            # start_day, start_ts = start_day_ts[0], start_day_ts[1]
+            # end_day, end_ts = end_day_ts[0], end_day_ts[1]
             
             if start_day == day or hospitalisation_end_day and day <= end_day:
                 cancel_itinerary_beyond_quarantine_ts = True

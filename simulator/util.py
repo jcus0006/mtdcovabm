@@ -306,3 +306,23 @@ def del_row_from_multidim_array_by_key(arr, key, idx=0):
     key_idx = keys.index(key)
 
     del arr[key_idx]
+
+def get_all_rows_by_key(arr, key, idx=0):
+    rows = []
+    if arr is not None:
+        rows = [a for a in arr if a[idx] == key]
+
+    # for a in arr:
+    #     if a[idx] == key:
+    #         rows.append(a)
+
+    #     if a[idx] > key:
+    #         break
+
+    return rows
+
+def get_distinct_first_indices(array):
+    distinct_indices = set()
+    for item in array:
+        distinct_indices.add(item[0])
+    return list(distinct_indices)

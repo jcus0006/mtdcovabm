@@ -1,7 +1,7 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 434, in <module>
-    itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 347, in generate_local_itinerary
-    prev_day_itinerary_timesteps, prev_day_itinerary = (list(t) for t in zip(*sorted(zip(prev_day_itinerary_timesteps, prev_day_itinerary), reverse=True)))
-                                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: 'NoneType' object is not iterable
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 408, in <module>
+    agents_mp.convert_to_shared_memory_dynamic()
+  File "c:\AppsPy\mtdcovabm\simulator\agents.py", line 424, in convert_to_shared_memory_dynamic
+    time_taken - time.time() - start
+    ^^^^^^^^^^
+UnboundLocalError: cannot access local variable 'time_taken' where it is not associated with a value
