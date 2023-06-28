@@ -60,18 +60,18 @@ class Itinerary:
         self.n_tourists = n_tourists
         self.agents_mp = agents_mp
         self.tourists = tourists
-        self.cells = cells
+        # self.cells = cells
         self.industries = industries
-        self.workplaces = workplaces
+        # self.workplaces = workplaces
         self.cells_restaurants = cells_restaurants
-        self.cells_schools = cells_schools
+        # self.cells_schools = cells_schools
         self.cells_hospital = cells_hospital
         self.cells_testinghub = cells_testinghub
         self.cells_vaccinationhub = cells_vaccinationhub
         self.cells_entertainment = cells_entertainment
         self.cells_religious = cells_religious
         self.cells_households = cells_households
-        self.cells_accommodation_by_accomid = cells_accommodation_by_accomid
+        # self.cells_accommodation_by_accomid = cells_accommodation_by_accomid
         self.cells_breakfast_by_accomid = cells_breakfast_by_accomid
         self.cells_airport = cells_airport
         self.cells_transport = cells_transport
@@ -2009,7 +2009,7 @@ class Itinerary:
                         if transp_start_ts < 0:
                             transp_start_ts = 0
 
-                        potential_cells = list(self.cells_airport.keys())
+                        potential_cells = list(self.cells_transport.keys())
 
                         sampled_cell_id = self.rng.choice(potential_cells, size=1)[0]
 
