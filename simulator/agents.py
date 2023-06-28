@@ -10,13 +10,13 @@ class Agents:
         self.n_total = None
         self.n_locals = None
         self.n_tourists = None
-        self.age = [] # int
-        self.gender = [] # int
-        self.hhid = [] # int
-        self.scid = [] # int
+        # self.age = [] # int
+        # self.gender = [] # int
+        # self.hhid = [] # int
+        # self.scid = [] # int
         self.sc_student = []
         # self.sc_type = []
-        self.wpid = []
+        # self.wpid = []
         self.empstatus = []
         self.empind = []
         self.empftpt = []
@@ -50,13 +50,13 @@ class Agents:
         self.hospitalisation_days = []
         self.vaccination_days = []
 
-        self.shm_age = [] # int
-        self.shm_gender = [] # int
-        self.shm_hhid = [] # int
-        self.shm_scid = [] # int
+        # self.shm_age = [] # int
+        # self.shm_gender = [] # int
+        # self.shm_hhid = [] # int
+        # self.shm_scid = [] # int
         self.shm_sc_student = []
         # self.sc_type = []
-        self.shm_wpid = []
+        # self.shm_wpid = []
         self.shm_empstatus = []
         self.shm_empind = []
         self.shm_empftpt = []
@@ -100,13 +100,13 @@ class Agents:
         self.n_tourists = n_tourists
 
         for _, properties in data.items():
-            self.age.append(properties["age"] if "age" in properties else None)
-            self.gender.append(properties["gender"] if "gender" in properties else None)
-            self.hhid.append(properties["hhid"] if "hhid" in properties else None) # int
-            self.scid.append(properties["scid"] if "scid" in properties else None) # int
+            # self.age.append(properties["age"] if "age" in properties else None)
+            # self.gender.append(properties["gender"] if "gender" in properties else None)
+            # self.hhid.append(properties["hhid"] if "hhid" in properties else None) # int
+            # self.scid.append(properties["scid"] if "scid" in properties else None) # int
             self.sc_student.append(properties["sc_student"] if "sc_student" in properties else None)
             # self.sc_type.append(properties["sc_type"] if "sc_type" in properties else None)
-            self.wpid.append(properties["wpid"] if "wpid" in properties else None)
+            # self.wpid.append(properties["wpid"] if "wpid" in properties else None)
             self.empstatus.append(properties["empstatus"] if "empstatus" in properties else None)
             self.empind.append(properties["empind"] if "empind" in properties else None)
             self.empftpt.append(properties["empftpt"] if "empftpt" in properties else None)
@@ -144,14 +144,65 @@ class Agents:
         print("agents_mp populate time taken: " + str(time_taken))
         # self.convert_to_ndarray()
 
+    def clone(self, agents_mp_to_clone, loadall=False, itinerary=False, contactnetwork=False):
+        if not loadall and not itinerary and not contactnetwork:
+            loadall = True
+
+        self.n_total = agents_mp_to_clone.n_total
+        self.n_locals = agents_mp_to_clone.n_locals
+        self.n_tourists = agents_mp_to_clone.n_tourists
+
+        if loadall:
+            self.sc_student, self.shm_sc_student = agents_mp_to_clone.sc_student, agents_mp_to_clone.shm_sc_student
+            # self.shared_memory_names.append(self.generate_shared_memory_str(self.shm_sc_type))
+            # self.wpid = self.generate_ndarray_from_shared_memory_int(self.shm_wpid)
+            self.empstatus, self.shm_empstatus = agents_mp_to_clone.empstatus, agents_mp_to_clone.shm_empstatus
+            self.empind, self.shm_empind = agents_mp_to_clone.empind, agents_mp_to_clone.shm_empind
+            self.empftpt, self.shm_empftpt = agents_mp_to_clone.empftpt, agents_mp_to_clone.shm_empftpt
+            self.res_cellid, self.shm_res_cellid = agents_mp_to_clone.res_cellid, agents_mp_to_clone.shm_res_cellid
+            self.work_cellid, self.shm_work_cellid = agents_mp_to_clone.work_cellid, agents_mp_to_clone.shm_work_cellid
+            self.school_cellid, self.shm_school_cellid = agents_mp_to_clone.school_cellid, agents_mp_to_clone.shm_school_cellid
+            self.inst_cellid, self.shm_inst_cellid = agents_mp_to_clone.inst_cellid, agents_mp_to_clone.shm_inst_cellid
+            self.age_bracket_index, self.shm_age_bracket_index = agents_mp_to_clone.age_bracket_index, agents_mp_to_clone.shm_age_bracket_index
+            self.epi_age_bracket_index, self.shm_epi_age_bracket_index = agents_mp_to_clone.epi_age_bracket_index, agents_mp_to_clone.shm_epi_age_bracket_index
+            self.working_age_bracket_index, self.shm_working_age_bracket_index = agents_mp_to_clone.working_age_bracket_index, agents_mp_to_clone.shm_working_age_bracket_index
+            self.soc_rate, self.shm_soc_rate = agents_mp_to_clone.soc_rate, agents_mp_to_clone.shm_soc_rate
+            self.guardian_id, self.shm_guardian_id = agents_mp_to_clone.guardian_id, agents_mp_to_clone.shm_guardian_id
+            self.pub_transp_reg, self.shm_pub_transp_reg = agents_mp_to_clone.pub_transp_reg, agents_mp_to_clone.shm_pub_transp_reg
+            self.ent_activity, self.shm_ent_activity = agents_mp_to_clone.ent_activity, agents_mp_to_clone.shm_ent_activity
+            self.isshiftbased, self.shm_isshiftbased = agents_mp_to_clone.isshiftbased, agents_mp_to_clone.shm_isshiftbased
+            self.busdriver, self.shm_busdriver = agents_mp_to_clone.busdriver, agents_mp_to_clone.shm_busdriver
+            self.working_schedule, self.shm_working_schedule = agents_mp_to_clone.working_schedule, agents_mp_to_clone.shm_working_schedule
+        elif contactnetwork:
+            self.age_bracket_index, self.shm_age_bracket_index = agents_mp_to_clone.age_bracket_index, agents_mp_to_clone.shm_age_bracket_index
+            self.soc_rate, self.shm_soc_rate = agents_mp_to_clone.soc_rate, agents_mp_to_clone.shm_soc_rate
+            self.epi_age_bracket_index, self.shm_epi_age_bracket_index = agents_mp_to_clone.epi_age_bracket_index, agents_mp_to_clone.shm_epi_age_bracket_index
+            self.res_cellid, self.shm_res_cellid = agents_mp_to_clone.res_cellid, agents_mp_to_clone.shm_res_cellid
+        elif itinerary:
+            self.sc_student, self.shm_sc_student = agents_mp_to_clone.sc_student, agents_mp_to_clone.shm_sc_student
+            self.empstatus, self.shm_empstatus = agents_mp_to_clone.empstatus, agents_mp_to_clone.shm_empstatus
+            self.empind, self.shm_empind = agents_mp_to_clone.empind, agents_mp_to_clone.shm_empind
+            self.ent_activity, self.shm_ent_activity = agents_mp_to_clone.ent_activity, agents_mp_to_clone.shm_ent_activity
+            self.isshiftbased, self.shm_isshiftbased = agents_mp_to_clone.isshiftbased, agents_mp_to_clone.shm_isshiftbased
+            self.empftpt, self.shm_empftpt = agents_mp_to_clone.empftpt, agents_mp_to_clone.shm_empftpt
+            self.guardian_id, self.shm_guardian_id = agents_mp_to_clone.guardian_id, agents_mp_to_clone.shm_guardian_id
+            self.age_bracket_index, self.shm_age_bracket_index = agents_mp_to_clone.age_bracket_index, agents_mp_to_clone.shm_age_bracket_index
+            self.epi_age_bracket_index, self.shm_epi_age_bracket_index = agents_mp_to_clone.epi_age_bracket_index, agents_mp_to_clone.shm_epi_age_bracket_index
+            self.working_age_bracket_index, self.shm_working_age_bracket_index = agents_mp_to_clone.working_age_bracket_index, agents_mp_to_clone.shm_working_age_bracket_index
+            self.res_cellid, self.shm_res_cellid = agents_mp_to_clone.res_cellid, agents_mp_to_clone.shm_res_cellid
+            self.work_cellid, self.shm_work_cellid = agents_mp_to_clone.work_cellid, agents_mp_to_clone.shm_work_cellid
+            self.school_cellid, self.shm_school_cellid = agents_mp_to_clone.school_cellid, agents_mp_to_clone.shm_school_cellid
+            self.pub_transp_reg, self.shm_pub_transp_reg = agents_mp_to_clone.pub_transp_reg, agents_mp_to_clone.shm_pub_transp_reg
+            self.working_schedule, self.shm_working_schedule = agents_mp_to_clone.working_schedule, agents_mp_to_clone.shm_working_schedule
+
     def clear_non_shared_memory_readonly(self):
-        self.age = None
-        self.gender = None
-        self.hhid = None
-        self.scid = None
+        # self.age = None
+        # self.gender = None
+        # self.hhid = None
+        # self.scid = None
         self.sc_student = None
         # self.sc_type = None
-        self.wpid = None
+        # self.wpid = None
         self.empstatus = None
         self.empind = None
         self.empftpt = None
@@ -380,144 +431,240 @@ class Agents:
         elif name == "vaccination_days":
             self.vaccination_days[index] = value
 
-    def convert_to_shared_memory_readonly(self):
+    def convert_to_shared_memory_readonly(self, loadall=False, itinerary=False, contactnetwork=False):
+        if not loadall and not itinerary and not contactnetwork:
+            loadall = True
+    
         start = time.time()
 
-        self.shm_age = self.generate_shared_memory_int(self.age)
-        self.shm_gender = self.generate_shared_memory_int(self.gender)
-        self.shm_hhid = self.generate_shared_memory_int(self.hhid)
-        self.shm_scid = self.generate_shared_memory_int(self.scid)
-        self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
-        # self.shared_memory_names.append(self.generate_shared_memory_str(self.sc_type))
-        self.shm_wpid = self.generate_shared_memory_int(self.wpid)
-        self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
-        self.shm_empind = self.generate_shared_memory_int(self.empind)
-        self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
-        self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
-        self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
-        self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
-        self.shm_inst_cellid = self.generate_shared_memory_int(self.inst_cellid)
-        self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
-        self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
-        self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
-        self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, float)
-        self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
-        self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
-        self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
-        self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
+        if loadall:
+            # self.shm_age = self.generate_shared_memory_int(self.age)
+            # self.shm_gender = self.generate_shared_memory_int(self.gender)
+            # self.shm_hhid = self.generate_shared_memory_int(self.hhid)
+            # self.shm_scid = self.generate_shared_memory_int(self.scid)
+            self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
+            # self.shared_memory_names.append(self.generate_shared_memory_str(self.sc_type))
+            # self.shm_wpid = self.generate_shared_memory_int(self.wpid)
+            self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
+            self.shm_empind = self.generate_shared_memory_int(self.empind)
+            self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
+
+            self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
+            self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
+            self.shm_inst_cellid = self.generate_shared_memory_int(self.inst_cellid)
+            self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
+
+            self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
+            self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
+            self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
+            self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
+            self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
+
+            self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
+            self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
+            self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
+            self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, float)
+        elif contactnetwork:
+            self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
+            self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
+            self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
+            self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, float)
+        elif itinerary:
+            self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
+            self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
+            self.shm_empind = self.generate_shared_memory_int(self.empind)
+            self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
+            self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
+            self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
+            self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
+            self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
+            self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
+            self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
+            self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
+            self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
+            self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
+            self.shm_inst_cellid = self.generate_shared_memory_int(self.inst_cellid)
+            self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
 
         time_taken = time.time() - start
         print("agents_mp convert_to_shared_memory_readonly time taken: " + str(time_taken))
 
-    def convert_to_shared_memory_workingschedule(self):            
-        self.shm_working_schedule = self.generate_shared_memory_threedim_varying(self.working_schedule)
+    # def convert_to_shared_memory_workingschedule(self):            
+    #     self.shm_working_schedule = self.generate_shared_memory_threedim_varying(self.working_schedule)
 
-    def convert_to_shared_memory_isshiftbased(self):
-        self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
+    # def convert_to_shared_memory_isshiftbased(self):
+    #     self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
 
-    def convert_to_shared_memory_dynamic(self, is_itinerary=False):
+    def convert_to_shared_memory_dynamic(self, loadall=False, itinerary=False, contactnetwork=False):
+        if not loadall and not itinerary and not contactnetwork:
+            loadall = True
+
+        if loadall or itinerary:
+            start = time.time()
+
+            self.shm_itinerary = self.generate_shared_memory_threedim_varying(self.itinerary)
+            self.shm_itinerary_nextday = self.generate_shared_memory_threedim_varying(self.itinerary_nextday)
+
+            time_taken = time.time() - start
+            print("agents_mp convert_to_shared_memory_dynamic (itinerary) time taken: " + str(time_taken))
+
+            start = time.time()
+
+            self.shm_non_daily_activity_recurring = self.generate_shared_memory_threedim_single(self.non_daily_activity_recurring)
+            self.shm_prevday_non_daily_activity_recurring = self.generate_shared_memory_threedim_single(self.prevday_non_daily_activity_recurring)
+
+            time_taken = time.time() - start
+            print("agents_mp convert_to_shared_memory_dynamic (non_daily_activity_recurring) time taken: " + str(time_taken))
+
+            start = time.time()
+
+            self.shm_state_transition_by_day = self.generate_shared_memory_threedim_varying(self.state_transition_by_day)
+
+            time_taken = time.time() - start
+            print("agents_mp convert_to_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
+
+            start = time.time()
+            self.shm_test_day = self.generate_shared_memory_twodim_single(self.test_day)
+            self.shm_test_result_day = self.generate_shared_memory_twodim_single(self.test_result_day)
+            self.shm_quarantine_days = self.generate_shared_memory_twodim_varying(self.quarantine_days)
+            self.shm_hospitalisation_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)
+            self.shm_vaccination_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)  
+
+            time_taken = time.time() - start
+            print("agents_mp convert_to_shared_memory_dynamic (epi) time taken: " + str(time_taken))
+        elif contactnetwork:
+            start = time.time()
+
+            self.shm_state_transition_by_day = self.generate_shared_memory_threedim_varying(self.state_transition_by_day)
+
+            time_taken = time.time() - start
+            print("agents_mp convert_to_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
+
+            start = time.time()
+            self.shm_test_day = self.generate_shared_memory_twodim_single(self.test_day)
+            self.shm_test_result_day = self.generate_shared_memory_twodim_single(self.test_result_day)
+            self.shm_quarantine_days = self.generate_shared_memory_twodim_varying(self.quarantine_days)
+            self.shm_hospitalisation_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)
+            self.shm_vaccination_days = self.generate_shared_memory_threedim_single(self.vaccination_days)  
+
+            time_taken = time.time() - start
+            print("agents_mp convert_to_shared_memory_dynamic (epi) time taken: " + str(time_taken))
+
+    def convert_from_shared_memory_readonly(self, loadall=False, itinerary=False, contactnetwork=False):
+        if not loadall and not itinerary and not contactnetwork:
+            loadall = True
+    
         start = time.time()
 
-        self.shm_itinerary = self.generate_shared_memory_threedim_varying(self.itinerary)
-        self.shm_itinerary_nextday = self.generate_shared_memory_threedim_varying(self.itinerary_nextday)
-
-        time_taken = time.time() - start
-        print("agents_mp convert_to_shared_memory_dynamic (itinerary) time taken: " + str(time_taken))
-
-        start = time.time()
-
-        self.shm_non_daily_activity_recurring = self.generate_shared_memory_threedim_single(self.non_daily_activity_recurring)
-        self.shm_prevday_non_daily_activity_recurring = self.generate_shared_memory_threedim_single(self.prevday_non_daily_activity_recurring)
-
-        time_taken = time.time() - start
-        print("agents_mp convert_to_shared_memory_dynamic (non_daily_activity_recurring) time taken: " + str(time_taken))
-
-        start = time.time()
-
-        self.shm_state_transition_by_day = self.generate_shared_memory_threedim_varying(self.state_transition_by_day)
-
-        time_taken = time.time() - start
-        print("agents_mp convert_to_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
-
-        start = time.time()
-        self.shm_test_day = self.generate_shared_memory_twodim_single(self.test_day)
-        self.shm_test_result_day = self.generate_shared_memory_twodim_single(self.test_result_day)
-        self.shm_quarantine_days = self.generate_shared_memory_twodim_varying(self.quarantine_days)
-        self.shm_hospitalisation_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)
-        self.shm_vaccination_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)  
-
-        time_taken = time.time() - start
-        print("agents_mp convert_to_shared_memory_dynamic (epi) time taken: " + str(time_taken))
-
-    def convert_from_shared_memory_readonly(self):
-        start = time.time()
-
-        self.age = self.generate_ndarray_from_shared_memory_int(self.shm_age)
-        self.gender = self.generate_ndarray_from_shared_memory_int(self.shm_gender)
-        self.hhid = self.generate_ndarray_from_shared_memory_int(self.shm_hhid)
-        self.scid = self.generate_ndarray_from_shared_memory_int(self.shm_scid)
-        self.sc_student = self.generate_ndarray_from_shared_memory_int(self.shm_sc_student)
-        # self.shared_memory_names.append(self.generate_shared_memory_str(self.shm_sc_type))
-        self.wpid = self.generate_ndarray_from_shared_memory_int(self.shm_wpid)
-        self.empstatus = self.generate_ndarray_from_shared_memory_int(self.shm_empstatus)
-        self.empind = self.generate_ndarray_from_shared_memory_int(self.shm_empind)
-        self.empftpt = self.generate_ndarray_from_shared_memory_int(self.shm_empftpt)
-        self.res_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_res_cellid)
-        self.work_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_work_cellid)
-        self.school_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_school_cellid)
-        self.inst_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_inst_cellid)
-        self.age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_age_bracket_index)
-        self.epi_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_epi_age_bracket_index)
-        self.working_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_working_age_bracket_index)
-        self.soc_rate = self.generate_ndarray_from_shared_memory_int(self.shm_soc_rate, float)
-        self.guardian_id = self.generate_ndarray_from_shared_memory_int(self.shm_guardian_id)
-        self.pub_transp_reg = self.generate_ndarray_from_shared_memory_int(self.shm_pub_transp_reg)
-        self.ent_activity = self.generate_ndarray_from_shared_memory_int(self.shm_ent_activity)
-        self.busdriver = self.generate_ndarray_from_shared_memory_int(self.shm_busdriver)
+        if loadall:
+            # self.age = self.generate_ndarray_from_shared_memory_int(self.shm_age)
+            # self.gender = self.generate_ndarray_from_shared_memory_int(self.shm_gender)
+            # self.hhid = self.generate_ndarray_from_shared_memory_int(self.shm_hhid)
+            # self.scid = self.generate_ndarray_from_shared_memory_int(self.shm_scid)
+            self.sc_student = self.generate_ndarray_from_shared_memory_int(self.shm_sc_student)
+            # self.shared_memory_names.append(self.generate_shared_memory_str(self.shm_sc_type))
+            # self.wpid = self.generate_ndarray_from_shared_memory_int(self.shm_wpid)
+            self.empstatus = self.generate_ndarray_from_shared_memory_int(self.shm_empstatus)
+            self.empind = self.generate_ndarray_from_shared_memory_int(self.shm_empind)
+            self.empftpt = self.generate_ndarray_from_shared_memory_int(self.shm_empftpt)
+            self.res_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_res_cellid)
+            self.work_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_work_cellid)
+            self.school_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_school_cellid)
+            self.inst_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_inst_cellid)
+            self.age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_age_bracket_index)
+            self.epi_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_epi_age_bracket_index)
+            self.working_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_working_age_bracket_index)
+            self.soc_rate = self.generate_ndarray_from_shared_memory_int(self.shm_soc_rate, float)
+            self.guardian_id = self.generate_ndarray_from_shared_memory_int(self.shm_guardian_id)
+            self.pub_transp_reg = self.generate_ndarray_from_shared_memory_int(self.shm_pub_transp_reg)
+            self.ent_activity = self.generate_ndarray_from_shared_memory_int(self.shm_ent_activity)
+            self.isshiftbased = self.generate_ndarray_from_shared_memory_int(self.shm_isshiftbased)  
+            self.busdriver = self.generate_ndarray_from_shared_memory_int(self.shm_busdriver)
+        elif contactnetwork:
+            self.age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_age_bracket_index)
+            self.soc_rate = self.generate_ndarray_from_shared_memory_int(self.shm_soc_rate, float)
+            self.epi_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_epi_age_bracket_index)
+            self.res_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_res_cellid)
+        elif itinerary:
+            self.sc_student = self.generate_ndarray_from_shared_memory_int(self.shm_sc_student)
+            self.empstatus = self.generate_ndarray_from_shared_memory_int(self.shm_empstatus)
+            self.empind = self.generate_ndarray_from_shared_memory_int(self.shm_empind)
+            self.ent_activity = self.generate_ndarray_from_shared_memory_int(self.shm_ent_activity)
+            self.isshiftbased = self.generate_ndarray_from_shared_memory_int(self.shm_isshiftbased)
+            self.empftpt = self.generate_ndarray_from_shared_memory_int(self.shm_empftpt)
+            self.guardian_id = self.generate_ndarray_from_shared_memory_int(self.shm_guardian_id)
+            self.age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_age_bracket_index)
+            self.working_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_working_age_bracket_index)
+            self.res_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_res_cellid)
+            self.epi_age_bracket_index = self.generate_ndarray_from_shared_memory_int(self.shm_epi_age_bracket_index)
+            self.work_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_work_cellid)
+            self.school_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_school_cellid)
+            self.pub_transp_reg = self.generate_ndarray_from_shared_memory_int(self.shm_pub_transp_reg)
 
         time_taken = time.time() - start
         print("agents_mp convert_from_shared_memory_readonly time taken: " + str(time_taken))
 
-    def convert_from_shared_memory_workingschedule(self):
-        self.working_schedule = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_working_schedule)
+    # def convert_from_shared_memory_workingschedule(self):
+    #     self.working_schedule = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_working_schedule)
 
-    def convert_from_shared_memory_isshiftbased(self):
-        self.isshiftbased = self.generate_ndarray_from_shared_memory_int(self.shm_isshiftbased)        
+    # def convert_from_shared_memory_isshiftbased(self):
+    #     self.isshiftbased = self.generate_ndarray_from_shared_memory_int(self.shm_isshiftbased)        
 
-    def convert_from_shared_memory_dynamic(self):  
-        start = time.time()
+    def convert_from_shared_memory_dynamic(self, loadall=False, itinerary=False, contactnetwork=False): 
+        if not loadall and not itinerary and not contactnetwork:
+            loadall = True
 
-        self.itinerary = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_itinerary)
-        self.itinerary_nextday = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_itinerary_nextday)
+        if loadall or itinerary:
+            start = time.time()
 
-        time_taken = time.time() - start
-        print("agents_mp convert_from_shared_memory_dynamic (itinerary) time taken: " + str(time_taken))
+            self.itinerary = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_itinerary)
+            self.itinerary_nextday = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_itinerary_nextday)
 
-        start = time.time()
+            time_taken = time.time() - start
+            print("agents_mp convert_from_shared_memory_dynamic (itinerary) time taken: " + str(time_taken))
 
-        self.non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_non_daily_activity_recurring)
-        self.prevday_non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_prevday_non_daily_activity_recurring)
-        
-        time_taken = time.time() - start
-        print("agents_mp convert_from_shared_memory_dynamic (non_daily_activity_recurring) time taken: " + str(time_taken))
+            start = time.time()
 
-        start = time.time()
+            self.non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_non_daily_activity_recurring)
+            self.prevday_non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_prevday_non_daily_activity_recurring)
+            
+            time_taken = time.time() - start
+            print("agents_mp convert_from_shared_memory_dynamic (non_daily_activity_recurring) time taken: " + str(time_taken))
 
-        self.state_transition_by_day = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_state_transition_by_day)
+            start = time.time()
 
-        time_taken = time.time() - start
-        print("agents_mp convert_from_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
+            self.state_transition_by_day = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_state_transition_by_day)
 
-        start = time.time()
+            time_taken = time.time() - start
+            print("agents_mp convert_from_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
 
-        self.test_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_day)
-        self.test_result_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_result_day)
-        self.quarantine_days = self.generate_ndarray_from_shared_memory_twodim_varying(self.shm_quarantine_days)
-        self.hospitalisation_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_hospitalisation_days)
-        self.vaccination_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_vaccination_days)
+            start = time.time()
 
-        time_taken = time.time() - start
-        print("agents_mp convert_from_shared_memory_dynamic (epi) time taken: " + str(time_taken))
+            self.test_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_day)
+            self.test_result_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_result_day)
+            self.quarantine_days = self.generate_ndarray_from_shared_memory_twodim_varying(self.shm_quarantine_days)
+            self.hospitalisation_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_hospitalisation_days)
+            self.vaccination_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_vaccination_days)
+
+            time_taken = time.time() - start
+            print("agents_mp convert_from_shared_memory_dynamic (epi) time taken: " + str(time_taken))
+        else:
+            start = time.time()
+
+            self.state_transition_by_day = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_state_transition_by_day)
+
+            time_taken = time.time() - start
+            print("agents_mp convert_from_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
+
+            start = time.time()
+            self.test_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_day)
+            self.test_result_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_result_day)
+            self.quarantine_days = self.generate_ndarray_from_shared_memory_twodim_varying(self.shm_quarantine_days)
+            self.hospitalisation_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_hospitalisation_days)
+            self.vaccination_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_vaccination_days)  
+
+            time_taken = time.time() - start
+            print("agents_mp convert_from_shared_memory_dynamic (epi) time taken: " + str(time_taken))
 
     def generate_shared_memory_int(self, data, type=int):
         # Create a separate Boolean array to track valid/invalid elements

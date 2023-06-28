@@ -1,20 +1,36 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 72, in contactnetwork_worker
+  File "C:\Program Files\Python3112\Lib\multiprocessing\managers.py", line 814, in _callmethod
+    conn = self._tls.connection
+           ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'ForkAwareLocal' object has no attribute 'connection'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 91, in contactnetwork_worker
     contact_network_util.simulate_contact_network(day, weekday)
   File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 77, in simulate_contact_network
     cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 106, in simulate_contact_network_by_cellid
     self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 182, in simulate_direct_contacts
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 184, in simulate_direct_contacts
     agent_state_transition_by_day, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 329, in simulate_seir_state_transition
-    _, _ = self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Positive, quarantine_days=agent_quarantine_days)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 414, in schedule_quarantine
-    self.agents_mp.set_shm(agent_id, "quarantine_days", quarantine_days)
-  File "c:\AppsPy\mtdcovabm\simulator\agents.py", line 295, in set_shm
-    self.quarantine_days[0][index] = value
-    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
-TypeError: 'NoneType' object does not support item assignment
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 320, in simulate_seir_state_transition
+    test_scheduled, _, test_result_day = self.schedule_test(exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
+                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 370, in schedule_test
+    self.result_queue.put([agent_id, "test_day", test_day])
+  File "<string>", line 2, in put
+  File "C:\Program Files\Python3112\Lib\multiprocessing\managers.py", line 818, in _callmethod
+    self._connect()
+  File "C:\Program Files\Python3112\Lib\multiprocessing\managers.py", line 805, in _connect
+    conn = self._Client(self._token.address, authkey=self._authkey)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python3112\Lib\multiprocessing\connection.py", line 499, in Client
+    c = PipeClient(address)
+        ^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python3112\Lib\multiprocessing\connection.py", line 701, in PipeClient
+    _winapi.WaitNamedPipe(address, 1000)
+FileNotFoundError: [WinError 2] The system cannot find the file specified

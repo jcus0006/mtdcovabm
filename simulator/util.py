@@ -4,6 +4,7 @@ import scipy.stats as stats
 import powerlaw
 import matplotlib.pyplot as plt
 import random
+import bisect
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -321,8 +322,19 @@ def get_all_rows_by_key(arr, key, idx=0):
 
     return rows
 
+def delete_all_rows_by_key(arr, key, idx=0):
+    arr = [i for i in arr if i[idx] != key]
+
+    return arr
+
 def get_distinct_first_indices(array):
     distinct_indices = set()
     for item in array:
         distinct_indices.add(item[0])
     return list(distinct_indices)
+
+def insert_sorted(indices, values):
+    for value in values:
+        bisect.insort(indices, value)
+
+    return indices
