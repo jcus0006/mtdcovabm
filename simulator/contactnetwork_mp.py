@@ -40,6 +40,7 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
                 # cells_partial[cell_key] = cell
                 cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
 
+            print("starting process index " + str(process_index) + " at " + str(time.time()))
             pool.apply_async(contactnetwork_worker, args=((result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps_partial, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
 
         # update memory from multiprocessing.queue
@@ -47,14 +48,15 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
         start = time.time()
         while process_counter.value > 0 or not result_queue.empty(): # True
             try:
-                agent_index, attr_name, value = result_queue.get(timeout=1)  # Poll the queue with a timeout (0 for now - might cause problems)
+                agent_index, attr_name, value = result_queue.get(timeout=0.01)  # Poll the queue with a timeout (0 for now - might cause problems)
 
                 agents_mp.set(agent_index, attr_name, value)
             except mp.queues.Empty:
                 continue  # Queue is empty, continue polling
-
-        time_taken = time.time() - start
-        print("cn/epi state info sync. time taken " + str(time_taken))
+        
+        sync_time_end = time.time()
+        time_taken = sync_time_end - start
+        print("cn/epi state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
         
         start = time.time()
         # Close the pool of processes
@@ -63,7 +65,11 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
         # agents_mp_cn = None
 
         pool.close()
+        close_time = time.time()
         pool.join()
+        join_time = time.time()
+
+        print("pool closed at " + str(close_time) + ", pool joined at: " + str(join_time))
 
         time_taken = time.time() - start
         print("closing pool. time taken " + str(time_taken))
@@ -82,8 +88,9 @@ def contactnetwork_worker(params):
     # and to check more params from Epidemiology ctor (especially optional params)
 
     try:
+        print("process started " + str(time.time()))
         result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-
+        print("process " + str(process_index))
         # agents_mp_cn = None
         # if process_index == -1:
         #     agents_mp_cn = agents_temp
@@ -101,8 +108,9 @@ def contactnetwork_worker(params):
         contact_network_util.simulate_contact_network(day, weekday)
         
         # agents_mp_cn = None
+        # contact_network_util = None
         # global proc_counter
-        
+        print("process " + str(process_index) + ", ended at " + str(time.time()))
     except:
         with open('cn_mp_stack_trace.txt', 'w') as f:
             traceback.print_exc(file=f)

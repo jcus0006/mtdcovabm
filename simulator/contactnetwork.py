@@ -94,10 +94,11 @@ class ContactNetwork:
                         
                     agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
 
-        time_taken = time.time() - start
+        end_time = time.time()
+        time_taken = end_time - start
         self.contactnetwork_sum_time_taken += time_taken
         avg_time_taken = self.contactnetwork_sum_time_taken / day
-        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
+        print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index) + ", end time: " + str(end_time))
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):

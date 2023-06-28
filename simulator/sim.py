@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 import random
 import traceback
-from cells import Cells
+from cells import CellsUtil
 from simulator import util, itinerary, contactnetwork_mp, tourism, seirstateutil
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
@@ -14,7 +14,7 @@ import multiprocessing as mp
 from sys import getsizeof
 
 if __name__ == '__main__':
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -29,7 +29,7 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 4
+                "numprocesses": 10
             }
 
     figure_count = 0
@@ -212,7 +212,7 @@ if __name__ == '__main__':
         #     malesbyindustries[industry] = malesbyindustry
         #     femalesbyindustries[industry] = femalesbyindustry
 
-    cells_util = Cells(agents, cells, cellindex)
+    cells_util = CellsUtil(agents, cells, cellindex)
 
     if params["loadhouseholds"]:
         householdsfile = open("./population/" + population_sub_folder + "households.json")

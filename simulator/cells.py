@@ -6,7 +6,7 @@ import bisect
 from classes.accomgroup import AccomGroup
 from simulator import util
 
-class Cells:
+class CellsUtil:
     def __init__(self, agents, cells, cellindex, seed=6):
         self.agents = agents
         self.cells = cells

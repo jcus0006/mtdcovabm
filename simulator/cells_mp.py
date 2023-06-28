@@ -1,0 +1,26 @@
+class Cells:
+    def __init__(self) -> None:
+        self.hhid = []
+        self.wpid = []
+        self.scid = []
+        self.clid = []
+        self.indid = []
+        self.activityid = []
+        self.accomid = []
+        self.accomtypeid = []
+        self.roomid = []
+        self.roomsize = []
+        self.guest_uids = []
+        self.accomcellid = []
+        self.resident_uids = []
+        self.staff_uids = []
+        self.visitor_uids = []
+        self.teacher_uids = []
+        self.student_uids = []
+        self.non_teaching_staff_uids = []
+        self.busid = []
+        self.capacity = []
+        self.passenger_uids = []
+        self.churchid = []
+
+
