@@ -1,9 +1,9 @@
 import numpy as np
 import random
 import math
-import copy
-import bisect
-from classes.accomgroup import AccomGroup
+# import copy
+# import bisect
+# from classes.accomgroup import AccomGroup
 from simulator import util
 
 class CellsUtil:

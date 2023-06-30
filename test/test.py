@@ -11,34 +11,57 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 
 
-x_gamma = util.sample_gamma_reject_out_of_range(0.5, 6, 15, returnInt= True, useNp= True)
+# Define the number of rows
+num_rows = 2500000
 
-exp_to_inf_mean = 4.5
-exp_to_inf_std = 1.5
+# Create an empty array with the desired shape
+data_array = np.empty((num_rows, 6), dtype=np.int32)
 
-mean  = np.log(exp_to_inf_mean**2 / np.sqrt(exp_to_inf_std**2 + exp_to_inf_mean**2)) # Computes the mean of the underlying normal distribution
-sigma = np.sqrt(np.log(exp_to_inf_std**2/exp_to_inf_mean**2 + 1)) # Computes sigma for the underlying normal distribution
+# Generate random values for each field
+data_array[:, 0] = np.random.randint(0, 7, size=num_rows)  # day (0-6)
+data_array[:, 1] = np.random.randint(0, 5, size=num_rows)  # type (0-4)
+data_array[:, 2] = np.random.randint(0, 2500000, size=num_rows)  # person1_id (0-2499999)
+data_array[:, 3] = np.random.randint(0, 2500000, size=num_rows)  # person2_id (0-2499999)
+data_array[:, 4] = np.random.randint(0, 144, size=num_rows)  # start_timestep (0-143)
+data_array[:, 5] = np.random.randint(0, 144, size=num_rows)  # end_timestep (0-143)
 
-start = time.time()
+# Print a subset of the array for demonstration
+# print(data_array[:10])
 
-arr = []
-for i in range(1000000):
-    x = np.random.lognormal(mean, sigma, size=1)[0]
-    arr.append(x)
+type_0_subset = data_array[data_array[:, 1] == 0]
+type_1_subset = data_array[data_array[:, 1] == 1]
+type_2_subset = data_array[data_array[:, 1] == 2]
+type_3_subset = data_array[data_array[:, 1] == 3]
 
-time_taken = time.time() - start
+print("done")
+# x_gamma = util.sample_gamma_reject_out_of_range(0.5, 6, 15, returnInt= True, useNp= True)
 
-print("1m calls: " + str(time_taken))
+# exp_to_inf_mean = 4.5
+# exp_to_inf_std = 1.5
 
-start = time.time()
+# mean  = np.log(exp_to_inf_mean**2 / np.sqrt(exp_to_inf_std**2 + exp_to_inf_mean**2)) # Computes the mean of the underlying normal distribution
+# sigma = np.sqrt(np.log(exp_to_inf_std**2/exp_to_inf_mean**2 + 1)) # Computes sigma for the underlying normal distribution
 
-arr = np.random.lognormal(mean, sigma, size=1000000)
+# start = time.time()
 
-time_taken = time.time() - start
+# arr = []
+# for i in range(1000000):
+#     x = np.random.lognormal(mean, sigma, size=1)[0]
+#     arr.append(x)
 
-print("1 call: " + str(time_taken))
+# time_taken = time.time() - start
 
-print("stop")
+# print("1m calls: " + str(time_taken))
+
+# start = time.time()
+
+# arr = np.random.lognormal(mean, sigma, size=1000000)
+
+# time_taken = time.time() - start
+
+# print("1 call: " + str(time_taken))
+
+# print("stop")
 
 # # Define parameters
 # mean = 15    # Mean number of contacts per unit time

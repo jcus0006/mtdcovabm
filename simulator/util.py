@@ -94,9 +94,9 @@ def sample_log_normal(mean, std, size, isInt=False):
     
     return samples
 
-def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets, set_working_age_bracket=True):
+def set_age_brackets(agent, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets, set_working_age_bracket=True):
     age = agent["age"]
-    agents_ids_by_ages[agent_uid] = agent["age"]
+    # agents_ids_by_ages[agent_uid] = agent["age"]
 
     agent["age_bracket_index"] = -1
     for i, ab in enumerate(age_brackets):
@@ -114,7 +114,7 @@ def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_bra
                 agent["working_age_bracket_index"] = i
                 break
 
-    return agent, age, agents_ids_by_ages, agents_ids_by_agebrackets
+    return agent, age, agents_ids_by_agebrackets
 
 def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count):
     for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():

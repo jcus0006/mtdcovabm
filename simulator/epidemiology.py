@@ -6,7 +6,18 @@ from simulator import util
 from enum import IntEnum
 
 class Epidemiology:
-    def __init__(self, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dyn_params, result_queue):
+    def __init__(self, 
+                epidemiologyparams, 
+                n_locals, 
+                n_tourists, 
+                locals_ratio_to_full_pop, 
+                agents_mp, 
+                tourists_active_ids, 
+                cells_households, 
+                cells_institutions, 
+                cells_accommodation, 
+                dyn_params, 
+                result_queue):
         self.n_locals = n_locals
         self.n_tourists = n_tourists
         self.locals_ratio_to_full_pop = locals_ratio_to_full_pop
@@ -52,12 +63,6 @@ class Epidemiology:
         # self.agents = agents
         self.agents_mp = agents_mp
 
-        self.agents_seir_state = agents_seir_state
-        self.agents_seir_state_transition_for_day = agents_seir_state_transition_for_day
-        self.agents_infection_type = agents_infection_type
-        self.agents_infection_severity = agents_infection_severity
-        self.agents_directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
-        self.agents_vaccination_doses = agents_vaccination_doses
         self.tourists_active_ids = tourists_active_ids
 
         self.cells_households = cells_households
@@ -65,23 +70,26 @@ class Epidemiology:
         self.cells_accommodation = cells_accommodation
 
         self.timestep_options = np.arange(42, 121) # 7.00 - 20.00
-        self.contact_tracing_agent_ids = []
+        self.contact_tracing_agent_ids = set()
 
-        self.result_queue = result_queue
+        self.sync_queue = result_queue
 
     def simulate_direct_contacts(self, agents_directcontacts, cellid, cell, day):
         for pairid, timesteps in agents_directcontacts.items():
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
 
-            primary_agent_state, secondary_agent_state = self.agents_seir_state[primary_agent_id], self.agents_seir_state[secondary_agent_id]
+            self.agents_mp.get(primary_agent_id, "seir_state")
+            primary_agent_state, secondary_agent_state = self.agents_mp.get(primary_agent_id, "seir_state"), self.agents_mp.get(secondary_agent_id, "seir_state")
 
+            primary_agent_seir_state_transition_for_day = self.agents_mp.get(primary_agent_id, "seir_state_transition_for_day")
             primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = None, None, None
-            if primary_agent_id in self.agents_seir_state_transition_for_day:
+            if primary_agent_seir_state_transition_for_day is not None:
                 primary_agent_state_transition_for_day = self.agents_seir_state_transition_for_day[primary_agent_id]
                 primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = primary_agent_state_transition_for_day[0], primary_agent_state_transition_for_day[1], primary_agent_state_transition_for_day[5]
 
+            secondary_agent_seir_state_transition_for_day = self.agents_mp.get(secondary_agent_id, "seir_state_transition_for_day")
             secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = None, None, None
-            if secondary_agent_id in self.agents_seir_state_transition_for_day:
+            if secondary_agent_seir_state_transition_for_day is not None:
                 secondary_agent_state_transition_for_day = self.agents_seir_state_transition_for_day[secondary_agent_id]
                 secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = secondary_agent_state_transition_for_day[0], secondary_agent_state_transition_for_day[1], secondary_agent_state_transition_for_day[5]
 
@@ -181,18 +189,26 @@ class Epidemiology:
 
                     incremental_days = day
                     if exposed_rand < infection_probability: # exposed (infected but not yet infectious)
-                        agent_state_transition_by_day, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                        agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
 
                         # self.agents_mp.set(exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day)
-                        self.result_queue.put([exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day])
+                        self.sync_queue.put(["a", exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day])
+                        self.sync_queue.put(["a", exposed_agent_id, "seir_state", agent_seir_state])
+
+                        if agent_infection_type != InfectionType.Undefined:
+                            self.sync_queue.put(["a", exposed_agent_id, "infection_type", agent_infection_type])
+                        
+                        if agent_infection_severity != Severity.Undefined:
+                            self.sync_queue.put(["a", exposed_agent_id, "infection_severity", agent_infection_severity])
 
     def simulate_seir_state_transition(self, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days):
         symptomatic_day = -1
         recovered = False # if below condition is hit, False means Dead, True means recovered. 
         start_hosp_day, end_hosp_day = None, None
         
-        self.agents_seir_state[exposed_agent_id] = SEIRState.Exposed
-        self.agents_infection_severity[exposed_agent_id] = Severity.Undefined
+        seir_state = SEIRState.Exposed
+        infection_severity = Severity.Undefined
+        infection_type = InfectionType.Undefined
 
         sampled_exposed_timestep = np.random.choice(overlapping_timesteps, size=1)[0]
         
@@ -210,7 +226,7 @@ class Epidemiology:
         symptomatic_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SymptomaticProbability][agent_epi_age_bracket_index]
 
         if symptomatic_rand < symptomatic_probability:
-            self.agents_infection_type[exposed_agent_id] = InfectionType.PreSymptomatic # Pre-Symptomatic is infectious, but only applies with Infectious state (and not Exposed)
+            infection_type = InfectionType.PreSymptomatic # Pre-Symptomatic is infectious, but only applies with Infectious state (and not Exposed)
 
             inf_to_symp_days = util.sample_log_normal(self.inf_to_symp_mean, self.inf_to_symp_std, 1, True)
 
@@ -294,7 +310,7 @@ class Epidemiology:
                 recovered = True
         else:
             # asymptomatic
-            self.agents_infection_type[exposed_agent_id] = InfectionType.PreAsymptomatic # Pre-Asymptomatic is infectious, but only applies with Infectious state (and not Exposed)                        
+            infection_type = InfectionType.PreAsymptomatic # Pre-Asymptomatic is infectious, but only applies with Infectious state (and not Exposed)                        
             
             asymp_to_rec_days = util.sample_log_normal(self.asymp_to_rec_mean, self.asymp_to_rec_std, 1, True)
 
@@ -331,7 +347,7 @@ class Epidemiology:
             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
             _, _ = self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Positive, quarantine_days=agent_quarantine_days)
 
-        return agent_state_transition_by_day, recovered
+        return agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
 
     def schedule_test(self, agent_id, incremental_days, start_timestep, quarantine_type):
         test_scheduled = False
@@ -367,19 +383,19 @@ class Epidemiology:
                     # agent["test_day"] = [testing_day, start_timestep]
                     test_day = [testing_day, start_timestep]
                     # self.agents_mp.set(agent_id, "test_day", test_day)
-                    self.result_queue.put([agent_id, "test_day", test_day])
+                    self.sync_queue.put(["a", agent_id, "test_day", test_day])
 
                     days_until_test_result = util.sample_log_normal(self.testing_results_days_distribution_parameters[0], self.testing_results_days_distribution_parameters[1], 1, True)
 
                     # agent["test_result_day"] = [test_result_day, start_timestep] # and we know agent is infected at this point (assume positive result)
                     test_result_day = testing_day + days_until_test_result
                     # self.agents_mp.set(agent_id, "test_result_day", test_result_day)
-                    self.result_queue.put([agent_id, "test_result_day", test_result_day])
+                    self.sync_queue.put(["a", agent_id, "test_result_day", test_result_day])
 
                     if quarantine_type == QuarantineType.Positive:
                         # to perform contact tracing (as received positive test result)
                         # contact tracing is handled globally at the end of every day, and contact tracing delays are represented in quarantine/testing scheduling
-                        self.contact_tracing_agent_ids.append((agent_id, start_timestep)) 
+                        self.contact_tracing_agent_ids.add([agent_id, start_timestep]) 
                     
                     test_scheduled = True
 
@@ -417,7 +433,7 @@ class Epidemiology:
                     quarantine_days = [start_day, start_timestep, end_day]
 
                     # self.agents_mp.set(agent_id, "quarantine_days", quarantine_days)
-                    self.result_queue.put([agent_id, "quarantine_days", quarantine_days])
+                    self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
 
                     quarantine_scheduled = True
 
@@ -428,7 +444,7 @@ class Epidemiology:
         # quarantine_days.append([[new_start_day, new_start_ts], [new_end_day, new_end_ts]])
 
         # self.agents_mp.set(agent_id, "quarantine_days", quarantine_days)
-        self.result_queue.put([agent_id, "quarantine_days", quarantine_days])
+        self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
 
     def update_quarantine_end(self, agent_id, new_end_day, new_end_timestep, quarantine_days=None):
         if quarantine_days is None:
@@ -439,7 +455,7 @@ class Epidemiology:
         quarantine_days[2] = new_end_day
 
         # self.agents_mp.set(agent_id, "quarantine_days", quarantine_days)
-        self.result_queue.put([agent_id, "quarantine_days", quarantine_days])
+        self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
 
     def schedule_hospitalisation(self, agent_id, hospitalisation_days):
         agent_hospitalisation_days = self.agents_mp.get(agent_id, "hospitalisation_days")
@@ -455,7 +471,7 @@ class Epidemiology:
 
         # agent_hospitalisation_days.extend(hospitalisation_days)
         # self.agents_mp.set(agent_id, "hospitalisation_days", agent_hospitalisation_days)
-        self.result_queue.put([agent_id, "hospitalisation_days", agent_hospitalisation_days])
+        self.sync_queue.put(["a", agent_id, "hospitalisation_days", agent_hospitalisation_days])
     
     # the outer loop iterates for a number of days back pertaining to the number of days that the public health would attempt to trace back (e.g. 1 day)
     # the next loop iterates direct contacts in each simcelltype (residence, workplace, school, community contacts) i.e. subset of contacts per sim type
@@ -624,8 +640,8 @@ class Epidemiology:
                                                         if test_scheduled:
                                                             test_scheduled_ids.append(contact_id)
         
-        # clear for next day
-        self.contact_tracing_agent_ids = [] # still being cleared for next day regardless to whether contact tracing is enabled or not
+        # clear for next day (next day will be re initialized so not required anymore)
+        # self.contact_tracing_agent_ids = [] # still being cleared for next day regardless to whether contact tracing is enabled or not
 
     # currently handling not vaccinated / vaccinated, but can also handle first/second dose in a similar manner
     def schedule_vaccinations(self, day):
@@ -670,15 +686,17 @@ class Epidemiology:
                 for agentid in sampled_to_vaccinate_indices:
                     # agent = self.agents[agentid]
                     agent_vaccination_days = self.agents_mp.get(agentid, "vaccination_days")
-
+                    agent_vaccination_doses = self.agents_mp.get(agentid, "vaccination_doses")
                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
 
                     agent_vaccination_days.append([day + 1, sampled_timestep])
 
                     # self.agents_mp.set(agentid, "vaccination_days", agent_vaccination_days)
-                    self.result_queue.put([agentid, "vaccination_days", agent_vaccination_days])
+                    self.sync_queue.put(["a", agentid, "vaccination_days", agent_vaccination_days])
 
-                    self.agents_vaccination_doses[agentid] += 1
+                    agent_vaccination_doses += 1
+                    self.sync_queue.put(["a", agentid, "vaccination_doses", agent_vaccination_doses])
+                    # self.agents_vaccination_doses[agentid] = agent_vaccination_doses
 
     def convert_simcelltype_to_contact_tracing_success_prob(self, simcelltype):
         contact_tracing_success_prob = 0

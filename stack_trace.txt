@@ -1,9 +1,10 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 494, in <module>
-    contactnetwork_mp.contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dyn_params, contactnetwork_sum_time_taken, params["numprocesses"])
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 51, in contactnetwork_parallel
-    agents_mp.set(agent_index, attr_name, value)
-  File "c:\AppsPy\mtdcovabm\simulator\agents.py", line 424, in set
-    self.test_day[index] = value
-    ~~~~~~~~~~~~~^^^^^^^
-IndexError: list assignment index out of range
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 458, in <module>
+    agents_mp_itinerary.convert_to_shared_memory_dynamic(itinerary=True)
+  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 482, in convert_to_shared_memory_dynamic
+    self.shm_seir_state_transition_for_day = self.generate_shared_memory_multidim_single(self.seir_state_transition_for_day, 6)
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 682, in generate_shared_memory_multidim_single
+    for i, sublist in enumerate(data):
+                      ^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not iterable

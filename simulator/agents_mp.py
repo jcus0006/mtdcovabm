@@ -4,13 +4,14 @@ import struct
 import time
 import multiprocessing.shared_memory as shm
 from simulator import util
+from simulator.epidemiology import SEIRState, SEIRStateTransition, InfectionType, Severity
 
 class Agents:
     def __init__(self) -> None:
         self.n_total = None
         self.n_locals = None
         self.n_tourists = None
-        # self.age = [] # int
+        self.age = [] # int
         # self.gender = [] # int
         # self.hhid = [] # int
         # self.scid = [] # int
@@ -50,7 +51,13 @@ class Agents:
         self.hospitalisation_days = []
         self.vaccination_days = []
 
-        # self.shm_age = [] # int
+        self.seir_state = [] # states -> 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
+        self.seir_state_transition_for_day = []
+        self.infection_type = [] # was dict {agentid: infectiontype}
+        self.infection_severity = [] # was dict {agentid: infectionseverity}
+        self.vaccination_doses = [] # number of doses per agent
+
+        self.shm_age = [] # int
         # self.shm_gender = [] # int
         # self.shm_hhid = [] # int
         # self.shm_scid = [] # int
@@ -90,7 +97,13 @@ class Agents:
         self.shm_hospitalisation_days = []
         self.shm_vaccination_days = []
 
-    def populate(self, data, n_locals, n_tourists):
+        self.shm_seir_state = [] # states -> 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
+        self.shm_seir_state_transition_for_day = []
+        self.shm_infection_type = [] # was dict {agentid: infectiontype}
+        self.shm_infection_severity = [] # was dict {agentid: infectionseverity}
+        self.shm_vaccination_doses = [] # number of doses per agent
+
+    def populate(self, data, n_locals, n_tourists, agents_seir_state):
         start = time.time()
 
         n_total = n_locals + n_tourists
@@ -100,7 +113,7 @@ class Agents:
         self.n_tourists = n_tourists
 
         for _, properties in data.items():
-            # self.age.append(properties["age"] if "age" in properties else None)
+            self.age.append(properties["age"] if "age" in properties else None)
             # self.gender.append(properties["gender"] if "gender" in properties else None)
             # self.hhid.append(properties["hhid"] if "hhid" in properties else None) # int
             # self.scid.append(properties["scid"] if "scid" in properties else None) # int
@@ -140,6 +153,13 @@ class Agents:
             self.hospitalisation_days.append(None)
             self.vaccination_days.append(None)
 
+            self.infection_type.append(InfectionType.Undefined)
+            self.infection_severity.append(InfectionType.Undefined)
+            self.seir_state_transition_for_day.append(None)
+
+        self.seir_state = agents_seir_state
+        self.vaccination_doses = np.array([0 if i < n_locals else None for i in range(n_total)]) # not applicable to tourists
+
         time_taken = time.time() - start
         print("agents_mp populate time taken: " + str(time_taken))
         # self.convert_to_ndarray()
@@ -153,6 +173,7 @@ class Agents:
         self.n_tourists = agents_mp_to_clone.n_tourists
 
         if loadall:
+            self.age, self.shm_age = agents_mp_to_clone.age, agents_mp_to_clone.shm_age
             self.sc_student, self.shm_sc_student = agents_mp_to_clone.sc_student, agents_mp_to_clone.shm_sc_student
             # self.shared_memory_names.append(self.generate_shared_memory_str(self.shm_sc_type))
             # self.wpid = self.generate_ndarray_from_shared_memory_int(self.shm_wpid)
@@ -173,12 +194,30 @@ class Agents:
             self.isshiftbased, self.shm_isshiftbased = agents_mp_to_clone.isshiftbased, agents_mp_to_clone.shm_isshiftbased
             self.busdriver, self.shm_busdriver = agents_mp_to_clone.busdriver, agents_mp_to_clone.shm_busdriver
             self.working_schedule, self.shm_working_schedule = agents_mp_to_clone.working_schedule, agents_mp_to_clone.shm_working_schedule
+
+            self.itinerary, self.shm_itinerary = agents_mp_to_clone.itinerary, agents_mp_to_clone.shm_itinerary
+            self.itinerary_nextday, self.shm_itinerary_nextday = agents_mp_to_clone.itinerary_nextday, agents_mp_to_clone.shm_itinerary_nextday
+            self.non_daily_activity_recurring, self.shm_non_daily_activity_recurring = agents_mp_to_clone.non_daily_activity_recurring, agents_mp_to_clone.shm_non_daily_activity_recurring
+            self.prevday_non_daily_activity_recurring, self.shm_prevday_non_daily_activity_recurring = agents_mp_to_clone.prevday_non_daily_activity_recurring, agents_mp_to_clone.shm_prevday_non_daily_activity_recurring
+        
+            self.seir_state, self.shm_seir_state = agents_mp_to_clone.seir_state, agents_mp_to_clone.shm_seir_state
+            self.seir_state_transition_for_day, self.shm_seir_state_transition_for_day = agents_mp_to_clone.seir_state_transition_for_day, agents_mp_to_clone.shm_seir_state_transition_for_day
+            self.infection_type, self.shm_infection_type = agents_mp_to_clone.infection_type, agents_mp_to_clone.shm_infection_type
+            self.infection_severity, self.shm_infection_severity = agents_mp_to_clone.infection_severity, agents_mp_to_clone.shm_infection_severity
+            self.vaccination_doses, self.shm_vaccination_doses = agents_mp_to_clone.vaccination_doses, agents_mp_to_clone.shm_vaccination_doses
         elif contactnetwork:
             self.age_bracket_index, self.shm_age_bracket_index = agents_mp_to_clone.age_bracket_index, agents_mp_to_clone.shm_age_bracket_index
             self.soc_rate, self.shm_soc_rate = agents_mp_to_clone.soc_rate, agents_mp_to_clone.shm_soc_rate
             self.epi_age_bracket_index, self.shm_epi_age_bracket_index = agents_mp_to_clone.epi_age_bracket_index, agents_mp_to_clone.shm_epi_age_bracket_index
             self.res_cellid, self.shm_res_cellid = agents_mp_to_clone.res_cellid, agents_mp_to_clone.shm_res_cellid
+
+            self.seir_state, self.shm_seir_state = agents_mp_to_clone.seir_state, agents_mp_to_clone.shm_seir_state
+            self.seir_state_transition_for_day, self.shm_seir_state_transition_for_day = agents_mp_to_clone.seir_state_transition_for_day, agents_mp_to_clone.shm_seir_state_transition_for_day
+            self.infection_type, self.shm_infection_type = agents_mp_to_clone.infection_type, agents_mp_to_clone.shm_infection_type
+            self.infection_severity, self.shm_infection_severity = agents_mp_to_clone.infection_severity, agents_mp_to_clone.shm_infection_severity
+            self.vaccination_doses, self.shm_vaccination_doses = agents_mp_to_clone.vaccination_doses, agents_mp_to_clone.shm_vaccination_doses
         elif itinerary:
+            self.age, self.shm_age = agents_mp_to_clone.age, agents_mp_to_clone.shm_age
             self.sc_student, self.shm_sc_student = agents_mp_to_clone.sc_student, agents_mp_to_clone.shm_sc_student
             self.empstatus, self.shm_empstatus = agents_mp_to_clone.empstatus, agents_mp_to_clone.shm_empstatus
             self.empind, self.shm_empind = agents_mp_to_clone.empind, agents_mp_to_clone.shm_empind
@@ -195,8 +234,19 @@ class Agents:
             self.pub_transp_reg, self.shm_pub_transp_reg = agents_mp_to_clone.pub_transp_reg, agents_mp_to_clone.shm_pub_transp_reg
             self.working_schedule, self.shm_working_schedule = agents_mp_to_clone.working_schedule, agents_mp_to_clone.shm_working_schedule
 
+            self.itinerary, self.shm_itinerary = agents_mp_to_clone.itinerary, agents_mp_to_clone.shm_itinerary
+            self.itinerary_nextday, self.shm_itinerary_nextday = agents_mp_to_clone.itinerary_nextday, agents_mp_to_clone.shm_itinerary_nextday
+            self.non_daily_activity_recurring, self.shm_non_daily_activity_recurring = agents_mp_to_clone.non_daily_activity_recurring, agents_mp_to_clone.shm_non_daily_activity_recurring
+            self.prevday_non_daily_activity_recurring, self.shm_prevday_non_daily_activity_recurring = agents_mp_to_clone.prevday_non_daily_activity_recurring, agents_mp_to_clone.shm_prevday_non_daily_activity_recurring
+
+            self.seir_state, self.shm_seir_state = agents_mp_to_clone.seir_state, agents_mp_to_clone.shm_seir_state
+            self.seir_state_transition_for_day, self.shm_seir_state_transition_for_day = agents_mp_to_clone.seir_state_transition_for_day, agents_mp_to_clone.shm_seir_state_transition_for_day
+            self.infection_type, self.shm_infection_type = agents_mp_to_clone.infection_type, agents_mp_to_clone.shm_infection_type
+            self.infection_severity, self.shm_infection_severity = agents_mp_to_clone.infection_severity, agents_mp_to_clone.shm_infection_severity
+            self.vaccination_doses, self.shm_vaccination_doses = agents_mp_to_clone.vaccination_doses, agents_mp_to_clone.shm_vaccination_doses
+
     def clear_non_shared_memory_readonly(self):
-        # self.age = None
+        self.age = None
         # self.gender = None
         # self.hhid = None
         # self.scid = None
@@ -222,7 +272,7 @@ class Agents:
         # self.isshiftbased = None
         self.pub_transp_reg = None
         self.ent_activity = None
-    
+
     def clear_non_shared_memory_workingschedule(self):
         self.working_schedule = None
 
@@ -243,124 +293,11 @@ class Agents:
         self.hospitalisation_days = None
         self.vaccination_days = None
 
-
-    # def convert_to_ndarray(self):
-    #     self.age = np.array(self.age)
-    #     self.gender = np.array(self.gender)
-    #     self.hhid = np.array(self.hhid)
-    #     self.scid = np.array(self.scid)
-    #     self.sc_student = np.array(self.sc_student)
-    # #     self.sc_type = np.array(self.sc_type)
-    #     self.wpid = np.array(self.wpid)
-    #     self.empstatus = np.array(self.empstatus)
-    #     self.empind = np.array(self.empind)
-    #     self.empftpt = np.array(self.empftpt)
-    #     # self.edu = []
-    #     # self.lti = []
-    #     # self.bmi = []
-    #     self.res_cellid = np.array(self.res_cellid)
-    #     self.work_cellid = np.array(self.work_cellid)
-    #     self.school_cellid = np.array(self.school_cellid)
-    #     self.inst_cellid = np.array(self.inst_cellid)
-    #     self.age_bracket_index = np.array(self.age_bracket_index)
-    #     self.epi_age_bracket_index = np.array(self.epi_age_bracket_index)
-    #     self.working_age_bracket_index = np.array(self.working_age_bracket_index)
-    #     self.soc_rate = np.array(self.soc_rate)
-    #     self.guardian_id = np.array(self.guardian_id)
-    #     self.working_schedule = np.array(self.working_schedule) # work or school schedule - to change to array (done)
-    #     self.isshiftbased = np.array(self.isshiftbased)
-    #     self.pub_transp_reg = np.array(self.pub_transp_reg)
-    #     self.ent_activity = np.array(self.ent_activity)
-
-    #     self.itinerary = np.array(self.itinerary)
-    #     self.itinerary_nextday = np.array(self.itinerary_nextday)
-    #     self.non_daily_activity_recurring = np.array(self.non_daily_activity_recurring)
-    #     self.prevday_non_daily_activity_recurring = np.array(self.prevday_non_daily_activity_recurring)
-
-    #     self.busdriver = np.array(self.busdriver)
-    #     self.state_transition_by_day = np.array(self.state_transition_by_day)
-    #     self.test_day = np.array(self.test_day)
-    #     self.test_result_day = np.array(self.test_result_day)
-    #     self.quarantine_days = np.array(self.quarantine_days)
-    #     self.hospitalisation_days = np.array(self.hospitalisation_days)
-    #     self.vaccination_days = np.array(self.vaccination_days)
-
-    # def get_shm(self, index, name):
-    #     combined = getattr(self, name)
-
-    #     if combined is not None:
-    #         arr, mask = combined
-
-    #         if mask[index]:
-    #             return arr[index]
-        
-    #     return None
-    
-    # def set_shm(self, index, name, value):
-    #     if name == "age":
-    #         self.age[0][index] = value
-    #     elif name == "res_cellid":
-    #         self.res_cellid[0][index] = value
-    #     elif name == "work_cellid":
-    #         self.work_cellid[0][index] = value
-    #     elif name == "school_cellid":
-    #         self.school_cellid[0][index] = value
-    #     elif name == "inst_cellid":
-    #         self.inst_cellid[0][index] = value
-    #     elif name == "age_bracket_index":
-    #         self.age_bracket_index[0][index] = value
-    #     elif name == "epi_age_bracket_index":
-    #         self.epi_age_bracket_index[0][index] = value
-    #     elif name == "working_age_bracket_index":
-    #         self.working_age_bracket_index[0][index] = value
-    #     elif name == "soc_rate":
-    #         self.soc_rate[0][index] = value
-    #     elif name == "guardian_id":
-    #         self.guardian_id[0][index] = value
-    #     elif name == "working_schedule":
-    #         self.working_schedule[0][index] = value
-    #     elif name == "isshiftbased":
-    #         self.isshiftbased[0][index] = value
-    #     elif name == "pub_transp_reg":
-    #         self.pub_transp_reg[0][index] = value
-    #     elif name == "ent_activity":
-    #         self.ent_activity[0][index] = value
-    #     elif name == "itinerary":
-    #         self.itinerary[0][index] = value
-    #     elif name == "itinerary_nextday":
-    #         self.itinerary_nextday[0][index] = value
-    #     elif name == "non_daily_activity_recurring":
-    #         self.non_daily_activity_recurring[0][index] = value
-    #     elif name == "prevday_non_daily_activity_recurring":
-    #         self.prevday_non_daily_activity_recurring[0][index] = value
-    #     elif name == "gender": # from here onwards, these values are supposed to be readonly
-    #         self.gender[0][index] = value
-    #     elif name == "hhid":
-    #         self.hhid[0][index] = value
-    #     elif name == "scid":
-    #         self.scid[0][index] = value
-    #     elif name == "sc_student":
-    #         self.sc_student[0][index] = value
-    #     # elif name == "sc_type":
-    #     #     self.sc_type[index] = value
-    #     elif name == "wpid":
-    #         self.wpid[0][index] = value
-    #     elif name == "empstatus":
-    #         self.empstatus[0][index] = value
-    #     elif name == "busdriver":
-    #         self.busdriver[0][index] = value
-    #     elif name =="state_transition_by_day":
-    #         self.state_transition_by_day[0][index] = value
-    #     elif name == "test_day":
-    #         self.test_day[0][index] = value
-    #     elif name == "test_result_day":
-    #         self.test_result_day[0][index] = value
-    #     elif name == "quarantine_days":
-    #         self.quarantine_days[0][index] = value
-    #     elif name == "hospitalisation_days":
-    #         self.hospitalisation_days[0][index] = value
-    #     elif name == "vaccination_days":
-    #         self.vaccination_days[0][index] = value
+        self.seir_state = None
+        self.seir_state_transition_for_day = None
+        self.infection_type = None
+        self.infection_severity = None
+        self.vaccination_doses = None        
 
     def get(self, index, name):
         return getattr(self, name)[index]
@@ -402,18 +339,18 @@ class Agents:
             self.non_daily_activity_recurring[index] = value
         elif name == "prevday_non_daily_activity_recurring":
             self.prevday_non_daily_activity_recurring[index] = value
-        elif name == "gender": # from here onwards, these values are supposed to be readonly
-            self.gender[index] = value
-        elif name == "hhid":
-            self.hhid[index] = value
-        elif name == "scid":
-            self.scid[index] = value
+        # elif name == "gender": # from here onwards, these values are supposed to be readonly
+        #     self.gender[index] = value
+        # elif name == "hhid":
+        #     self.hhid[index] = value
+        # elif name == "scid":
+        #     self.scid[index] = value
         elif name == "sc_student":
             self.sc_student[index] = value
         # elif name == "sc_type":
         #     self.sc_type[index] = value
-        elif name == "wpid":
-            self.wpid[index] = value
+        # elif name == "wpid":
+        #     self.wpid[index] = value
         elif name == "empstatus":
             self.empstatus[index] = value
         elif name == "busdriver":
@@ -430,6 +367,16 @@ class Agents:
             self.hospitalisation_days[index] = value
         elif name == "vaccination_days":
             self.vaccination_days[index] = value
+        elif name == "seir_state":
+            self.seir_state[index] = value
+        elif name == "seir_state_transition_for_day":
+            self.seir_state_transition_for_day[index] = value
+        elif name == "infection_type":
+            self.infection_type[index] = value
+        elif name == "infection_severity":
+            self.infection_severity[index] = value
+        elif name == "vaccination_doses":
+            self.vaccination_doses[index] = value
 
     def convert_to_shared_memory_readonly(self, loadall=False, itinerary=False, contactnetwork=False):
         if not loadall and not itinerary and not contactnetwork:
@@ -438,7 +385,7 @@ class Agents:
         start = time.time()
 
         if loadall:
-            # self.shm_age = self.generate_shared_memory_int(self.age)
+            self.shm_age = self.generate_shared_memory_int(self.age)
             # self.shm_gender = self.generate_shared_memory_int(self.gender)
             # self.shm_hhid = self.generate_shared_memory_int(self.hhid)
             # self.shm_scid = self.generate_shared_memory_int(self.scid)
@@ -470,6 +417,7 @@ class Agents:
             self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
             self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, float)
         elif itinerary:
+            self.shm_age = self.generate_shared_memory_int(self.age)
             self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
             self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
             self.shm_empind = self.generate_shared_memory_int(self.empind)
@@ -502,50 +450,56 @@ class Agents:
         if loadall or itinerary:
             start = time.time()
 
-            self.shm_itinerary = self.generate_shared_memory_threedim_varying(self.itinerary)
-            self.shm_itinerary_nextday = self.generate_shared_memory_threedim_varying(self.itinerary_nextday)
+            self.shm_itinerary = self.generate_shared_memory_multidim_varying(self.itinerary, 3)
+            self.shm_itinerary_nextday = self.generate_shared_memory_multidim_varying(self.itinerary_nextday, 3)
 
             time_taken = time.time() - start
             print("agents_mp convert_to_shared_memory_dynamic (itinerary) time taken: " + str(time_taken))
 
             start = time.time()
 
-            self.shm_non_daily_activity_recurring = self.generate_shared_memory_threedim_single(self.non_daily_activity_recurring)
-            self.shm_prevday_non_daily_activity_recurring = self.generate_shared_memory_threedim_single(self.prevday_non_daily_activity_recurring)
+            self.shm_non_daily_activity_recurring = self.generate_shared_memory_multidim_single(self.non_daily_activity_recurring, 3)
+            self.shm_prevday_non_daily_activity_recurring = self.generate_shared_memory_multidim_single(self.prevday_non_daily_activity_recurring, 3)
 
             time_taken = time.time() - start
             print("agents_mp convert_to_shared_memory_dynamic (non_daily_activity_recurring) time taken: " + str(time_taken))
 
             start = time.time()
 
-            self.shm_state_transition_by_day = self.generate_shared_memory_threedim_varying(self.state_transition_by_day)
+            self.shm_state_transition_by_day = self.generate_shared_memory_multidim_varying(self.state_transition_by_day, 3)
 
             time_taken = time.time() - start
             print("agents_mp convert_to_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
 
             start = time.time()
-            self.shm_test_day = self.generate_shared_memory_twodim_single(self.test_day)
-            self.shm_test_result_day = self.generate_shared_memory_twodim_single(self.test_result_day)
-            self.shm_quarantine_days = self.generate_shared_memory_twodim_varying(self.quarantine_days)
-            self.shm_hospitalisation_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)
-            self.shm_vaccination_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)  
+            self.shm_test_day = self.generate_shared_memory_multidim_single(self.test_day, 3)
+            self.shm_test_result_day = self.generate_shared_memory_multidim_single(self.test_result_day, 2)
+            self.shm_quarantine_days = self.generate_shared_memory_multidim_varying(self.quarantine_days, 2)
+            self.shm_hospitalisation_days = self.generate_shared_memory_multidim_single(self.hospitalisation_days, 3)
+            self.shm_vaccination_days = self.generate_shared_memory_multidim_single(self.hospitalisation_days, 3)  
+
+            self.shm_seir_state = self.generate_shared_memory_int(self.seir_state)
+            self.shm_seir_state_transition_for_day = self.generate_shared_memory_multidim_single(self.seir_state_transition_for_day, 6)
+            self.shm_infection_type = self.generate_shared_memory_int(self.infection_type)
+            self.shm_infection_severity = self.generate_shared_memory_int(self.infection_severity)
+            self.shm_vaccination_doses = self.generate_shared_memory_int(self.vaccination_doses)
 
             time_taken = time.time() - start
             print("agents_mp convert_to_shared_memory_dynamic (epi) time taken: " + str(time_taken))
         elif contactnetwork:
             start = time.time()
 
-            self.shm_state_transition_by_day = self.generate_shared_memory_threedim_varying(self.state_transition_by_day)
+            self.shm_state_transition_by_day = self.generate_shared_memory_multidim_varying(self.state_transition_by_day, 3)
 
             time_taken = time.time() - start
             print("agents_mp convert_to_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
 
             start = time.time()
-            self.shm_test_day = self.generate_shared_memory_twodim_single(self.test_day)
-            self.shm_test_result_day = self.generate_shared_memory_twodim_single(self.test_result_day)
-            self.shm_quarantine_days = self.generate_shared_memory_twodim_varying(self.quarantine_days)
-            self.shm_hospitalisation_days = self.generate_shared_memory_threedim_single(self.hospitalisation_days)
-            self.shm_vaccination_days = self.generate_shared_memory_threedim_single(self.vaccination_days)  
+            self.shm_test_day = self.generate_shared_memory_multidim_single(self.test_day, 2)
+            self.shm_test_result_day = self.generate_shared_memory_multidim_single(self.test_result_day, 2)
+            self.shm_quarantine_days = self.generate_shared_memory_multidim_varying(self.quarantine_days, 2)
+            self.shm_hospitalisation_days = self.generate_shared_memory_multidim_single(self.hospitalisation_days, 3)
+            self.shm_vaccination_days = self.generate_shared_memory_multidim_single(self.vaccination_days, 3)  
 
             time_taken = time.time() - start
             print("agents_mp convert_to_shared_memory_dynamic (epi) time taken: " + str(time_taken))
@@ -617,51 +571,51 @@ class Agents:
         if loadall or itinerary:
             start = time.time()
 
-            self.itinerary = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_itinerary)
-            self.itinerary_nextday = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_itinerary_nextday)
+            self.itinerary = self.generate_ndarray_from_shared_memory_multidim_varying(self.shm_itinerary)
+            self.itinerary_nextday = self.generate_ndarray_from_shared_memory_multidim_varying(self.shm_itinerary_nextday)
 
             time_taken = time.time() - start
             print("agents_mp convert_from_shared_memory_dynamic (itinerary) time taken: " + str(time_taken))
 
             start = time.time()
 
-            self.non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_non_daily_activity_recurring)
-            self.prevday_non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_prevday_non_daily_activity_recurring)
+            self.non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_non_daily_activity_recurring)
+            self.prevday_non_daily_activity_recurring = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_prevday_non_daily_activity_recurring)
             
             time_taken = time.time() - start
             print("agents_mp convert_from_shared_memory_dynamic (non_daily_activity_recurring) time taken: " + str(time_taken))
 
             start = time.time()
 
-            self.state_transition_by_day = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_state_transition_by_day)
+            self.state_transition_by_day = self.generate_ndarray_from_shared_memory_multidim_varying(self.shm_state_transition_by_day)
 
             time_taken = time.time() - start
             print("agents_mp convert_from_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
 
             start = time.time()
 
-            self.test_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_day)
-            self.test_result_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_result_day)
-            self.quarantine_days = self.generate_ndarray_from_shared_memory_twodim_varying(self.shm_quarantine_days)
-            self.hospitalisation_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_hospitalisation_days)
-            self.vaccination_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_vaccination_days)
+            self.test_day = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_test_day)
+            self.test_result_day = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_test_result_day)
+            self.quarantine_days = self.generate_ndarray_from_shared_memory_multidim_varying(self.shm_quarantine_days)
+            self.hospitalisation_days = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_hospitalisation_days)
+            self.vaccination_days = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_vaccination_days)
 
             time_taken = time.time() - start
             print("agents_mp convert_from_shared_memory_dynamic (epi) time taken: " + str(time_taken))
         else:
             start = time.time()
 
-            self.state_transition_by_day = self.generate_ndarray_from_shared_memory_threedim_varying(self.shm_state_transition_by_day)
+            self.state_transition_by_day = self.generate_ndarray_from_shared_memory_multidim_varying(self.shm_state_transition_by_day)
 
             time_taken = time.time() - start
             print("agents_mp convert_from_shared_memory_dynamic (state_transition_by_day) time taken: " + str(time_taken))
 
             start = time.time()
-            self.test_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_day)
-            self.test_result_day = self.generate_ndarray_from_shared_memory_twodim_single(self.shm_test_result_day)
-            self.quarantine_days = self.generate_ndarray_from_shared_memory_twodim_varying(self.shm_quarantine_days)
-            self.hospitalisation_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_hospitalisation_days)
-            self.vaccination_days = self.generate_ndarray_from_shared_memory_threedim_single(self.shm_vaccination_days)  
+            self.test_day = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_test_day)
+            self.test_result_day = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_test_result_day)
+            self.quarantine_days = self.generate_ndarray_from_shared_memory_multidim_varying(self.shm_quarantine_days)
+            self.hospitalisation_days = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_hospitalisation_days)
+            self.vaccination_days = self.generate_ndarray_from_shared_memory_multidim_single(self.shm_vaccination_days)  
 
             time_taken = time.time() - start
             print("agents_mp convert_from_shared_memory_dynamic (epi) time taken: " + str(time_taken))
@@ -720,7 +674,10 @@ class Agents:
 
         return original_structured_data
     
-    def generate_shared_memory_twodim_single(self, data):
+    def generate_shared_memory_multidim_single(self, data, n_dims, dtype=int):
+        if data is None:
+            return None
+        
         # Flatten and prepare the data
         flattened_data = []
         mask = []
@@ -732,20 +689,21 @@ class Agents:
             else:
                 mask.append(0)
 
-        total_size = len(flattened_data) * np.dtype([('a', int), ('b', int)]).itemsize
+        total_size = len(flattened_data) * n_dims * np.dtype(dtype).itemsize
+        # total_size = len(flattened_data) * np.dtype([('a', int), ('b', int)]).itemsize
 
         if total_size > 0:
             # Create shared memory for data
             shm_data = shm.SharedMemory(create=True, size=total_size)
-            data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int)],
-                                    buf=shm_data.buf)
+            data_array = np.ndarray((len(flattened_data), n_dims), dtype=dtype, buffer=shm_data.buf)
+            # data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int)], buf=shm_data.buf)
 
             # Assign values to the shared memory data array
             for i, value in enumerate(flattened_data):
                 data_array[i] = value
 
             # Create shared memory for mask
-            shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(int).itemsize)
+            shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(bool).itemsize)
             mask_array = np.frombuffer(shm_mask.buf, dtype=bool)
 
             # Assign values to the shared memory mask array
@@ -757,7 +715,7 @@ class Agents:
         
         return None
     
-    def generate_ndarray_from_shared_memory_twodim_single(self, data):
+    def generate_ndarray_from_shared_memory_multidim_single(self, data, dtype=int):
         original_structured_data = []
 
         if data is None:
@@ -766,8 +724,9 @@ class Agents:
         else: 
             data_shm, mask_shm, data_shape, mask_shape = data[0], data[1], data[2], data[3]
 
-            data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int)])
-            data_array.data = data_shm.buf
+            data_array = np.ndarray(shape=data_shape, dtype=dtype, buffer=data_shm.buf)
+            # data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int)])
+            # data_array.data = data_shm.buf
             mask_array = np.ndarray(mask_shape, dtype=bool, buffer=mask_shm.buf)
 
             data_array_index = 0
@@ -780,156 +739,10 @@ class Agents:
 
         return original_structured_data
     
-    def generate_shared_memory_twodim_varying(self, data):
-        # Flatten and prepare the data
-        flattened_data = []
-        mask = []
-        indices = []
-
-        for i, sublist in enumerate(data):
-            if sublist is not None:
-                mask.append(1)
-                for j, item in enumerate(sublist):
-                    flattened_data.append(tuple(item))
-                    indices.append((i, j))
-            else:
-                mask.append(0)
-
-        total_size = len(flattened_data) * np.dtype([('a', int), ('b', int)]).itemsize
-        indices_total_size = len(indices) * np.dtype([('a', int), ('b', int)]).itemsize
-        
-        if total_size > 0:
-            # Create shared memory for data
-            shm_data = shm.SharedMemory(create=True, size=total_size)
-            data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int)],
-                                    buf=shm_data.buf)
-
-            # Assign values to the shared memory data array
-            for i, value in enumerate(flattened_data):
-                data_array[i] = value
-
-            # Created shared memory for indices
-            shm_indices = shm.SharedMemory(create=True, size=indices_total_size)
-            indices_array = np.recarray(len(indices), dtype=[('a', int), ('b', int)], buf=shm_indices.buf)
-
-            # Assign values to the shared memory mask array
-            for i, value in enumerate(indices):
-                indices_array[i] = value
-
-            # Get the names of the shared memory blocks
-            return [shm_data, shm_indices, data_array.shape, indices_array.shape]
-        
-        return None
-    
-    def generate_ndarray_from_shared_memory_twodim_varying(self, data):
-        original_structured_data = []
-
+    def generate_shared_memory_multidim_varying(self, data, n_dims, dtype=int):
         if data is None:
-            for i in range(self.n_total):
-                original_structured_data.append(None)
-        else:       
-            data_shm, indices_shm, data_shape, indices_shape = data[0], data[1], data[2], data[3]
+            return None
 
-            data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int)])
-            data_array.data = data_shm.buf
-            indices_array = np.recarray(indices_shape, dtype=[('a', int), ('b', int)])
-            indices_array.data = indices_shm.buf
-
-            original_structured_data = self.generate_original_structure(data_array, indices_array)
-
-        return original_structured_data
-    # def generate_shared_memory_str(self, data):
-    #     # Create a separate Boolean array to track valid/invalid elements
-    #     valid_mask = [x is not None for x in data]
-        
-    #     size_sum = sum([len(x) for i, x in enumerate(data) if valid_mask[i]])
-    #     # Create a shared memory block for the data array
-    #     data_shm = shm.SharedMemory(create=True, size=size_sum * np.dtype(object).itemsize)
-
-    #     # Store the data in the shared memory
-    #     data_array = np.ndarray(len(data), dtype=int, buffer=data_shm.buf)
-    #     data_array[valid_mask] = [x for x in data if x is not None]
-
-    #     # Create a shared memory block for the valid mask
-    #     mask_shm = shm.SharedMemory(create=True, size=len(valid_mask) * np.dtype(bool).itemsize)
-
-    #     # Store the valid mask in the shared memory
-    #     mask_array = np.ndarray(len(valid_mask), dtype=bool, buffer=mask_shm.buf)
-    #     mask_array[:] = valid_mask
-
-    #     return [data_shm, mask_shm, data_array.shape, mask_array.shape]
-    
-    # def generate_shared_memory_twodim_varying(self, data):
-    #     if data is None:
-    #         return None
-
-    #     # Flatten and prepare the data
-    #     flattened_data = []
-    #     mask = []
-    #     indices = []
-
-    #     for i, sublist in enumerate(data):
-    #         if sublist is not None:
-    #             mask.append(1)
-    #             for j, item in enumerate(sublist):
-    #                 flattened_data.append(tuple(item))
-    #                 indices.append((i, j))
-    #         else:
-    #             mask.append(0)
-
-    #     total_size = len(flattened_data) * np.dtype([('a', int), ('b', int)]).itemsize
-
-    #     if total_size > 0:
-    #         # Create shared memory for data
-    #         shm_data = shm.SharedMemory(create=True, size=total_size)
-    #         data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int)],
-    #                                 buf=shm_data.buf)
-
-    #         # Assign values to the shared memory data array
-    #         for i, value in enumerate(flattened_data):
-    #             data_array[i] = value
-
-    #         # Create shared memory for mask
-    #         shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(int).itemsize)
-    #         mask_array = np.frombuffer(shm_mask.buf, dtype=bool)
-
-    #         # Assign values to the shared memory mask array
-    #         for i, value in enumerate(mask):
-    #             mask_array[i] = value
-
-    #         # Get the names of the shared memory blocks
-    #         return [shm_data, shm_mask, data_array.shape, mask_array.shape, indices]
-        
-    #     return None
-    
-    # def generate_ndarray_from_shared_memory_twodim_varying(self, data):
-    #     if data is None:
-    #         return None
-        
-    #     data_shm, mask_shm, data_shape, mask_shape, indices = data[0], data[1], data[2], data[3], data[4]
-
-    #     data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int)])
-    #     data_array.data = data_shm.buf
-    #     mask_array = np.ndarray(mask_shape, dtype=bool, buffer=mask_shm.buf)
-
-    #     original_structured_data = []
-    #     for i in range(len(data_array)):
-    #         start_index, end_index = indices[i]
-    #         sliced_data = data_array[start_index:end_index]
-    #         sliced_mask = mask_array[start_index:end_index]
-            
-    #         reconstructed_array = []
-    #         for value, is_valid in zip(sliced_data, sliced_mask):
-    #             if is_valid:
-    #                 reconstructed_array.append(value)
-    #             else:
-    #                 reconstructed_array.append(None)
-            
-    #         original_structured_data.append(reconstructed_array)
-
-    #     return original_structured_data
-    
-    def generate_shared_memory_threedim_varying(self, data):
         # Flatten and prepare the data
         flattened_data = []
         mask = []
@@ -944,14 +757,20 @@ class Agents:
             else:
                 mask.append(0)
 
-        total_size = len(flattened_data) * np.dtype([('a', int), ('b', int), ('c', int)]).itemsize
-        indices_total_size = len(indices) * np.dtype([('a', int), ('b', int)]).itemsize
+        # total_size = len(flattened_data) * np.dtype([('a', int), ('b', int), ('c', int)]).itemsize
+        # indices_total_size = len(indices) * np.dtype([('a', int), ('b', int)]).itemsize
+
+        total_size = len(flattened_data) * n_dims * np.dtype(dtype).itemsize
+        indices_total_size = len(indices) * 2 * np.dtype(dtype).itemsize
         
         if total_size > 0:
             # Create shared memory for data
             shm_data = shm.SharedMemory(create=True, size=total_size)
-            data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int), ('c', int)],
-                                    buf=shm_data.buf)
+
+            data_array = np.ndarray((len(flattened_data), n_dims), dtype=dtype, buffer=shm_data.buf)
+
+            # data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int), ('c', int)],
+            #                         buf=shm_data.buf)
 
             # Assign values to the shared memory data array
             for i, value in enumerate(flattened_data):
@@ -967,7 +786,8 @@ class Agents:
 
             # Created shared memory for indices
             shm_indices = shm.SharedMemory(create=True, size=indices_total_size)
-            indices_array = np.recarray(len(indices), dtype=[('a', int), ('b', int)], buf=shm_indices.buf)
+            indices_array = np.ndarray((len(indices), 2), dtype=int, buffer=shm_indices.buf)
+            # indices_array = np.recarray(len(indices), dtype=[('a', int), ('b', int)], buf=shm_indices.buf)
 
             # Assign values to the shared memory mask array
             for i, value in enumerate(indices):
@@ -978,7 +798,7 @@ class Agents:
         
         return None
     
-    def generate_ndarray_from_shared_memory_threedim_varying(self, data):
+    def generate_ndarray_from_shared_memory_multidim_varying(self, data, dtype=int):
         original_structured_data = []
 
         if data is None:
@@ -987,72 +807,14 @@ class Agents:
         else:       
             data_shm, indices_shm, data_shape, indices_shape = data[0], data[1], data[2], data[3]
 
-            data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int), ('c', int)])
+            data_array = np.ndarray(shape=data_shape, dtype=dtype)
+            # data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int), ('c', int)])
             data_array.data = data_shm.buf
-            indices_array = np.recarray(indices_shape, dtype=[('a', int), ('b', int)])
+            indices_array = np.ndarray(indices_shape, dtype=int)
+            # indices_array = np.recarray(indices_shape, dtype=[('a', int), ('b', int)])
             indices_array.data = indices_shm.buf
 
             original_structured_data = self.generate_original_structure(data_array, indices_array)
-
-        return original_structured_data
-    
-    def generate_shared_memory_threedim_single(self, data):
-        # Flatten and prepare the data
-        flattened_data = []
-        mask = []
-
-        for i, sublist in enumerate(data):
-            if sublist is not None:
-                flattened_data.append(tuple(sublist))
-                mask.append(1)           
-            else:
-                mask.append(0)
-
-        total_size = len(flattened_data) * np.dtype([('a', int), ('b', int), ('c', int)]).itemsize
-
-        if total_size > 0:
-            # Create shared memory for data
-            shm_data = shm.SharedMemory(create=True, size=total_size)
-            data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int), ('c', int)],
-                                    buf=shm_data.buf)
-
-            # Assign values to the shared memory data array
-            for i, value in enumerate(flattened_data):
-                data_array[i] = value
-
-            # Create shared memory for mask
-            shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(int).itemsize)
-            mask_array = np.frombuffer(shm_mask.buf, dtype=bool)
-
-            # Assign values to the shared memory mask array
-            for i, value in enumerate(mask):
-                mask_array[i] = value
-
-            # Get the names of the shared memory blocks
-            return [shm_data, shm_mask, data_array.shape, mask_array.shape]
-        
-        return None
-    
-    def generate_ndarray_from_shared_memory_threedim_single(self, data):
-        original_structured_data = []
-
-        if data is None:
-            for i in range(self.n_total):
-                original_structured_data.append(None)
-        else: 
-            data_shm, mask_shm, data_shape, mask_shape = data[0], data[1], data[2], data[3]
-
-            data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int), ('c', int)])
-            data_array.data = data_shm.buf
-            mask_array = np.ndarray(mask_shape, dtype=bool, buffer=mask_shm.buf)
-
-            data_array_index = 0
-            for i in range(self.n_total):
-                if mask_array[i]:
-                    original_structured_data.append(data_array[data_array_index])
-                    data_array_index += 1
-                else:
-                    original_structured_data.append(None)
 
         return original_structured_data
     

@@ -23,4 +23,5 @@ class Cells:
         self.passenger_uids = []
         self.churchid = []
 
+        self.cells_agents_timesteps = [] # each index maps to a cell. and contains [[agentid, starttimestep, endtimestep]]
 

@@ -3,18 +3,30 @@ import multiprocessing.shared_memory as shm
 import numpy as np
 import traceback
 from simulator import contactnetwork
-from simulator.agents import Agents
+from simulator.agents_mp import Agents
 import time
-# proc_counter = None
 
-# def init_worker(process_counter):
-#     global proc_counter
-
-#     proc_counter = process_counter
-
-def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, num_processes=4):
+def contactnetwork_parallel(day, 
+                            weekday, 
+                            n_locals, 
+                            n_tourists, 
+                            locals_ratio_to_full_pop, 
+                            agents_mp, 
+                            agents_mp_cn, 
+                            vars_mp, 
+                            tourists_active_ids, 
+                            cells, 
+                            cells_households, 
+                            cells_institutions, 
+                            cells_accommodation, 
+                            cells_agents_timesteps, 
+                            contactnetworkparams, 
+                            epidemiologyparams, 
+                            dynparams, 
+                            contact_network_sum_time_taken, 
+                            num_processes=4):
     manager = mp.Manager()
-    result_queue = manager.Queue()
+    sync_queue = manager.Queue()
     process_counter = manager.Value("i", num_processes)
 
     if num_processes > 1:
@@ -41,16 +53,19 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
                 cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
 
             print("starting process index " + str(process_index) + " at " + str(time.time()))
-            pool.apply_async(contactnetwork_worker, args=((result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps_partial, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
+            pool.apply_async(contactnetwork_worker, args=((sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells, cells_agents_timesteps_partial, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
 
         # update memory from multiprocessing.queue
         
         start = time.time()
-        while process_counter.value > 0 or not result_queue.empty(): # True
+        while process_counter.value > 0 or not sync_queue.empty(): # True
             try:
-                agent_index, attr_name, value = result_queue.get(timeout=0.01)  # Poll the queue with a timeout (0 for now - might cause problems)
+                type, agent_index, attr_name, value = sync_queue.get(timeout=0.01)  # Poll the queue with a timeout (0 for now - might cause problems)
 
-                agents_mp.set(agent_index, attr_name, value)
+                if type == "a":
+                    agents_mp.set(agent_index, attr_name, value)
+                elif type == "v":
+                    vars_mp.update(attr_name, value)
             except mp.queues.Empty:
                 continue  # Queue is empty, continue polling
         
@@ -74,7 +89,7 @@ def contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_
         time_taken = time.time() - start
         print("closing pool. time taken " + str(time_taken))
     else:
-        params = result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
+        params = sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells, cells_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
 
         contactnetwork_worker(params)
 
@@ -89,7 +104,7 @@ def contactnetwork_worker(params):
 
     try:
         print("process started " + str(time.time()))
-        result_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
+        sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
         print("process " + str(process_index))
         # agents_mp_cn = None
         # if process_index == -1:
@@ -103,7 +118,7 @@ def contactnetwork_worker(params):
         agents_mp_cn.convert_from_shared_memory_readonly(contactnetwork=True)
         agents_mp_cn.convert_from_shared_memory_dynamic(contactnetwork=True)
 
-        contact_network_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index=process_index, result_queue=result_queue)
+        contact_network_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index=process_index, result_queue=sync_queue)
 
         contact_network_util.simulate_contact_network(day, weekday)
         
