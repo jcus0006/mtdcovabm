@@ -16,7 +16,7 @@ def localitinerary_parallel(day,
                             n_tourists, 
                             locals_ratio_to_full_pop,
                             agents_mp,
-                            agents_mp_itinerary,
+                            agents_mp_it,
                             vars_mp,
                             tourists, 
                             industries, 
@@ -67,7 +67,7 @@ def localitinerary_parallel(day,
                 hh_insts_partial.append(hh_inst)
 
             print("starting process index " + str(process_index) + " at " + str(time.time()))
-            pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries,cells_restaurants,cells_hospital,cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households,cells_breakfast_by_accomid,cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
+            pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries,cells_restaurants,cells_hospital,cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households,cells_breakfast_by_accomid,cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
         
         # sync_queue, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries,cells_restaurants,cells_hospital,cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households,cells_breakfast_by_accomid,cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter
         # update memory from multiprocessing.queue
@@ -86,25 +86,24 @@ def localitinerary_parallel(day,
         
         sync_time_end = time.time()
         time_taken = sync_time_end - start
-        print("itin state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
+        print("itinerary state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
         
         start = time.time()
-        # Close the pool of processes
-
-        # close shm?
-        # agents_mp_cn = None
-
         pool.close()
-        close_time = time.time()
-        pool.join()
-        join_time = time.time()
-
-        print("pool closed at " + str(close_time) + ", pool joined at: " + str(join_time))
-
         time_taken = time.time() - start
-        print("closing pool. time taken " + str(time_taken))
+        print("pool close time taken " + str(time_taken))
+
+        start = time.time()
+        pool.join()
+        time_taken = time.time() - start
+        print("pool join time taken " + str(time_taken))
+
+        start = time.time()
+        agents_mp_it.cleanup_shared_memory_dynamic(itinerary=True)
+        time_taken = time.time() - start
+        print("clean up time taken " + str(time_taken))
     else:
-        params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries,cells_restaurants,cells_hospital,cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households,cells_breakfast_by_accomid,cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
+        params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries,cells_restaurants,cells_hospital,cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households,cells_breakfast_by_accomid,cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
 
         localitinerary_worker(params)
 

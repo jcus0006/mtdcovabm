@@ -244,6 +244,95 @@ class Agents:
             self.infection_severity, self.shm_infection_severity = agents_mp_to_clone.infection_severity, agents_mp_to_clone.shm_infection_severity
             self.vaccination_doses, self.shm_vaccination_doses = agents_mp_to_clone.vaccination_doses, agents_mp_to_clone.shm_vaccination_doses
 
+    # readonly memory does not have to be cleaned after closing shared memory for specific workers for specific day 
+    # these can be retained throughout the whole simulation because they do not change
+    # however, the option to clean them up in specific cases (i.e. itinerary, contactnetwork) is still provided
+    def cleanup_shared_memory_readonly(self, closeall=False, itinerary=False, contactnetwork=False):
+        if not closeall and not itinerary and not contactnetwork:
+            closeall = True
+    
+        start = time.time()
+
+        if closeall:
+            util.close_shm(self.shm_age)
+            util.close_shm(self.shm_sc_student)
+            util.close_shm(self.shm_empstatus)
+            util.close_shm(self.shm_empind)
+            util.close_shm(self.shm_empftpt)
+            util.close_shm(self.shm_work_cellid)
+            util.close_shm(self.shm_school_cellid)
+            util.close_shm(self.shm_inst_cellid)
+            util.close_shm(self.shm_working_age_bracket_index)
+            util.close_shm(self.shm_guardian_id)
+            util.close_shm(self.shm_pub_transp_reg)
+            util.close_shm(self.shm_ent_activity)
+            util.close_shm(self.shm_isshiftbased)
+            util.close_shm(self.shm_busdriver)
+            util.close_shm(self.shm_inst_cellid)
+            util.close_shm(self.shm_res_cellid)
+            util.close_shm(self.shm_age_bracket_index)
+            util.close_shm(self.shm_epi_age_bracket_index)
+            util.close_shm(self.shm_soc_rate)
+        elif contactnetwork:
+            util.close_shm(self.shm_res_cellid)
+            util.close_shm(self.shm_age_bracket_index)
+            util.close_shm(self.shm_epi_age_bracket_index)
+            util.close_shm(self.shm_soc_rate)
+        elif itinerary:
+            util.close_shm(self.shm_age)
+            util.close_shm(self.shm_sc_student)
+            util.close_shm(self.shm_empstatus)
+            util.close_shm(self.shm_empind)
+            util.close_shm(self.shm_empftpt)
+            util.close_shm(self.shm_ent_activity)
+            util.close_shm(self.shm_isshiftbased)
+            util.close_shm(self.shm_guardian_id)
+            util.close_shm(self.shm_age_bracket_index)
+            util.close_shm(self.shm_epi_age_bracket_index)
+            util.close_shm(self.shm_working_age_bracket_index)
+            util.close_shm(self.shm_res_cellid)
+            util.close_shm(self.shm_work_cellid)
+            util.close_shm(self.shm_school_cellid)
+            util.close_shm(self.shm_inst_cellid)
+            util.close_shm(self.shm_pub_transp_reg)
+
+        time_taken = time.time() - start
+        print("agents_mp cleanup_shared_memory_readonly time taken: " + str(time_taken))
+
+    # def convert_to_shared_memory_workingschedule(self):            
+    #     self.shm_working_schedule = self.generate_shared_memory_threedim_varying(self.working_schedule)
+
+    # def convert_to_shared_memory_isshiftbased(self):
+    #     self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
+
+    def cleanup_shared_memory_dynamic(self, closeall=False, itinerary=False, contactnetwork=False):
+        if not closeall and not itinerary and not contactnetwork:
+            closeall = True
+
+        if closeall or itinerary:
+            util.close_shm(self.shm_itinerary)
+            util.close_shm(self.shm_itinerary_nextday)
+            util.close_shm(self.shm_non_daily_activity_recurring)
+            util.close_shm(self.shm_prevday_non_daily_activity_recurring)
+            util.close_shm(self.shm_state_transition_by_day)
+            util.close_shm(self.shm_test_day)
+            util.close_shm(self.shm_test_result_day)
+            util.close_shm(self.shm_quarantine_days)
+            util.close_shm(self.shm_hospitalisation_days)
+            util.close_shm(self.shm_vaccination_days)
+            util.close_shm(self.shm_seir_state)
+            util.close_shm(self.shm_seir_state_transition_for_day)
+            util.close_shm(self.shm_infection_type)
+            util.close_shm(self.shm_infection_severity)
+            util.close_shm(self.shm_vaccination_doses)
+        elif contactnetwork:
+            util.close_shm(self.shm_state_transition_by_day)
+            util.close_shm(self.shm_test_day)
+            util.close_shm(self.shm_test_result_day)
+            util.close_shm(self.shm_quarantine_days)
+            util.close_shm(self.shm_hospitalisation_days)
+            util.close_shm(self.shm_vaccination_days)
+
     def clear_non_shared_memory_readonly(self):
         self.age = None
         # self.gender = None

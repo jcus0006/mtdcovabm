@@ -376,6 +376,8 @@ if __name__ == '__main__':
     agents_mp = Agents()
     agents_mp.populate(agents, n_locals, n_tourists, agents_seir_state)
 
+    agents_mp.convert_to_shared_memory_readonly(loadall=True)
+
     vars_mp = Vars()
 
     # agents_mp.convert_to_shared_memory_readonly()
@@ -454,7 +456,6 @@ if __name__ == '__main__':
                 # should be cell based, but for testing purposes, traversing all agents here
                 agents_mp_itinerary = Agents()
                 agents_mp_itinerary.clone(agents_mp, itinerary=True)
-                agents_mp_itinerary.convert_to_shared_memory_readonly(itinerary=True)
                 agents_mp_itinerary.convert_to_shared_memory_dynamic(itinerary=True)
 
                 itinerary_mp.localitinerary_parallel(day, 
@@ -496,7 +497,6 @@ if __name__ == '__main__':
 
                     agents_mp_cn = Agents()
                     agents_mp_cn.clone(agents_mp, contactnetwork=True)
-                    agents_mp_cn.convert_to_shared_memory_readonly(contactnetwork=True)
                     agents_mp_cn.convert_to_shared_memory_dynamic(contactnetwork=True)
 
                     contactnetwork_mp.contactnetwork_parallel(day, 

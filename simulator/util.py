@@ -596,3 +596,10 @@ def generate_original_structure(data_array, indices_array, n_total):
             original_structure.append(None)
     
     return original_structure
+
+def close_shm(shm):
+    if shm is not None and len(shm) > 0:
+        for i, s in enumerate(shm):
+            if i < 2:
+                s.close()
+                s.unlink()

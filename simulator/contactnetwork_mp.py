@@ -74,20 +74,19 @@ def contactnetwork_parallel(day,
         print("cn/epi state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
         
         start = time.time()
-        # Close the pool of processes
-
-        # close shm?
-        # agents_mp_cn = None
-
         pool.close()
-        close_time = time.time()
-        pool.join()
-        join_time = time.time()
-
-        print("pool closed at " + str(close_time) + ", pool joined at: " + str(join_time))
-
         time_taken = time.time() - start
-        print("closing pool. time taken " + str(time_taken))
+        print("pool close time taken " + str(time_taken))
+
+        start = time.time()
+        pool.join()
+        time_taken = time.time() - start
+        print("pool join time taken " + str(time_taken))
+
+        start = time.time()
+        agents_mp_cn.cleanup_shared_memory_dynamic(contactnetwork=True)
+        time_taken = time.time() - start
+        print("clean up time taken " + str(time_taken))
     else:
         params = sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells_agents_timesteps, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
 

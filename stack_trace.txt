@@ -1,10 +1,11 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 458, in <module>
-    agents_mp_itinerary.convert_to_shared_memory_dynamic(itinerary=True)
-  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 482, in convert_to_shared_memory_dynamic
-    self.shm_seir_state_transition_for_day = self.generate_shared_memory_multidim_single(self.seir_state_transition_for_day, 6)
-                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 682, in generate_shared_memory_multidim_single
-    for i, sublist in enumerate(data):
-                      ^^^^^^^^^^^^^^^
-TypeError: 'NoneType' object is not iterable
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 461, in <module>
+    itinerary_mp.localitinerary_parallel(day,
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 102, in localitinerary_parallel
+    agents_mp_it.cleanup_shared_memory_dynamic(itinerary=True)
+  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 323, in cleanup_shared_memory_dynamic
+    util.close_shm(self.shm_seir_state)
+  File "c:\AppsPy\mtdcovabm\simulator\util.py", line 603, in close_shm
+    s.close()
+    ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'close'
