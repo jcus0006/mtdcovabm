@@ -5,7 +5,7 @@ import time
 import matplotlib.pyplot as plt
 import random
 import traceback
-from cells import CellsUtil
+from cellsutil import CellsUtil
 from simulator import util, itinerary_mp, contactnetwork_mp, tourism, seirstateutil
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
@@ -30,7 +30,7 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 4
+                "numprocesses": 10
             }
 
     figure_count = 0

@@ -5,6 +5,8 @@ import powerlaw
 import matplotlib.pyplot as plt
 import random
 import bisect
+import multiprocessing.shared_memory as shm
+from cells_mp import CellType
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -195,7 +197,32 @@ def convert_celltype_to_simcelltype(cellid, cells=None, celltype=None):
             return "community"
         case _:
             return "community"
-
+        
+def convert_celltype_str_to_enum(celltype):
+    match celltype:
+        case "household":
+            return CellType.Household
+        case "workplace":
+            return CellType.Workplace
+        case "accom":
+            return CellType.Accommodation
+        case "hospital":
+            return CellType.Hospital
+        case "entertainment":
+            return CellType.Entertainment
+        case "school":
+            return CellType.School
+        case "institution":
+            return CellType.Institution
+        case "transport":
+            return CellType.Transport
+        case "religion":
+            return CellType.Religion
+        case "airport":
+            return CellType.Airport
+        case _:
+            return CellType.Undefined
+        
 # takes the contact structure in agents_contacts
 # can be used for both potential contacts and direct contacts (as they bear the same structure)
 # if agents_degree is passed (not none), it will only return the contact id if the relevant degree is greater than 0
@@ -338,3 +365,234 @@ def insert_sorted(indices, values):
         bisect.insort(indices, value)
 
     return indices
+
+def generate_shared_memory_int(data, type=int):
+    # Create a separate Boolean array to track valid/invalid elements
+    valid_mask = [x is not None for x in data]
+
+    valid_len = sum(bool(x) for x in valid_mask)
+
+    if valid_len == 0:
+        return None
+    
+    # Create a shared memory block for the data array
+    data_shm = shm.SharedMemory(create=True, size=valid_len * np.dtype(type).itemsize)
+
+    # Store the data in the shared memory
+    data_array = np.ndarray(valid_len, dtype=type, buffer=data_shm.buf)
+
+    data_array_index = 0
+    for i in range(len(data)):
+        if valid_mask[i]:
+            data_array[data_array_index] = data[i]
+            data_array_index += 1
+
+    # data_array[valid_mask] = [x for x in data if x is not None]
+
+    # Create a shared memory block for the valid mask
+    mask_shm = shm.SharedMemory(create=True, size=len(valid_mask) * np.dtype(bool).itemsize)
+
+    # Store the valid mask in the shared memory
+    mask_array = np.ndarray(len(valid_mask), dtype=bool, buffer=mask_shm.buf)
+    mask_array[:] = valid_mask
+
+    return [data_shm, mask_shm, data_array.shape, mask_array.shape]
+
+def generate_ndarray_from_shared_memory_int(data, n_total, type=int):
+    original_structured_data = []
+
+    if data is None:
+        for i in range(n_total):
+            original_structured_data.append(None)
+    else:    
+        data_shm, mask_shm, data_shape, mask_shape = data[0], data[1], data[2], data[3]
+
+        data_array = np.ndarray(data_shape, dtype=type, buffer=data_shm.buf)
+        mask_array = np.ndarray(mask_shape, dtype=bool, buffer=mask_shm.buf)
+
+        data_array_index = 0
+        for i in range(n_total):
+            if mask_array[i]:
+                original_structured_data.append(data_array[data_array_index])
+                data_array_index += 1
+            else:
+                original_structured_data.append(None)
+
+    return original_structured_data
+    
+def generate_shared_memory_multidim_single(data, n_dims, dtype=int):
+    if data is None:
+        return None
+    
+    # Flatten and prepare the data
+    flattened_data = []
+    mask = []
+
+    for i, sublist in enumerate(data):
+        if sublist is not None:
+            flattened_data.append(tuple(sublist))
+            mask.append(1)           
+        else:
+            mask.append(0)
+
+    total_size = len(flattened_data) * n_dims * np.dtype(dtype).itemsize
+    # total_size = len(flattened_data) * np.dtype([('a', int), ('b', int)]).itemsize
+
+    if total_size > 0:
+        # Create shared memory for data
+        shm_data = shm.SharedMemory(create=True, size=total_size)
+        data_array = np.ndarray((len(flattened_data), n_dims), dtype=dtype, buffer=shm_data.buf)
+        # data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int)], buf=shm_data.buf)
+
+        # Assign values to the shared memory data array
+        for i, value in enumerate(flattened_data):
+            data_array[i] = value
+
+        # Create shared memory for mask
+        shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(bool).itemsize)
+        mask_array = np.frombuffer(shm_mask.buf, dtype=bool)
+
+        # Assign values to the shared memory mask array
+        for i, value in enumerate(mask):
+            mask_array[i] = value
+
+        # Get the names of the shared memory blocks
+        return [shm_data, shm_mask, data_array.shape, mask_array.shape]
+    
+    return None
+    
+def generate_ndarray_from_shared_memory_multidim_single(data, n_total, dtype=int):
+    original_structured_data = []
+
+    if data is None:
+        for i in range(n_total):
+            original_structured_data.append(None)
+    else: 
+        data_shm, mask_shm, data_shape, mask_shape = data[0], data[1], data[2], data[3]
+
+        data_array = np.ndarray(shape=data_shape, dtype=dtype, buffer=data_shm.buf)
+        # data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int)])
+        # data_array.data = data_shm.buf
+        mask_array = np.ndarray(mask_shape, dtype=bool, buffer=mask_shm.buf)
+
+        data_array_index = 0
+        for i in range(n_total):
+            if mask_array[i]:
+                original_structured_data.append(data_array[data_array_index])
+                data_array_index += 1
+            else:
+                original_structured_data.append(None)
+
+    return original_structured_data
+    
+def generate_shared_memory_multidim_varying(data, n_dims, dtype=int):
+    if data is None:
+        return None
+
+    # Flatten and prepare the data
+    flattened_data = []
+    mask = []
+    indices = []
+
+    for i, sublist in enumerate(data):
+        if sublist is not None:
+            mask.append(1)
+            for j, item in enumerate(sublist):
+                flattened_data.append(tuple(item))
+                indices.append((i, j))
+        else:
+            mask.append(0)
+
+    # total_size = len(flattened_data) * np.dtype([('a', int), ('b', int), ('c', int)]).itemsize
+    # indices_total_size = len(indices) * np.dtype([('a', int), ('b', int)]).itemsize
+
+    total_size = len(flattened_data) * n_dims * np.dtype(dtype).itemsize
+    indices_total_size = len(indices) * 2 * np.dtype(dtype).itemsize
+    
+    if total_size > 0:
+        # Create shared memory for data
+        shm_data = shm.SharedMemory(create=True, size=total_size)
+
+        data_array = np.ndarray((len(flattened_data), n_dims), dtype=dtype, buffer=shm_data.buf)
+
+        # data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int), ('c', int)],
+        #                         buf=shm_data.buf)
+
+        # Assign values to the shared memory data array
+        for i, value in enumerate(flattened_data):
+            data_array[i] = value
+
+        # Create shared memory for mask
+        # shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(int).itemsize)
+        # mask_array = np.frombuffer(shm_mask.buf, dtype=bool)
+
+        # # Assign values to the shared memory mask array
+        # for i, value in enumerate(mask):
+        #     mask_array[i] = value
+
+        # Created shared memory for indices
+        shm_indices = shm.SharedMemory(create=True, size=indices_total_size)
+        indices_array = np.ndarray((len(indices), 2), dtype=int, buffer=shm_indices.buf)
+        # indices_array = np.recarray(len(indices), dtype=[('a', int), ('b', int)], buf=shm_indices.buf)
+
+        # Assign values to the shared memory mask array
+        for i, value in enumerate(indices):
+            indices_array[i] = value
+
+        # Get the names of the shared memory blocks
+        return [shm_data, shm_indices, data_array.shape, indices_array.shape]
+    
+    return None
+    
+def generate_ndarray_from_shared_memory_multidim_varying(data, n_total, dtype=int):
+    original_structured_data = []
+
+    if data is None:
+        for i in range(n_total):
+            original_structured_data.append(None)
+    else:       
+        data_shm, indices_shm, data_shape, indices_shape = data[0], data[1], data[2], data[3]
+
+        data_array = np.ndarray(shape=data_shape, dtype=dtype)
+        # data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int), ('c', int)])
+        data_array.data = data_shm.buf
+        indices_array = np.ndarray(indices_shape, dtype=int)
+        # indices_array = np.recarray(indices_shape, dtype=[('a', int), ('b', int)])
+        indices_array.data = indices_shm.buf
+
+        original_structured_data = generate_original_structure(data_array, indices_array)
+
+    return original_structured_data
+    
+def generate_original_structure(data_array, indices_array, n_total):
+    original_structure = []
+    
+    # data_array_index = 0
+
+    indices_rows = []
+
+    inner_arr_index = 0
+
+    distinct_keys = get_distinct_first_indices(indices_array)
+
+    for i in range(n_total):
+        inner_arr = []
+
+        if len(indices_rows) == 0 and i in distinct_keys:
+            indices_rows = get_all_rows_by_key(indices_array, i)
+
+        if len(indices_rows) > 0:
+            start_index = inner_arr_index + indices_rows[0][1]
+            end_index = start_index + indices_rows[-1][1] + 1
+
+            inner_arr.extend(data_array[start_index:end_index]) # non-inclusive
+
+            inner_arr_index = end_index 
+
+            original_structure.append(inner_arr)
+
+            indices_rows = []
+        else:
+            original_structure.append(None)
+    
+    return original_structure

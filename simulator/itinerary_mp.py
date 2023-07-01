@@ -86,7 +86,7 @@ def localitinerary_parallel(day,
         
         sync_time_end = time.time()
         time_taken = sync_time_end - start
-        print("cn/epi state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
+        print("itin state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
         
         start = time.time()
         # Close the pool of processes

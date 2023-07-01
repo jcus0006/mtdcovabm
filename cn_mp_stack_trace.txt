@@ -1,5 +1,7 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 107, in contactnetwork_worker
-    sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: not enough values to unpack (expected 25, got 19)
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 117, in localitinerary_worker
+    agents_mp_itinerary.convert_from_shared_memory_readonly(itinerary=True)
+  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 551, in convert_from_shared_memory_readonly
+    self.res_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_res_cellid, self.n_total)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Agents' object has no attribute 'generate_ndarray_from_shared_memory_int'

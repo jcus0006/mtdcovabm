@@ -1,6 +1,5 @@
 import numpy as np
 import random
-from enum import Enum
 from enum import IntEnum
 from copy import deepcopy
 from copy import copy

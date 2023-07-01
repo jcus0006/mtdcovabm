@@ -14,6 +14,8 @@ import scipy.stats as stats
 # Define the number of rows
 num_rows = 2500000
 
+start = time.time()
+
 # Create an empty array with the desired shape
 data_array = np.empty((num_rows, 6), dtype=np.int32)
 
@@ -25,10 +27,17 @@ data_array[:, 3] = np.random.randint(0, 2500000, size=num_rows)  # person2_id (0
 data_array[:, 4] = np.random.randint(0, 144, size=num_rows)  # start_timestep (0-143)
 data_array[:, 5] = np.random.randint(0, 144, size=num_rows)  # end_timestep (0-143)
 
+time_taken = time.time() - start
+print("creation " + str(time_taken))
+
 # Print a subset of the array for demonstration
 # print(data_array[:10])
 
+start = time.time()
 type_0_subset = data_array[data_array[:, 1] == 0]
+time_taken = time.time() - start
+print("indexing " + str(time_taken))
+
 type_1_subset = data_array[data_array[:, 1] == 1]
 type_2_subset = data_array[data_array[:, 1] == 2]
 type_3_subset = data_array[data_array[:, 1] == 3]

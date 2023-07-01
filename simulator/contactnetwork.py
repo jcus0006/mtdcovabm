@@ -45,7 +45,7 @@ class ContactNetwork:
         self.contactnetwork_sum_time_taken = contact_network_sum_time_taken
 
         self.process_index = process_index
-        self.result_queue = sync_queue
+        self.sync_queue = sync_queue
 
         self.population_per_timestep = [0 for i in range(144)]
         

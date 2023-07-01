@@ -53,7 +53,7 @@ def contactnetwork_parallel(day,
                 cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
 
             print("starting process index " + str(process_index) + " at " + str(time.time()))
-            pool.apply_async(contactnetwork_worker, args=((sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells, cells_agents_timesteps_partial, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
+            pool.apply_async(contactnetwork_worker, args=((sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells_agents_timesteps_partial, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
 
         # update memory from multiprocessing.queue
         
@@ -89,7 +89,7 @@ def contactnetwork_parallel(day,
         time_taken = time.time() - start
         print("closing pool. time taken " + str(time_taken))
     else:
-        params = sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells, cells_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
+        params = sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells_agents_timesteps, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
 
         contactnetwork_worker(params)
 
@@ -104,7 +104,8 @@ def contactnetwork_worker(params):
 
     try:
         print("process started " + str(time.time()))
-        sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
+
+        sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
         print("process " + str(process_index))
         # agents_mp_cn = None
         # if process_index == -1:
@@ -118,7 +119,7 @@ def contactnetwork_worker(params):
         agents_mp_cn.convert_from_shared_memory_readonly(contactnetwork=True)
         agents_mp_cn.convert_from_shared_memory_dynamic(contactnetwork=True)
 
-        contact_network_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index=process_index, result_queue=sync_queue)
+        contact_network_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index=process_index, sync_queue=sync_queue)
 
         contact_network_util.simulate_contact_network(day, weekday)
         
