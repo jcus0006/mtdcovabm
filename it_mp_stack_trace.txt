@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 146, in localitinerary_worker
+    itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1094, in generate_local_itinerary
+    agent_itinerary, agent_itinerary_nextday = self.sample_activities(weekday, agent_itinerary, agent_itinerary_nextday, res_cellid, sleep_timestep, activity_timestep_ranges, agent_age_bracket_index)
+                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1932, in sample_activities
+    sampled_cell_id = self.rng.choice(potential_cells)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "_generator.pyx", line 729, in numpy.random._generator.Generator.choice
+ValueError: a cannot be empty unless no samples are taken

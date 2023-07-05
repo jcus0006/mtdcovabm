@@ -15,7 +15,8 @@ class Itinerary:
                 locals_ratio_to_full_pop,
                 agents_mp,
                 tourists, 
-                industries, 
+                industries,
+                cells_mp,
                 cells_restaurants, 
                 cells_hospital, 
                 cells_testinghub, 
@@ -28,7 +29,6 @@ class Itinerary:
                 cells_transport, 
                 cells_institutions, 
                 cells_accommodation, 
-                cells_agents_timesteps, 
                 tourist_entry_infection_probability,
                 epidemiologyparams,
                 dynparams,
@@ -39,7 +39,9 @@ class Itinerary:
 
         self.one_to_two_hours = np.arange(6, 13)
 
-        self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
+        self.cells_mp = cells_mp
+        # self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
+        
         self.epi_util = Epidemiology(epidemiologyparams, 
                                     n_locals, 
                                     n_tourists, 
@@ -1338,10 +1340,12 @@ class Itinerary:
                     
                     agent_cell_timestep_ranges.append([agentid, start_ts, end_ts])
 
-                if curr_cell_id not in self.cells_agents_timesteps:
-                    self.cells_agents_timesteps[curr_cell_id] = []
+                # if curr_cell_id not in self.cells_agents_timesteps:
+                #     self.cells_agents_timesteps[curr_cell_id] = []
 
-                self.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
+                # self.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
+
+                self.cells_mp.update_cells_agents_timesteps(curr_cell_id, agent_cell_timestep_ranges)
 
             # prev_cell_id = curr_cell_id
 
@@ -1767,8 +1771,7 @@ class Itinerary:
 
                     sampled_cell_id = self.rng.choice(breakfast_cells_options, size=1)[0]
                 else:
-                    cells_restaurants_options = np.array(list(self.cells_restaurants.keys()))
-                    sampled_cell_id = self.rng.choice(cells_restaurants_options, size=1)[0]
+                    sampled_cell_id = self.rng.choice(self.cells_restaurants, size=1)[0]
 
                 self.add_to_itinerary(agent_group, breakfast_ts, Action.Breakfast, sampled_cell_id, next_day=False)
 
@@ -1902,9 +1905,9 @@ class Itinerary:
                 action_type = Action.LocalActivity
 
                 if last_activity and is_tourist_group: # force last activity for tourists as restaurant
-                    potential_cells = list(self.cells_restaurants.keys())
+                    potential_cells = self.cells_restaurants
                 else:
-                    if sampled_activity_id in list(self.cells_entertainment.keys()): # if this is an entertainment activity
+                    if sampled_activity_id in self.cells_entertainment: # if this is an entertainment activity
                         potential_cells = list(self.cells_entertainment[sampled_activity_id].keys())
                     else:  # non entertainment activities
                         industry_id = activity_working_hours_overrides[1]
@@ -1917,14 +1920,14 @@ class Itinerary:
 
                                 potential_cells = list(self.industries[industry_id][sampled_wp_id].keys())
                             else:
-                                potential_cells = list(self.cells_restaurants.keys())
+                                potential_cells = self.cells_restaurants
                         elif sampled_activity_id == 8: # religious
-                            potential_cells = list(self.cells_religious.keys())
+                            potential_cells = self.cells_religious
                         elif sampled_activity_id == 9: # stay home
                             potential_cells = [res_cell_id]
                             action_type = Action.Home
                         elif sampled_activity_id == 10: # other residence visit
-                            potential_cells = list(self.cells_households.keys())
+                            potential_cells = self.cells_households
 
                 sampled_cell_id = self.rng.choice(potential_cells)
 
@@ -1960,7 +1963,7 @@ class Itinerary:
 
         next_timestep = timestep_range_in_airport[0]
 
-        potential_cells = list(self.cells_airport.keys())
+        potential_cells = self.cells_airport
 
         itinerary_nextday_inserted = False
         # repeat until no more hours to fill
@@ -2042,7 +2045,7 @@ class Itinerary:
                         if transp_start_ts < 0:
                             transp_start_ts = 0
 
-                        potential_cells = list(self.cells_transport.keys())
+                        potential_cells = self.cells_transport
 
                         sampled_cell_id = self.rng.choice(potential_cells, size=1)[0]
 
@@ -2164,13 +2167,11 @@ class Itinerary:
                         for timestep in timesteps_to_delete:
                             util.del_row_from_multidim_array_by_key(agent_itinerary, timestep)
 
-                        cells_hospitals_cellids = list(self.cells_hospital.keys())
-
-                        cells_hospital_indices = np.arange(len(cells_hospitals_cellids))
+                        cells_hospital_indices = np.arange(len(self.cells_hospital))
 
                         sampled_hospital_index = self.rng.choice(cells_hospital_indices, size=1, replace=False)[0]
                         
-                        sampled_hospital_cellid = cells_hospitals_cellids[sampled_hospital_index]
+                        sampled_hospital_cellid = self.cells_hospital[sampled_hospital_index]
 
                         self.add_to_itinerary(agent_itinerary, agent_itinerary_nextday, hospitalisation_ts, Action.Hospital, sampled_hospital_cellid)
 
@@ -2247,13 +2248,11 @@ class Itinerary:
                     reschedule_test = True
 
                 if not reschedule_test:       
-                    cells_testinghub_cellids = list(self.cells_testinghub.keys())
-
-                    cells_testinghub_indices = np.arange(len(cells_testinghub_cellids))
+                    cells_testinghub_indices = np.arange(len(self.cells_testinghub))
 
                     sampled_testinghub_index = self.rng.choice(cells_testinghub_indices, size=1, replace=False)[0]
                     
-                    sampled_testinghub_cellid = cells_testinghub_cellids[sampled_testinghub_index]
+                    sampled_testinghub_cellid = self.cells_testinghub[sampled_testinghub_index]
 
                     self.add_to_itinerary(agent_itinerary, agent_itinerary_nextday, start_ts, Action.Test, sampled_testinghub_cellid)
 
@@ -2276,13 +2275,11 @@ class Itinerary:
                     reschedule_test = True
                 
                 if not reschedule_test:
-                    cells_vaccinationhub_cellids = list(self.cells_vaccinationhub.keys())
-
-                    cells_vaccinationhub_indices = np.arange(len(cells_vaccinationhub_cellids))
+                    cells_vaccinationhub_indices = np.arange(len(self.cells_vaccinationhub))
 
                     sampled_vaccinationhub_index = self.rng.choice(cells_vaccinationhub_indices, size=1, replace=False)[0]
                     
-                    sampled_vaccinationhub_cellid = cells_vaccinationhub_cellids[sampled_vaccinationhub_index]
+                    sampled_vaccinationhub_cellid = self.cells_vaccinationhub[sampled_vaccinationhub_index]
 
                     self.add_to_itinerary(agent_itinerary, agent_itinerary_nextday, start_ts, Action.Vaccine, sampled_vaccinationhub_cellid)
 

@@ -216,7 +216,7 @@ def convert_celltype_str_to_enum(celltype):
             return CellType.Institution
         case "transport":
             return CellType.Transport
-        case "religion":
+        case "church":
             return CellType.Religion
         case "airport":
             return CellType.Airport
@@ -484,24 +484,87 @@ def generate_ndarray_from_shared_memory_multidim_single(data, n_total, dtype=int
                 original_structured_data.append(None)
 
     return original_structured_data
+
+def generate_shared_memory_singledim_varying(data, n_dims, dtype=int):
+    if data is None:
+        return None
+
+    flattened_data = []
+    indices = []
+
+    for i, sublist in enumerate(data):
+        if sublist is not None:
+            for j, item in enumerate(sublist):
+                flattened_data.append(item)
+
+                indices.append((i, j))
+
+    # total_size = len(flattened_data) * np.dtype([('a', int), ('b', int), ('c', int)]).itemsize
+    # indices_total_size = len(indices) * np.dtype([('a', int), ('b', int)]).itemsize
+
+    total_size = len(flattened_data) * n_dims * np.dtype(dtype).itemsize
+    indices_total_size = len(indices) * 2 * np.dtype(dtype).itemsize
+    
+    if total_size > 0:
+        # Create shared memory for data
+        shm_data = shm.SharedMemory(create=True, size=total_size)
+
+        data_array = np.ndarray(len(flattened_data), dtype=dtype, buffer=shm_data.buf)
+
+        # data_array = np.recarray(len(flattened_data), dtype=[('a', int), ('b', int), ('c', int)],
+        #                         buf=shm_data.buf)
+
+        # Assign values to the shared memory data array
+        for i, value in enumerate(flattened_data):
+            data_array[i] = value
+
+        # Created shared memory for indices
+        shm_indices = shm.SharedMemory(create=True, size=indices_total_size)
+        indices_array = np.ndarray((len(indices), 2), dtype=int, buffer=shm_indices.buf)
+        # indices_array = np.recarray(len(indices), dtype=[('a', int), ('b', int)], buf=shm_indices.buf)
+
+        # Assign values to the shared memory mask array
+        for i, value in enumerate(indices):
+            indices_array[i] = value
+
+        # Get the names of the shared memory blocks
+        return [shm_data, shm_indices, data_array.shape, indices_array.shape]
+    
+    return None
+
+def generate_ndarray_from_shared_memory_singledim_varying(data, n_total, dtype=int):
+    original_structured_data = []
+
+    if data is None:
+        for i in range(n_total):
+            original_structured_data.append(None)
+    else:       
+        data_shm, indices_shm, data_shape, indices_shape = data[0], data[1], data[2], data[3]
+
+        data_array = np.ndarray(shape=data_shape, dtype=dtype)
+        # data_array = np.recarray(shape=data_shape, dtype=[('a', int), ('b', int), ('c', int)])
+        data_array.data = data_shm.buf
+        indices_array = np.ndarray(indices_shape, dtype=int)
+        # indices_array = np.recarray(indices_shape, dtype=[('a', int), ('b', int)])
+        indices_array.data = indices_shm.buf
+
+        original_structured_data = generate_original_structure_singledim(data_array, indices_array, n_total)
+
+    return original_structured_data
     
 def generate_shared_memory_multidim_varying(data, n_dims, dtype=int):
     if data is None:
         return None
 
-    # Flatten and prepare the data
     flattened_data = []
-    mask = []
     indices = []
 
     for i, sublist in enumerate(data):
         if sublist is not None:
-            mask.append(1)
             for j, item in enumerate(sublist):
                 flattened_data.append(tuple(item))
+
                 indices.append((i, j))
-        else:
-            mask.append(0)
 
     # total_size = len(flattened_data) * np.dtype([('a', int), ('b', int), ('c', int)]).itemsize
     # indices_total_size = len(indices) * np.dtype([('a', int), ('b', int)]).itemsize
@@ -521,14 +584,6 @@ def generate_shared_memory_multidim_varying(data, n_dims, dtype=int):
         # Assign values to the shared memory data array
         for i, value in enumerate(flattened_data):
             data_array[i] = value
-
-        # Create shared memory for mask
-        # shm_mask = shm.SharedMemory(create=True, size=len(mask) * np.dtype(int).itemsize)
-        # mask_array = np.frombuffer(shm_mask.buf, dtype=bool)
-
-        # # Assign values to the shared memory mask array
-        # for i, value in enumerate(mask):
-        #     mask_array[i] = value
 
         # Created shared memory for indices
         shm_indices = shm.SharedMemory(create=True, size=indices_total_size)
@@ -560,11 +615,44 @@ def generate_ndarray_from_shared_memory_multidim_varying(data, n_total, dtype=in
         # indices_array = np.recarray(indices_shape, dtype=[('a', int), ('b', int)])
         indices_array.data = indices_shm.buf
 
-        original_structured_data = generate_original_structure(data_array, indices_array)
+        original_structured_data = generate_original_structure_multidim(data_array, indices_array, n_total)
 
     return original_structured_data
+
+def generate_original_structure_singledim(data_array, indices_array, n_total):
+    original_structure = []
     
-def generate_original_structure(data_array, indices_array, n_total):
+    # data_array_index = 0
+
+    indices_rows = []
+
+    inner_arr_index = 0
+
+    distinct_keys = get_distinct_first_indices(indices_array)
+
+    for i in range(n_total):
+        inner_arr = []
+
+        if len(indices_rows) == 0 and i in distinct_keys:
+            indices_rows = get_all_rows_by_key(indices_array, i)
+
+        if len(indices_rows) > 0:
+            start_index = inner_arr_index + indices_rows[0][1]
+            end_index = start_index + indices_rows[-1][1] + 1
+
+            inner_arr.extend(data_array[start_index:end_index]) # non-inclusive
+
+            inner_arr_index = end_index 
+
+            original_structure.append(inner_arr)
+
+            indices_rows = []
+        else:
+            original_structure.append(None)
+    
+    return original_structure
+    
+def generate_original_structure_multidim(data_array, indices_array, n_total):
     original_structure = []
     
     # data_array_index = 0

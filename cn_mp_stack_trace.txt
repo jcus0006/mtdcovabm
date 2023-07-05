@@ -1,7 +1,11 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 117, in localitinerary_worker
-    agents_mp_itinerary.convert_from_shared_memory_readonly(itinerary=True)
-  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 551, in convert_from_shared_memory_readonly
-    self.res_cellid = self.generate_ndarray_from_shared_memory_int(self.shm_res_cellid, self.n_total)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'Agents' object has no attribute 'generate_ndarray_from_shared_memory_int'
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 115, in localitinerary_worker
+    cells_restaurants = cells_mp.get_keys(sub_type=CellSubType.Restaurant)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\cells_mp.py", line 119, in get_keys
+    return [i for i, t in self.sub_type if t == sub_type]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\cells_mp.py", line 119, in <listcomp>
+    return [i for i, t in self.sub_type if t == sub_type]
+                  ^^^^
+TypeError: cannot unpack non-iterable NoneType object

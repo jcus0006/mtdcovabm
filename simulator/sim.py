@@ -10,6 +10,7 @@ from simulator import util, itinerary_mp, contactnetwork_mp, tourism, seirstateu
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
 from simulator.agents_mp import Agents
+from simulator.cells_mp import Cells
 from simulator.vars_mp import Vars
 import multiprocessing as mp
 from sys import getsizeof
@@ -375,8 +376,11 @@ if __name__ == '__main__':
 
     agents_mp = Agents()
     agents_mp.populate(agents, n_locals, n_tourists, agents_seir_state)
-
     agents_mp.convert_to_shared_memory_readonly(loadall=True)
+
+    cells_mp = Cells()
+    cells_mp.populate(cells, cells_testinghub, cells_vaccinationhub, cells_restaurants)
+    cells_mp.convert_to_shared_memory_readonly()
 
     vars_mp = Vars()
 
@@ -389,6 +393,7 @@ if __name__ == '__main__':
 
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
+
     try:
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -453,6 +458,8 @@ if __name__ == '__main__':
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
             if not params["quicktourismrun"]:
+                start = time.time()  
+
                 # should be cell based, but for testing purposes, traversing all agents here
                 agents_mp_itinerary = Agents()
                 agents_mp_itinerary.clone(agents_mp, itinerary=True)
@@ -471,25 +478,20 @@ if __name__ == '__main__':
                                                     vars_mp, 
                                                     tourists, 
                                                     industries,
-                                                    cells_restaurants, 
-                                                    cells_hospital, 
-                                                    cells_testinghub, 
-                                                    cells_vaccinationhub, 
-                                                    cells_entertainment, 
-                                                    cells_religious, 
-                                                    cells_households, 
                                                     cells_breakfast_by_accomid, 
-                                                    cells_airport, 
-                                                    cells_transport, 
-                                                    cells_institutions, 
-                                                    cells_accommodation, 
-                                                    cells_agents_timesteps, 
+                                                    cells_entertainment,
+                                                    cells_mp,
                                                     tourist_entry_infection_probability, 
                                                     epidemiologyparams, 
                                                     dyn_params, 
                                                     tourists_active_ids, 
                                                     hh_insts, 
                                                     params["numprocesses"])
+                
+                time_taken = time.time() - start
+                itinerary_sum_time_taken += time_taken
+                avg_time_taken = itinerary_sum_time_taken / day
+                print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken)) 
 
                 if not params["quickitineraryrun"]:
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
@@ -522,7 +524,7 @@ if __name__ == '__main__':
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
                     avg_time_taken = contactnetwork_sum_time_taken / day
-                    print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
+                    print("contactnetwork_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
 
                 # contact tracing
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
@@ -558,5 +560,11 @@ if __name__ == '__main__':
     except:
         with open('stack_trace.txt', 'w') as f:
             traceback.print_exc(file=f)
+    finally:
+        if cells_mp is not None:
+            cells_mp.cleanup_shared_memory_readonly()
+
+        if agents_mp is not None:
+            agents_mp.cleanup_shared_memory_readonly()
 
     print(len(agents))

@@ -1,11 +1,4 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 461, in <module>
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 467, in <module>
     itinerary_mp.localitinerary_parallel(day,
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 102, in localitinerary_parallel
-    agents_mp_it.cleanup_shared_memory_dynamic(itinerary=True)
-  File "c:\AppsPy\mtdcovabm\simulator\agents_mp.py", line 323, in cleanup_shared_memory_dynamic
-    util.close_shm(self.shm_seir_state)
-  File "c:\AppsPy\mtdcovabm\simulator\util.py", line 603, in close_shm
-    s.close()
-    ^^^^^^^
-AttributeError: 'tuple' object has no attribute 'close'
+TypeError: localitinerary_parallel() takes from 20 to 21 positional arguments but 22 were given
