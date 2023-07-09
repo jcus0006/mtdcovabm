@@ -242,7 +242,7 @@ def sync_state_info(sync_queue, process_counter, lock):
                     vars_util_main.update_cells_agents_timesteps(index, value)
                 elif type == "v":
                     vars_util_main.update(attr_name, value)
-        except sync_queue.Empty:
+        except mp.Queue.Empty:
             continue  # Queue is empty, continue polling
     
     sync_time_end = time.time()
