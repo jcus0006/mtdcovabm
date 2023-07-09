@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 168, in localitinerary_worker
+    itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 301, in generate_local_itinerary
+    agent = local_agents[agentid]
+            ~~~~~~~~~~~~^^^^^^^^^
+KeyError: 29

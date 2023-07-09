@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import random
 import traceback
 from cells import Cells
-from simulator import util, itinerary, contactnetwork_mp, tourism, seirstateutil
+from simulator import util, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
 import multiprocessing as mp
 
-if __name__ == '__main__':
+def main():
     params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
@@ -27,7 +27,7 @@ if __name__ == '__main__':
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 10
+                "numprocesses": 4
             }
 
     figure_count = 0
@@ -75,10 +75,10 @@ if __name__ == '__main__':
     agents_ids_by_ages = {}
     agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
 
-    # contact network model
-    cells_agents_timesteps = {} # {cellid: (agentid, starttimestep, endtimestep)}
+    # # contact network model
+    # cells_agents_timesteps = {} # {cellid: (agentid, starttimestep, endtimestep)}
 
-    # transmission model
+    # # transmission model
     agents_seir_state = [] # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
     agents_seir_state_transition_for_day = {} # handled as dict, because it will only apply for a subset of agents per day
     agents_infection_type = {} # handled as dict, because not every agent will be infected
@@ -146,9 +146,9 @@ if __name__ == '__main__':
                 # intervention_events_by_day
                 agent["test_day"] = [] # [day, timestep]
                 agent["test_result_day"] = [] # [day, timestep]
-                agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]]
+                agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
                 agent["vaccination_days"] = [] # [[day, timestep]]
-                agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]]
+                agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
 
                 agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
@@ -334,7 +334,7 @@ if __name__ == '__main__':
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
+        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
         # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
@@ -365,6 +365,8 @@ if __name__ == '__main__':
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
+    vars_util = vars.Vars()
+    vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
     try:
@@ -381,22 +383,22 @@ if __name__ == '__main__':
             # itinerary_util.epi_util = epi_util
             # contactnetwork_util.epi_util = epi_util
             # contactnetwork_util.cells_agents_timesteps = itinerary_util.cells_agents_timesteps
-            agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
-            agents_directcontacts_by_simcelltype_by_day = {}
+            # agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
+            # agents_directcontacts_by_simcelltype_by_day = {}
 
-            itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
+            # itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
 
-            if params["loadtourism"]:
-                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
-                start = time.time()
-                agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+            # if params["loadtourism"]:
+            #     print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
+            #     start = time.time()
+            #     agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
                 
-                itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+            #     itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
                 
-                time_taken = time.time() - start
-                tourist_itinerary_sum_time_taken += time_taken
-                avg_time_taken = tourist_itinerary_sum_time_taken / day
-                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+            #     time_taken = time.time() - start
+            #     tourist_itinerary_sum_time_taken += time_taken
+            #     avg_time_taken = tourist_itinerary_sum_time_taken / day
+            #     print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
@@ -405,50 +407,48 @@ if __name__ == '__main__':
                     dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
 
             if not params["quicktourismrun"]:
-                # should be cell based, but for testing purposes, traversing all agents here
-                if day == 1 or weekdaystr == "Monday":
-                    print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
-                    start = time.time()
-                    for hh_inst in hh_insts:
-                        print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
-                        itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+                start = time.time()  
 
-                    time_taken = time.time() - start
-                    print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
+                itinerary_mp.localitinerary_parallel(day, 
+                                                    weekday, 
+                                                    weekdaystr, 
+                                                    itineraryparams, 
+                                                    params["timestepmins"], 
+                                                    n_locals, 
+                                                    n_tourists, 
+                                                    locals_ratio_to_full_pop, 
+                                                    agents,
+                                                    agents_ids_by_ages,                                                      
+                                                    tourists, 
+                                                    vars_util,
+                                                    cells_industries_by_indid_by_wpid,
+                                                    cells_restaurants, 
+                                                    cells_hospital,
+                                                    cells_testinghub, 
+                                                    cells_vaccinationhub, 
+                                                    cells_entertainment_by_activityid, 
+                                                    cells_religious, 
+                                                    cells_households, 
+                                                    cells_breakfast_by_accomid,
+                                                    cells_airport, 
+                                                    cells_transport, 
+                                                    cells_institutions, 
+                                                    cells_accommodation, 
+                                                    tourist_entry_infection_probability, 
+                                                    epidemiologyparams, 
+                                                    dyn_params, 
+                                                    tourists_active_ids, 
+                                                    hh_insts, 
+                                                    params["numprocesses"])
                 
-                print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
-                start = time.time()
-                for hh_inst in hh_insts:
-                    itinerary_util.generate_local_itinerary(day, weekday, agents_ids_by_ages, hh_inst["resident_uids"])
-
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
                 avg_time_taken = itinerary_sum_time_taken / day
-                print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+                print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken)) 
 
                 if not params["quickitineraryrun"]:
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
-                    start = time.time()
-
-                    # if params["numprocesses"] > 1:
-                    #     cells_agents_timesteps_keys = list(contactnetwork_util.cells_agents_timesteps.keys())
-                    #     np.random.shuffle(cells_agents_timesteps_keys)
-                    #     contactnetwork_util.mp_cells_keys = np.array_split(cells_agents_timesteps_keys, params["numprocesses"])
-
-                    #     # Create a pool of processes
-                    #     pool = mp.Pool(params["numprocesses"])
-                        
-                    #     params_list = [(day, weekday, mp_index) for mp_index in range(params["numprocesses"])]
-            
-                    #     # Call the worker method in parallel
-                    #     results = pool.map(contactnetwork_util.simulate_contact_network, params_list)
-
-                    #     # Close the pool of processes
-                    #     pool.close()
-                    #     pool.join()
-                    # else:
-                    #     params_list = [day, weekday, -1]
-                    #     contactnetwork_util.simulate_contact_network(params_list)            
+                    start = time.time()       
 
                     contactnetwork_mp.contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dyn_params, contactnetwork_sum_time_taken, params["numprocesses"])
 
@@ -489,3 +489,6 @@ if __name__ == '__main__':
             traceback.print_exc(file=f)
 
     print(len(agents))
+
+if __name__ == '__main__':
+    main()

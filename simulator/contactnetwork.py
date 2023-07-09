@@ -13,12 +13,7 @@ class ContactNetwork:
                 n_tourists, 
                 locals_ratio_to_full_pop, 
                 agents, 
-                agents_directcontacts_by_simcelltype_by_day, 
-                agents_seir_state, 
-                agents_seir_state_transition_for_day, 
-                agents_infection_type, 
-                agents_infection_severity, 
-                agents_vaccination_doses, 
+                vars_util, 
                 cells, 
                 cells_agents_timesteps, 
                 tourists_active_ids, 
@@ -50,8 +45,6 @@ class ContactNetwork:
 
         self.contactnetwork_sum_time_taken = contact_network_sum_time_taken
 
-        self.agents_directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
-
         self.process_index = process_index
         self.result_queue = result_queue
 
@@ -59,12 +52,11 @@ class ContactNetwork:
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, self.agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):        
-        self.agents_directcontacts_by_simcelltype_by_day[day] = {}
-        agents_directcontacts_by_simcelltype_thisday = self.agents_directcontacts_by_simcelltype_by_day[day]
+        agents_directcontacts_by_simcelltype_thisday  = set()
         
         # if self.process_index >= 0:
         #     sp_cells_keys = self.mp_cells_keys[self.process_index]
@@ -81,18 +73,21 @@ class ContactNetwork:
 
                 sim_cell_type = util.convert_celltype_to_simcelltype(cellid, celltype=cell_type)
 
-                if sim_cell_type not in agents_directcontacts_by_simcelltype_thisday:
-                    agents_directcontacts_by_simcelltype_thisday[sim_cell_type] = set()
+                # if sim_cell_type not in agents_directcontacts_by_simcelltype_thisday:
+                #     agents_directcontacts_by_simcelltype_thisday[sim_cell_type] = set()
 
-                agents_directcontacts_thissimcelltype_thisday = agents_directcontacts_by_simcelltype_thisday[sim_cell_type]
+                # agents_directcontacts_thissimcelltype_thisday = agents_directcontacts_by_simcelltype_thisday[sim_cell_type]
 
                 # agents_directcontacts_thissimcelltype_thisday += list(cell_agents_directcontacts.keys())
                 for key in cell_agents_directcontacts.keys():
                     contact_pair_timesteps = cell_agents_directcontacts[key]
 
                     min_start_ts, max_end_ts = contact_pair_timesteps[0][0], contact_pair_timesteps[len(contact_pair_timesteps) - 1][1]
+
+                    agent1_id, agent2_id = key[0], key[1]
                         
-                    agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
+                    agents_directcontacts_by_simcelltype_thisday.add((day, sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts))
+                    # agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
 
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
