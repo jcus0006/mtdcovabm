@@ -15,13 +15,12 @@ class Itinerary:
                 locals_ratio_to_full_pop,
                 agents_mp,
                 tourists, 
-                industries,
-                cells_mp,
+                cells_industries_by_indid_by_wpid,
                 cells_restaurants, 
                 cells_hospital, 
                 cells_testinghub, 
                 cells_vaccinationhub, 
-                cells_entertainment, 
+                cells_entertainment_by_activityid, 
                 cells_religious, 
                 cells_households, 
                 cells_breakfast_by_accomid, 
@@ -39,7 +38,7 @@ class Itinerary:
 
         self.one_to_two_hours = np.arange(6, 13)
 
-        self.cells_mp = cells_mp
+        # self.cells_mp = cells_mp
         # self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
         
         self.epi_util = Epidemiology(epidemiologyparams, 
@@ -47,7 +46,7 @@ class Itinerary:
                                     n_tourists, 
                                     locals_ratio_to_full_pop, 
                                     agents_mp, 
-                                    tourists_active_ids, 
+                                    tourists_active_ids,
                                     cells_households, 
                                     cells_institutions, 
                                     cells_accommodation, 
@@ -63,17 +62,17 @@ class Itinerary:
         self.n_tourists = n_tourists
         self.agents_mp = agents_mp
         self.tourists = tourists
-        self.industries = industries
-        self.cells_restaurants = cells_restaurants
-        self.cells_hospital = cells_hospital
-        self.cells_testinghub = cells_testinghub
-        self.cells_vaccinationhub = cells_vaccinationhub
-        self.cells_entertainment = cells_entertainment
-        self.cells_religious = cells_religious
-        self.cells_households = cells_households
+        self.industries = cells_industries_by_indid_by_wpid
+        self.cells_restaurants = np.array(list(cells_restaurants.keys()))
+        self.cells_hospital = np.array(list(cells_hospital.keys()))
+        self.cells_testinghub = np.array(list(cells_testinghub.keys()))
+        self.cells_vaccinationhub = np.array(list(cells_vaccinationhub.keys()))
+        self.cells_entertainment_by_activityid = cells_entertainment_by_activityid
+        self.cells_religious = np.array(list(cells_religious.keys()))
+        self.cells_households = np.array(list(cells_households.keys()))
         self.cells_breakfast_by_accomid = cells_breakfast_by_accomid
-        self.cells_airport = cells_airport
-        self.cells_transport = cells_transport
+        self.cells_airport = np.array(list(cells_airport.keys()))
+        self.cells_transport = np.array(list(cells_transport.keys()))
 
         # tourism
         self.tourism_group_activity_probability_by_purpose = self.params["tourism_group_activity_probability_by_purpose"]
@@ -1344,8 +1343,9 @@ class Itinerary:
                 #     self.cells_agents_timesteps[curr_cell_id] = []
 
                 # self.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
-
-                self.cells_mp.update_cells_agents_timesteps(curr_cell_id, agent_cell_timestep_ranges)
+                
+                self.sync_queue.put(["c", curr_cell_id, "cells_agents_timesteps", agent_cell_timestep_ranges])
+                # self.cells_mp.update_cells_agents_timesteps(curr_cell_id, agent_cell_timestep_ranges)
 
             # prev_cell_id = curr_cell_id
 
@@ -1431,7 +1431,7 @@ class Itinerary:
                 quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
 
                 if not is_arrivalnextday:
-                    agent = self.agents[agentid]
+                    # agent = self.agents[agentid]
 
                     agent_state_transition_by_day = None
                     if is_arrivalday:
@@ -1466,9 +1466,9 @@ class Itinerary:
 
                         self.epi_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
 
-                    if len(agent["hospitalisation_days"]) > 0:
-                        hosp_start_day, hosp_end_day = agent["hospitalisation_days"][0], agent["hospitalisation_days"][2]
-
+                    hospitalisation_days = self.agents_mp.get(agentid, "hospitalisation_days")
+                    if hospitalisation_days is not None and len(hospitalisation_days) > 0:
+                        hosp_start_day, hosp_end_day = hospitalisation_days[0], hospitalisation_days[2]
                         # hosp_start_day = hosp_start_day_ts[0]
                         # hosp_end_day = hosp_end_day_ts[0]
 
@@ -1484,8 +1484,9 @@ class Itinerary:
                         if simday == hosp_end_day:
                             is_quarantine_hospital_end_day = True
 
-                    if len(agent["quarantine_days"]) > 0:
-                        quar_start_day, quar_end_day = agent["quarantine_days"][0], agent["quarantine_days"][2]
+                    quarantine_days = self.agents_mp.get(agentid, "quarantine_days")
+                    if quarantine_days is not None and len(quarantine_days) > 0:
+                        quar_start_day, quar_end_day = quarantine_days[0], quarantine_days[2]
 
                         # quar_start_day = quar_start_day_ts[0]
                         # quar_end_day = quar_end_day_ts[0]
@@ -1511,9 +1512,9 @@ class Itinerary:
                     tourists_group, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
 
                     for agentid in agentids:
-                        agent = self.agents[agentid]
-                        agent["itinerary"] = copy(tourists_group["itinerary"])
-                        agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
+                        # agent = self.agents[agentid]
+                        agent_itinerary = copy(tourists_group["itinerary"])
+                        agent_itinerary_nextday = copy(tourists_group["itinerary_nextday"])
 
                         temp_is_hospitalised, temp_is_quarantined, agent_itinerary, agent_itinerary_nextday, agent_non_daily_activity_recurring, agent_test_result_day, agent_hospitalisation_days, agent_quarantine_days, agent_test_day, agent_vaccination_days = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, is_departure_day_today= is_departureday, is_arrival_day_today= is_arrivalday, arr_dep_ts= arr_dep_ts, currently_on_travel_vacation= False, is_tourist= True)
 
@@ -1528,7 +1529,7 @@ class Itinerary:
                         # if len(agent["quarantine_days"]) > 0:
                         #     agent["prev_day_quarantine_days"] = copy(agent["quarantine_days"])
 
-                        self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [agent["res_cellid"]])
+                        self.update_cell_agents_timesteps(agent_itinerary, [agentid], [agent["res_cellid"]])
                 else:
                     for accinfoindex, accinfo in enumerate(accominfo):
                         accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
@@ -1907,8 +1908,8 @@ class Itinerary:
                 if last_activity and is_tourist_group: # force last activity for tourists as restaurant
                     potential_cells = self.cells_restaurants
                 else:
-                    if sampled_activity_id in self.cells_entertainment: # if this is an entertainment activity
-                        potential_cells = list(self.cells_entertainment[sampled_activity_id].keys())
+                    if sampled_activity_id in self.cells_entertainment_by_activityid: # if this is an entertainment activity
+                        potential_cells = list(self.cells_entertainment_by_activityid[sampled_activity_id].keys())
                     else:  # non entertainment activities
                         industry_id = activity_working_hours_overrides[1]
 

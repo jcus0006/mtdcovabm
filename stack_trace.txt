@@ -1,4 +1,4 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 467, in <module>
-    itinerary_mp.localitinerary_parallel(day,
-TypeError: localitinerary_parallel() takes from 20 to 21 positional arguments but 22 were given
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 522, in <module>
+    contactnetwork_mp.contactnetwork_parallel(day,
+TypeError: contactnetwork_parallel() missing 11 required positional arguments: 'cells_religious', 'cells_households', 'cells_breakfast_by_accomid', 'cells_airport', 'cells_transport', 'cells_institutions', 'cells_accommodation', 'contactnetworkparams', 'epidemiologyparams', 'dynparams', and 'contact_network_sum_time_taken'

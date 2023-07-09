@@ -685,9 +685,53 @@ def generate_original_structure_multidim(data_array, indices_array, n_total):
     
     return original_structure
 
+def generate_shared_memory_varyingdims_varyinglength(data):
+    # Flatten the original data
+    flattened_data = np.array([item for sublist in data for item in sublist], dtype=np.int32)
+
+    # Create shared memory for the flattened data
+    shm_data = shm.SharedMemory(create=True, size=flattened_data.nbytes)
+    data_array = np.ndarray(flattened_data.shape, dtype=np.int32, buffer=shm_data.buf)
+    np.copyto(data_array, flattened_data)
+
+    # Calculate the indices array
+    indices = np.array([len(sublist) for sublist in data], dtype=np.int32)
+
+    shm_indices = shm.SharedMemory(create=True, size=indices.nbytes)
+    indices_array = np.ndarray(indices.shape, dtype=np.int32, buffer=shm_indices.buf)
+    np.copyto(indices_array, indices)
+
+    return shm_data, shm_indices, data_array.shape, indices_array.shape
+
+def generate_ndarray_varyingdims_varyinglength(data, n_total):
+    original_structure = []
+
+    if data is None:
+        for i in range(n_total):
+            original_structure.append(None)
+    else:       
+        data_shm, indices_shm = data[0], data[1]
+        # Get the data and indices arrays from shared memory
+        data_array = np.ndarray(shape=(data_shm.size // np.dtype(np.int32).itemsize,), dtype=np.int32, buffer=data_shm.buf)
+        indices_array = np.ndarray(shape=(indices_shm.size // np.dtype(np.int32).itemsize,), dtype=np.int32, buffer=indices_shm.buf)
+
+        # Reconstruct the original structure
+        original_structure = []
+        start_index = 0
+        for num_items in indices_array:
+            end_index = start_index + num_items
+            inner_array = data_array[start_index:end_index]
+            original_structure.append(inner_array.tolist())
+            start_index = end_index
+
+    return original_structure
+
 def close_shm(shm):
     if shm is not None and len(shm) > 0:
         for i, s in enumerate(shm):
             if i < 2:
-                s.close()
-                s.unlink()
+                try:
+                    s.close()
+                    s.unlink()
+                except:
+                    print("failed to close/unlink shm")

@@ -64,7 +64,8 @@ class Epidemiology:
         self.agents_mp = agents_mp
 
         self.tourists_active_ids = tourists_active_ids
-
+        
+        # self.cells_mp = cells_mp
         self.cells_households = cells_households
         self.cells_institutions = cells_institutions
         self.cells_accommodation = cells_accommodation
@@ -74,7 +75,7 @@ class Epidemiology:
 
         self.sync_queue = result_queue
 
-    def simulate_direct_contacts(self, agents_directcontacts, cellid, cell, day):
+    def simulate_direct_contacts(self, agents_directcontacts, cellid, celltype, day):
         for pairid, timesteps in agents_directcontacts.items():
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
 
@@ -179,7 +180,7 @@ class Epidemiology:
 
                     susceptibility_multiplier = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SusceptibilityMultiplier][agent_epi_age_bracket_index]
                     
-                    infection_probability = self.convert_celltype_to_base_infection_prob(cellid, agent_res_cellid, cell["type"])
+                    infection_probability = self.convert_celltype_to_base_infection_prob(cellid, agent_res_cellid, celltype)
 
                     infection_multiplier = max(1, math.log(contact_duration)) # to check how this affects covasim base probs
 
@@ -395,7 +396,7 @@ class Epidemiology:
                     if quarantine_type == QuarantineType.Positive:
                         # to perform contact tracing (as received positive test result)
                         # contact tracing is handled globally at the end of every day, and contact tracing delays are represented in quarantine/testing scheduling
-                        self.contact_tracing_agent_ids.add([agent_id, start_timestep]) 
+                        self.contact_tracing_agent_ids.add((agent_id, start_timestep)) 
                     
                     test_scheduled = True
 
@@ -562,24 +563,24 @@ class Epidemiology:
                                         if res_cell_id in self.cells_households:
                                             residents_key = "resident_uids"
                                             staff_key = "staff_uids"
-                                            residence = self.cells_households[res_cell_id]
+                                            residence = self.cells_households[res_cell_id] # res_cell_id
                                         elif res_cell_id in self.cells_institutions:
                                             residents_key = "resident_uids"
                                             staff_key = "staff_uids"
-                                            residence = self.cells_institutions[res_cell_id]["place"]
+                                            residence = self.cells_institutions[res_cell_id]["place"] # res_cell_id 
                                         elif res_cell_id in self.cells_accommodation:
                                             residents_key = "member_uids"
-                                            residence = self.cells_accommodation[res_cell_id]["place"]
+                                            residence = self.cells_accommodation[res_cell_id]["place"] # res_cell_id
 
                                         if residence is not None:
-                                            resident_ids = residence[residents_key]
+                                            resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
                                             contact_id_index = np.argwhere(resident_ids == contact_id)
                                             resident_ids = np.delete(resident_ids, contact_id_index)
 
                                             employees_ids = []
 
                                             if staff_key != "":
-                                                employees_ids = residence[staff_key]
+                                                employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
 
                                             secondary_contact_ids = []
                                             if employees_ids is None or len(employees_ids) == 0:

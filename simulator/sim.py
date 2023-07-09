@@ -10,13 +10,18 @@ from simulator import util, itinerary_mp, contactnetwork_mp, tourism, seirstateu
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
 from simulator.agents_mp import Agents
-from simulator.cells_mp import Cells
+# from simulator.cells_mp import Cells
+from simulator.tourists_mp import Tourists
+from simulator.tourists_groups_mp import TouristsGroups
 from simulator.vars_mp import Vars
+from simulator.cellsagentstimesteps import CAT
 import multiprocessing as mp
 from sys import getsizeof
+from memory_profiler import profile
 
-if __name__ == '__main__':
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+@profile
+def main():
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -343,7 +348,7 @@ if __name__ == '__main__':
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        industries, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
+        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
 
         # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
@@ -376,20 +381,42 @@ if __name__ == '__main__':
 
     agents_mp = Agents()
     agents_mp.populate(agents, n_locals, n_tourists, agents_seir_state)
+    print("agents_mp size: " + str(agents_mp.calculate_memory_size()) + " bytes. agents dict size: " + str(getsizeof(agents))) 
+    print(agents_mp.log_memory_size())
     agents_mp.convert_to_shared_memory_readonly(loadall=True)
+    agents = {} 
 
-    cells_mp = Cells()
-    cells_mp.populate(cells, cells_testinghub, cells_vaccinationhub, cells_restaurants)
-    cells_mp.convert_to_shared_memory_readonly()
+    # cells_mp = Cells()
+    # cells_mp.populate(cells, cells_testinghub, cells_vaccinationhub, cells_restaurants)
+    # cells_mp.convert_to_shared_memory_readonly(clear_normal_memory=True)
+
+    tourists_mp = Tourists()
+    tourists_mp.populate(tourists)
+    print("tourists_mp size: " + str(tourists_mp.calculate_memory_size()) + " bytes. tourists dict size: " + str(getsizeof(tourists))) 
+    # tourists_mp.convert_to_shared_memory_readonly(clear_normal_memory=True)
+    tourists = {}
+
+    touristsgroups_mp = TouristsGroups()
+    touristsgroups_mp.populate(touristsgroups)
+    print("touristsgroups_mp size: " + str(touristsgroups_mp.calculate_memory_size()) + " bytes. touristsgroups dict size: " + str(getsizeof(touristsgroups))) 
+    # touristsgroups_mp.convert_to_shared_memory_readonly(clear_normal_memory=True)
+    touristsgroups = {}
 
     vars_mp = Vars()
+
+    cat_util = CAT()
 
     # agents_mp.convert_to_shared_memory_readonly()
     # agents_mp.clear_non_shared_memory_readonly()
 
     # agents_mp.convert_from_shared_memory_readonly()
 
-    print("agents_mp size: " + str(getsizeof(agents_mp)) + " bytes") 
+    # print("agents_mp size: " + str(getsizeof(agents_mp)) + " bytes") 
+    # # print("cells_mp size: " + str(getsizeof(cells_mp)) + " bytes")
+    # print("vars_mp size: " + str(getsizeof(vars_mp)) + " bytes")
+
+    # print("agents dict size: " + str(getsizeof(agents)) + " bytes")
+    # print("cells dict size: " + str(getsizeof(cells)) + " bytes")
 
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
@@ -399,7 +426,7 @@ if __name__ == '__main__':
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
         
-        for day in range(1, 365+1):
+        for day in range(1, 1+1): # 365+1 | 1+1
             day_start = time.time()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
@@ -465,6 +492,8 @@ if __name__ == '__main__':
                 agents_mp_itinerary.clone(agents_mp, itinerary=True)
                 agents_mp_itinerary.convert_to_shared_memory_dynamic(itinerary=True)
 
+                agents_mp_itinerary.clear_non_shared_memory()
+
                 itinerary_mp.localitinerary_parallel(day, 
                                                     weekday, 
                                                     weekdaystr, 
@@ -476,11 +505,21 @@ if __name__ == '__main__':
                                                     agents_mp, 
                                                     agents_mp_itinerary, 
                                                     vars_mp, 
+                                                    cat_util,
                                                     tourists, 
-                                                    industries,
-                                                    cells_breakfast_by_accomid, 
-                                                    cells_entertainment,
-                                                    cells_mp,
+                                                    cells_industries_by_indid_by_wpid,
+                                                    cells_restaurants, 
+                                                    cells_hospital,
+                                                    cells_testinghub, 
+                                                    cells_vaccinationhub, 
+                                                    cells_entertainment_by_activityid, 
+                                                    cells_religious, 
+                                                    cells_households, 
+                                                    cells_breakfast_by_accomid,
+                                                    cells_airport, 
+                                                    cells_transport, 
+                                                    cells_institutions, 
+                                                    cells_accommodation, 
                                                     tourist_entry_infection_probability, 
                                                     epidemiologyparams, 
                                                     dyn_params, 
@@ -509,12 +548,12 @@ if __name__ == '__main__':
                                                             agents_mp,
                                                             agents_mp_cn, 
                                                             vars_mp,
+                                                            cat_util,
                                                             tourists_active_ids, 
-                                                            cells, 
-                                                            cells_households, 
-                                                            cells_institutions, 
-                                                            cells_accommodation, 
-                                                            cells_agents_timesteps, 
+                                                            cells,
+                                                            cells_households,
+                                                            cells_institutions,
+                                                            cells_accommodation,
                                                             contactnetworkparams, 
                                                             epidemiologyparams,
                                                             dyn_params, 
@@ -561,10 +600,13 @@ if __name__ == '__main__':
         with open('stack_trace.txt', 'w') as f:
             traceback.print_exc(file=f)
     finally:
-        if cells_mp is not None:
-            cells_mp.cleanup_shared_memory_readonly()
+        # if cells_mp is not None:
+        #     cells_mp.cleanup_shared_memory_readonly()
 
         if agents_mp is not None:
             agents_mp.cleanup_shared_memory_readonly()
 
     print(len(agents))
+
+if __name__ == '__main__':
+    main()

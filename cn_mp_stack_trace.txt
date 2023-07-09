@@ -1,11 +1,16 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 115, in localitinerary_worker
-    cells_restaurants = cells_mp.get_keys(sub_type=CellSubType.Restaurant)
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\cells_mp.py", line 119, in get_keys
-    return [i for i, t in self.sub_type if t == sub_type]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\cells_mp.py", line 119, in <listcomp>
-    return [i for i, t in self.sub_type if t == sub_type]
-                  ^^^^
-TypeError: cannot unpack non-iterable NoneType object
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 143, in contactnetwork_worker
+    dynparams,
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 62, in simulate_contact_network
+    cell_agents_directcontacts, cell_type = self.simulate_contact_network_by_cellid(cellid, day)
+                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 94, in simulate_contact_network_by_cellid
+    agents_directcontacts, celltype = self.generate_contact_network(cellid)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 118, in generate_contact_network
+    cell_type = self.cells_mp.get(cellid, "type")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\cells_mp.py", line 97, in get
+    return getattr(self, name)[index]
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^
+IndexError: list index out of range

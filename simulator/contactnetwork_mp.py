@@ -4,6 +4,7 @@ import numpy as np
 import traceback
 from simulator import contactnetwork
 from simulator.agents_mp import Agents
+from simulator.cells_mp import CellType
 import time
 
 def contactnetwork_parallel(day, 
@@ -14,12 +15,12 @@ def contactnetwork_parallel(day,
                             agents_mp, 
                             agents_mp_cn, 
                             vars_mp, 
+                            cat_util,
                             tourists_active_ids, 
-                            cells, 
+                            cells,
                             cells_households, 
                             cells_institutions, 
                             cells_accommodation, 
-                            cells_agents_timesteps, 
                             contactnetworkparams, 
                             epidemiologyparams, 
                             dynparams, 
@@ -35,7 +36,7 @@ def contactnetwork_parallel(day,
 
         mp_cells_keys = []
 
-        cells_agents_timesteps_keys = list(cells_agents_timesteps.keys())
+        cells_agents_timesteps_keys = list(cat_util.cells_agents_timesteps.keys())
         np.random.shuffle(cells_agents_timesteps_keys)
         mp_cells_keys = np.array_split(cells_agents_timesteps_keys, num_processes)
 
@@ -47,12 +48,14 @@ def contactnetwork_parallel(day,
 
             for cell_key in cells_keys:
                 # cell = cells[cell_key]
-                cell_agents_timesteps = cells_agents_timesteps[cell_key]
+                cell_agents_timesteps = cat_util.cells_agents_timesteps[cell_key]
 
                 # cells_partial[cell_key] = cell
                 cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
 
             print("starting process index " + str(process_index) + " at " + str(time.time()))
+        
+            # pool.apply_async(contactnetwork_worker, args=((sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells_agents_timesteps_partial, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
             pool.apply_async(contactnetwork_worker, args=((sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells_agents_timesteps_partial, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter),))
 
         # update memory from multiprocessing.queue
@@ -60,7 +63,7 @@ def contactnetwork_parallel(day,
         start = time.time()
         while process_counter.value > 0 or not sync_queue.empty(): # True
             try:
-                type, agent_index, attr_name, value = sync_queue.get(timeout=0.01)  # Poll the queue with a timeout (0 for now - might cause problems)
+                type, agent_index, attr_name, value = sync_queue.get(timeout=0.001)  # Poll the queue with a timeout (0 for now - might cause problems)
 
                 if type == "a":
                     agents_mp.set(agent_index, attr_name, value)
@@ -88,7 +91,7 @@ def contactnetwork_parallel(day,
         time_taken = time.time() - start
         print("clean up time taken " + str(time_taken))
     else:
-        params = sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells_agents_timesteps, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
+        params = sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cat_util.cells_agents_timesteps, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
 
         contactnetwork_worker(params)
 
@@ -104,7 +107,9 @@ def contactnetwork_worker(params):
     try:
         print("process started " + str(time.time()))
 
+        # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
         sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
+
         print("process " + str(process_index))
         # agents_mp_cn = None
         # if process_index == -1:
@@ -118,7 +123,34 @@ def contactnetwork_worker(params):
         agents_mp_cn.convert_from_shared_memory_readonly(contactnetwork=True)
         agents_mp_cn.convert_from_shared_memory_dynamic(contactnetwork=True)
 
-        contact_network_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cells, cell_agents_timesteps, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index=process_index, sync_queue=sync_queue)
+        # start = time.time()
+        # cells_mp.convert_from_shared_memory_readonly()
+        # time_taken = time.time() - start
+        # print("cells_mp convert_to_shared_memory_readonly time taken " + str(time_taken))
+
+        # start = time.time()
+        # cells_households = cells_mp.get_keys(type=CellType.Household)
+        # cells_institutions = cells_mp.get_keys(type=CellType.Institution)
+        # cells_accommodation = cells_mp.get_keys(type=CellType.Accommodation)
+        # time_taken = time.time() - start
+        # print("cells types generation (contact network) time taken " + str(time_taken))
+
+        contact_network_util = contactnetwork.ContactNetwork(n_locals, 
+                                                            n_tourists, 
+                                                            locals_ratio_to_full_pop, 
+                                                            agents_mp_cn, 
+                                                            cell_agents_timesteps,
+                                                            tourists_active_ids,
+                                                            cells, 
+                                                            cells_households, 
+                                                            cells_institutions, 
+                                                            cells_accommodation, 
+                                                            contactnetworkparams, 
+                                                            epidemiologyparams, 
+                                                            dynparams, 
+                                                            contact_network_sum_time_taken, 
+                                                            process_index=process_index, 
+                                                            sync_queue=sync_queue)
 
         contact_network_util.simulate_contact_network(day, weekday)
         

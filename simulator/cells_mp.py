@@ -13,8 +13,6 @@ class Cells:
         self.member_uids = []
         self.staff_uids = []
 
-        self.cells_agents_timesteps = {} # [[agentid, starttimestep, endtimestep]]
-
         self.shm_type = []
         self.shm_sub_type = []
         self.shm_indid = []
@@ -22,28 +20,13 @@ class Cells:
         self.shm_member_uids = []
         self.shm_staff_uids = []
 
-        # self.hhid = []
-        # self.wpid = []
-        # self.scid = []
-        # self.clid = []
-        # self.indid = []
-        # self.activityid = []
-        # self.accomid = []
-        # self.accomtypeid = []
-        # self.roomid = []
-        # self.roomsize = []
-        # self.guest_uids = []
-        # self.accomcellid = []
-        # self.resident_uids = []
-        # self.staff_uids = []
-        # self.visitor_uids = []
-        # self.teacher_uids = []
-        # self.student_uids = []
-        # self.non_teaching_staff_uids = []
-        # self.busid = []
-        # self.capacity = []
-        # self.passenger_uids = []
-        # self.churchid = []
+    def clear_non_shared_memory_readonly(self):
+        self.type = []
+        self.sub_type = []
+        self.indid = []
+        self.resident_uids = []
+        self.member_uids = []
+        self.staff_uids = []
     
     def populate(self, data, testinghubcells, vaccinationhubcells, restaurantcells):
         for cellid, properties in data.items():
@@ -71,13 +54,16 @@ class Cells:
 
         self.n_total = len(data)
 
-    def convert_to_shared_memory_readonly(self):
+    def convert_to_shared_memory_readonly(self, clear_normal_memory=False):
         self.shm_type = util.generate_shared_memory_int(self.type)
         self.shm_sub_type = util.generate_shared_memory_int(self.sub_type)
         self.shm_indid = util.generate_shared_memory_int(self.indid)
         self.shm_resident_uids = util.generate_shared_memory_singledim_varying(self.resident_uids, 1)
         self.shm_member_uids = util.generate_shared_memory_singledim_varying(self.member_uids, 1)
         self.shm_staff_uids = util.generate_shared_memory_singledim_varying(self.staff_uids, 1)
+
+        if clear_normal_memory:
+            self.clear_non_shared_memory_readonly()
 
     def convert_from_shared_memory_readonly(self):
         self.type = util.generate_ndarray_from_shared_memory_int(self.shm_type, self.n_total)
@@ -97,8 +83,6 @@ class Cells:
         self.member_uids = cell_to_clone.member_uids
         self.staff_uids = cell_to_clone.staff_uids
 
-        self.cells_agents_timesteps = cell_to_clone.cells_agents_timesteps # [[agentid, starttimestep, endtimestep]]
-
     def cleanup_shared_memory_readonly(self):
         util.close_shm(self.shm_type)
         util.close_shm(self.shm_sub_type)
@@ -106,9 +90,6 @@ class Cells:
         util.close_shm(self.shm_resident_uids)
         util.close_shm(self.shm_member_uids)
         util.close_shm(self.shm_staff_uids)
-
-    def reset_cells_agents_timesteps(self):
-        self.cells_agents_timesteps = {}
 
     def get(self, index, name):
         return getattr(self, name)[index]
@@ -134,12 +115,6 @@ class Cells:
     #         self.member_uids[index] = value
     #     elif name == "staff_uids":
     #         self.staff_uids[index] = value
-
-    def update_cells_agents_timesteps(self, cellid, agent_cell_timestep_ranges):
-        if cellid not in self.cells_agents_timesteps:
-            self.cells_agents_timesteps[cellid] = []
-
-        self.cells_agents_timesteps[cellid] += agent_cell_timestep_ranges
 
 class CellType(IntEnum):
     Undefined = 0
