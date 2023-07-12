@@ -16,7 +16,6 @@ class ContactNetwork:
                 vars_util, 
                 cells, 
                 cells_agents_timesteps, 
-                tourists_active_ids, 
                 cells_households, 
                 cells_institutions, 
                 cells_accommodation, 
@@ -27,7 +26,7 @@ class ContactNetwork:
                 visualise=False, 
                 maintain_directcontacts_count=False, 
                 process_index=-1, 
-                result_queue=None):
+                sync_queue=None):
         
         self.agents = agents
 
@@ -46,13 +45,13 @@ class ContactNetwork:
         self.contactnetwork_sum_time_taken = contact_network_sum_time_taken
 
         self.process_index = process_index
-        self.result_queue = result_queue
+        self.sync_queue = sync_queue
 
         self.population_per_timestep = [0 for i in range(144)]
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, sync_queue)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):        
@@ -210,7 +209,7 @@ class ContactNetwork:
                     if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
                         potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
 
-                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.masks_hygiene_distancing_multiplier)
+                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * agent["soc_rate"] * (1 - self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)
 
             agents_degrees_sum = round(np.sum(agents_degrees))
             

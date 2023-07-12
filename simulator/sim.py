@@ -12,7 +12,7 @@ from simulator.dynamicparams import DynamicParams
 import multiprocessing as mp
 
 def main():
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -27,7 +27,8 @@ def main():
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 4
+                "numprocesses": 10,
+                "numthreads": 2
             }
 
     figure_count = 0
@@ -142,7 +143,7 @@ def main():
                 agent["inst_cellid"] = -1
                 # agent["symptomatic"] = False
                 agent["tourist_id"] = None 
-                agent["state_transition_by_day"] = {}
+                agent["state_transition_by_day"] = []
                 # intervention_events_by_day
                 agent["test_day"] = [] # [day, timestep]
                 agent["test_result_day"] = [] # [day, timestep]
@@ -439,7 +440,8 @@ def main():
                                                     dyn_params, 
                                                     tourists_active_ids, 
                                                     hh_insts, 
-                                                    params["numprocesses"])
+                                                    params["numprocesses"],
+                                                    params["numthreads"])
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -450,7 +452,23 @@ def main():
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
                     start = time.time()       
 
-                    contactnetwork_mp.contactnetwork_parallel(day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_directcontacts_by_simcelltype_by_day, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, tourists_active_ids, cells, cells_households, cells_institutions, cells_accommodation, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, dyn_params, contactnetwork_sum_time_taken, params["numprocesses"])
+                    contactnetwork_mp.contactnetwork_parallel(day, 
+                                                            weekday, 
+                                                            n_locals, 
+                                                            n_tourists, 
+                                                            locals_ratio_to_full_pop, 
+                                                            agents, 
+                                                            vars_util,
+                                                            cells, 
+                                                            cells_households, 
+                                                            cells_institutions,
+                                                            cells_accommodation,
+                                                            contactnetworkparams, 
+                                                            epidemiologyparams, 
+                                                            dyn_params, 
+                                                            contactnetwork_sum_time_taken, 
+                                                            params["numprocesses"],
+                                                            params["numthreads"])
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken

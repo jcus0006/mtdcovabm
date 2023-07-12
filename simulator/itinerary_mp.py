@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import multiprocessing.shared_memory as shm
+# from queue import Empty
 import threading
 import numpy as np
 import traceback
@@ -40,7 +41,8 @@ def localitinerary_parallel(day,
                             dynparams,
                             tourists_active_ids,
                             hh_insts,
-                            num_processes=4):
+                            num_processes=10,
+                            num_threads=2):
     try:
         global agents_main
         global vars_util_main
@@ -81,7 +83,7 @@ def localitinerary_parallel(day,
                 # pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
                 pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
             
-            # start = time.time()
+            start = time.time()
             # while process_counter.value > 0 or not sync_queue.empty(): # True
             #     try:
             #         type, index, attr_name, value = sync_queue.get(timeout=0.001)  # Poll the queue with a timeout (0.01 / 0 might cause problems)
@@ -97,43 +99,39 @@ def localitinerary_parallel(day,
             #             vars_util.update(attr_name, value)
             #     except mp.queues.Empty:
             #         continue  # Queue is empty, continue polling
-            
-            # sync_time_end = time.time()
-            # time_taken = sync_time_end - start
-            # print("itinerary state info sync. time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
-        
 
             # option 1 - single thread
-            # lock = threading.Lock()
-            # sync_state_info(sync_queue, process_counter, None)
+            # sync_state_info(sync_queue, process_counter)
 
             # option 2 - multiple threads
-            # # Create multiple threads to process items from the queue
-            # lock = threading.Lock()
-            # num_threads = 6
-            # threads = []
-            # for _ in range(num_threads):
-            #     t = threading.Thread(target=sync_state_info, args=(sync_queue, process_counter, lock))
-            #     t.start()
-            #     threads.append(t)
+            # Create multiple threads to process items from the queue
+            threads = []
+            for _ in range(num_threads):
+                t = threading.Thread(target=sync_state_info, args=(sync_queue, process_counter))
+                t.start()
+                threads.append(t)
 
-            # # Wait for all threads to complete
-            # for t in threads:
-            #     t.join()
+            # Wait for all threads to complete
+            for t in threads:
+                t.join()
 
             # option 3 - multiple processes
-            lock = mp.Lock()
-            processes = []
-            for process_index in range(6):
-                process = mp.Process(target=sync_state_info, args=(sync_queue, process_counter, lock))
-                process.start()
-                processes.append(process)
+            # processes = []
+            # for process_index in range(6):
+            #     process = mp.Process(target=sync_state_info, args=(sync_queue, process_counter))
+            #     process.start()
+            #     processes.append(process)
 
-            for process in processes:
-                process.join()
+            # for process in processes:
+            #     process.join()
+
+            sync_time_end = time.time()
+            time_taken = sync_time_end - start
+            print("itinerary state info sync (combined). time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
 
             start = time.time()
             pool.close()
+            manager.shutdown()
             time_taken = time.time() - start
             print("pool close time taken " + str(time_taken))
 
@@ -221,16 +219,14 @@ def localitinerary_worker(params):
     finally:
         process_counter.value -= 1
 
-def sync_state_info(sync_queue, process_counter, lock):
+def sync_state_info(sync_queue, process_counter):
     global agents_main
     global vars_util_main
 
     start = time.time()
     while process_counter.value > 0 or not sync_queue.empty(): # True
         try:
-            type, index, attr_name, value = None, None, None, None
-            with lock:
-                type, index, attr_name, value = sync_queue.get(timeout=0.001)  # Poll the queue with a timeout (0.01 / 0 might cause problems)
+            type, index, attr_name, value = sync_queue.get(timeout=0.001)  # Poll the queue with a timeout (0.01 / 0 might cause problems)
 
             if type is not None:
                 if type == "a":
@@ -242,7 +238,7 @@ def sync_state_info(sync_queue, process_counter, lock):
                     vars_util_main.update_cells_agents_timesteps(index, value)
                 elif type == "v":
                     vars_util_main.update(attr_name, value)
-        except mp.Queue.Empty:
+        except mp.queues.Empty:
             continue  # Queue is empty, continue polling
     
     sync_time_end = time.time()

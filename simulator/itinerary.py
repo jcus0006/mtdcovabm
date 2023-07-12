@@ -42,7 +42,7 @@ class Itinerary:
         self.one_to_two_hours = np.arange(6, 13)
 
         # self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, tourists_active_ids, cells_households, cells_institutions, cells_accommodation, dynparams, sync_queue)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, sync_queue)
 
         self.sync_queue = sync_queue
         self.params = params

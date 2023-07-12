@@ -13,7 +13,6 @@ class Epidemiology:
                 locals_ratio_to_full_pop, 
                 agents, 
                 vars_util,
-                tourists_active_ids, 
                 cells_households, 
                 cells_institutions, 
                 cells_accommodation, 
@@ -69,7 +68,7 @@ class Epidemiology:
         self.agents_infection_severity = vars_util.agents_infection_severity
         self.agents_vaccination_doses = vars_util.agents_vaccination_doses
         self.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day
-        self.tourists_active_ids = tourists_active_ids
+        # self.tourists_active_ids = tourists_active_ids
 
         self.contact_tracing_agent_ids = []
 

@@ -1,17 +1,5 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 127, in localitinerary_parallel
-    process.start()
-  File "C:\Program Files\Python3112\Lib\multiprocessing\process.py", line 121, in start
-    self._popen = self._Popen(self)
-                  ^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python3112\Lib\multiprocessing\context.py", line 224, in _Popen
-    return _default_context.get_context().Process._Popen(process_obj)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python3112\Lib\multiprocessing\context.py", line 336, in _Popen
-    return Popen(process_obj)
-           ^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python3112\Lib\multiprocessing\popen_spawn_win32.py", line 94, in __init__
-    reduction.dump(process_obj, to_child)
-  File "C:\Program Files\Python3112\Lib\multiprocessing\reduction.py", line 60, in dump
-    ForkingPickler(file, protocol).dump(obj)
-TypeError: cannot pickle '_thread.lock' object
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 134, in localitinerary_parallel
+    sync_queue.close()
+    ^^^^^^^^^^^^^^^^
+AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
