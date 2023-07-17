@@ -1,13 +1,15 @@
 import multiprocessing as mp
 import multiprocessing.shared_memory as shm
+import concurrent.futures
 # from queue import Empty
 import threading
 import numpy as np
 import traceback
-from simulator import itinerary
+from simulator import itinerary, vars
 import time
 import sys
 import copy
+import psutil
 
 agents_main = None
 vars_util_main = None
@@ -42,8 +44,15 @@ def localitinerary_parallel(day,
                             tourists_active_ids,
                             hh_insts,
                             num_processes=10,
-                            num_threads=2):
+                            num_threads=2,
+                            proc_use_pool=0,
+                            sync_use_threads=False): 
     try:
+        # p = psutil.Process()
+        # print(f"main process #{0}: {p}, affinity {p.cpu_affinity()}", flush=True)
+        # time.sleep(0.0001)
+        # p.cpu_affinity([0])
+
         global agents_main
         global vars_util_main
 
@@ -57,6 +66,34 @@ def localitinerary_parallel(day,
         vars_util.reset_cells_agents_timesteps()
 
         if num_processes > 1:
+            sync_threads = []
+            proc_processes = []
+
+            if num_threads > 1:
+                # option 1 - single thread
+                if sync_use_threads:
+                    # option 2 - multiple threads
+                    
+                    for ti in range(num_threads-1):
+                        cpu_affinity = 1 + ti + num_processes
+                        # cpu_affinity = 0
+
+                        # if ti > 0:
+                        #     cpu_affinity = ti + num_processes
+
+                        t = threading.Thread(target=sync_state_info, args=(sync_queue, process_counter, cpu_affinity))
+                        t.start()
+                        sync_threads.append(t)
+                else:
+                    # option 3 - multiple processes
+                    
+                    for pi in range(num_threads-1):
+                        cpu_affinity = 1 + pi + num_processes
+
+                        process = mp.Process(target=sync_state_info, args=(sync_queue, process_counter, cpu_affinity, agents, vars_util))
+                        process.start()
+                        proc_processes.append(process)
+
             # pool = mp.Pool(initializer=init_worker, initargs=(process_counter,))
             pool = mp.Pool()
 
@@ -66,23 +103,85 @@ def localitinerary_parallel(day,
             np.random.shuffle(hh_inst_indices)
             mp_hh_inst_indices = np.array_split(hh_inst_indices, num_processes)
 
+            start = time.time()
+
+            proc_processes = []
+            proc_futures = []
+
             for process_index in range(num_processes):
                 # cells_partial = {}
                 hh_insts_partial = []
 
                 mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
-                for index in mp_hh_inst_ids_this_proc:
-                    # cell = cells[cell_key]
-                    hh_inst = hh_insts[index]
+                # agents_partial = []
+                # for index in mp_hh_inst_ids_this_proc:
+                #     # cell = cells[cell_key]
+                #     hh_inst = hh_insts[index]
 
-                    # cells_partial[cell_key] = cell
-                    hh_insts_partial.append(hh_inst)
+                #     # cells_partial[cell_key] = cell
+                #     hh_insts_partial.append(hh_inst)
+
+                start_partial = time.time()
+                hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc]      
+
+                agents_partial, agents_ids_by_ages_partial = {}, {}
+                vars_util_partial = vars.Vars()
+                vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                vars_util_partial.agents_vaccination_doses = vars_util.agents_vaccination_doses
+
+                for hh_inst in hh_insts_partial:
+                    for uid in hh_inst["resident_uids"]:
+                        agents_partial[uid] = agents[uid]
+                        agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
+
+                        if uid in vars_util.agents_seir_state_transition_for_day:
+                            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
+
+                        if uid in vars_util.agents_infection_type:
+                            vars_util_partial.agents_infection_type = vars_util.agents_infection_type[uid]
+
+                        if uid in vars_util.agents_infection_severity:
+                            vars_util_partial.agents_infection_severity = vars_util.agents_infection_severity[uid]
+
+                tourists_active_ids = []
+                tourists = None # to do - to handle
+
+                # agents_partial = {uid:agents[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
+                # agents_ids_by_ages_partial = {uid:agents_ids_by_ages[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
+
+                time_taken_partial = time.time() - start_partial
+                print("creating partial dicts. time taken: " + str(time_taken_partial))
 
                 print("starting process index " + str(process_index) + " at " + str(time.time()))
+
                 # pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
-                pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
-            
+                if proc_use_pool == 0:
+                    pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_partial, agents_ids_by_ages_partial, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
+                elif proc_use_pool == 1:
+                    process = mp.Process(target=localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_partial, agents_ids_by_ages_partial, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
+                    process.start()
+                    proc_processes.append(process)
+                elif proc_use_pool == 2:
+                    # Create a ProcessPoolExecutor
+                    executor = concurrent.futures.ProcessPoolExecutor()
+
+                    # Define parameters
+                    params = (sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_partial, agents_ids_by_ages_partial, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter)
+
+                    # Submit tasks to the executor with parameters
+                    proc_futures.append(executor.submit(localitinerary_worker, params))
+
+                if proc_use_pool == 0 or proc_use_pool == 2:
+                    # clean up local memory
+                    hh_insts_partial = None
+                    agents_partial = None
+                    agents_ids_by_ages_partial = None
+
+            time_taken = time.time() - start
+
+            print("started pool/processes. time taken: " + str(time_taken))
+
             start = time.time()
             # while process_counter.value > 0 or not sync_queue.empty(): # True
             #     try:
@@ -101,44 +200,42 @@ def localitinerary_parallel(day,
             #         continue  # Queue is empty, continue polling
 
             # option 1 - single thread
-            # sync_state_info(sync_queue, process_counter)
-
-            # option 2 - multiple threads
-            # Create multiple threads to process items from the queue
-            threads = []
-            for _ in range(num_threads):
-                t = threading.Thread(target=sync_state_info, args=(sync_queue, process_counter))
-                t.start()
-                threads.append(t)
-
-            # Wait for all threads to complete
-            for t in threads:
-                t.join()
-
-            # option 3 - multiple processes
-            # processes = []
-            # for process_index in range(6):
-            #     process = mp.Process(target=sync_state_info, args=(sync_queue, process_counter))
-            #     process.start()
-            #     processes.append(process)
-
-            # for process in processes:
-            #     process.join()
+            sync_state_info(sync_queue, process_counter, 0, agents, vars_util) # blocking
+        
+            if num_threads > 1:
+                if sync_use_threads:
+                    # Wait for all threads to complete
+                    for t in sync_threads:
+                        t.join()
+                else:
+                    # Wait for all processes to complete
+                    for process in proc_processes:
+                        process.join()
 
             sync_time_end = time.time()
             time_taken = sync_time_end - start
             print("itinerary state info sync (combined). time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
 
             start = time.time()
-            pool.close()
+
+            if proc_use_pool == 0:
+                pool.close()
+                pool.join()
+            elif proc_use_pool == 1:
+                for process in proc_processes:
+                    process.join()
+            elif proc_use_pool == 2:
+                # Collect and print the results
+                for future in concurrent.futures.as_completed(proc_futures):
+                    result = future.result()
+
+                    if result is not None:
+                        print("result: " + str(result))
+
             manager.shutdown()
             time_taken = time.time() - start
-            print("pool close time taken " + str(time_taken))
-
-            start = time.time()
-            pool.join()
-            time_taken = time.time() - start
-            print("pool join time taken " + str(time_taken))
+            print("pool/processes close/join time taken " + str(time_taken))
+                
         else:
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
             params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
@@ -148,13 +245,23 @@ def localitinerary_parallel(day,
             traceback.print_exc(file=f)
 
 def localitinerary_worker(params):
-    try:
-        print("process started " + str(time.time()))
-    
+    try:  
         # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
         sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
 
-        print("process " + str(process_index))
+        import psutil
+        p = psutil.Process()
+        print(f"Itinerary Worker Child #{process_index+1}: {p}, affinity {p.cpu_affinity()}", flush=True)
+        time.sleep(0.0001)
+        p.cpu_affinity([process_index+1])
+
+        # while True:
+        #     time.sleep(0.001)
+
+        print(f"Itinerary Worker Child #{process_index+1}: Set my affinity to {process_index+1}, affinity now {p.cpu_affinity()}", flush=True)
+
+        # print("process started " + str(time.time()))
+        # print("process " + str(process_index))
 
         # agents_mp_itinerary.convert_from_shared_memory_readonly(itinerary=True)
         # agents_mp_itinerary.convert_from_shared_memory_dynamic(itinerary=True)
@@ -210,7 +317,7 @@ def localitinerary_worker(params):
         time_taken = time.time() - start
         # itinerary_sum_time_taken += time_taken
         # avg_time_taken = itinerary_sum_time_taken / day
-        print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", proc index: " + str(process_index))
+        print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", ws_interprocess_time: " + str(itinerary_util.working_schedule_interprocess_communication_aggregated_time) + ", itin_interprocess_time: " + str(itinerary_util.itinerary_interprocess_communication_aggregated_time) + ", proc index: " + str(process_index))
         
         print("process " + str(process_index) + ", ended at " + str(time.time()))
     except:
@@ -219,9 +326,26 @@ def localitinerary_worker(params):
     finally:
         process_counter.value -= 1
 
-def sync_state_info(sync_queue, process_counter):
-    global agents_main
-    global vars_util_main
+def sync_state_info(sync_queue, process_counter, cpu_affinity=None, agents_main_temp=None, vars_util_main_temp=None):
+    from multiprocessing import queues
+
+    cpu_affinity = None # temporarily disabled
+    if cpu_affinity is not None:
+        import psutil
+
+        p = psutil.Process()
+        print(f"Sync State Thread/Process Child #{cpu_affinity}: {p}, affinity {p.cpu_affinity()}", flush=True)
+        time.sleep(0.0001)
+        p.cpu_affinity([cpu_affinity])
+
+        print(f"Sync State Thread/Process Child #{cpu_affinity}: Set my affinity to {cpu_affinity}, affinity now {p.cpu_affinity()}", flush=True)
+
+    if agents_main_temp is None:
+        global agents_main
+        global vars_util_main
+    else:
+        agents_main = agents_main_temp
+        vars_util_main = vars_util_main_temp
 
     start = time.time()
     while process_counter.value > 0 or not sync_queue.empty(): # True
@@ -237,8 +361,16 @@ def sync_state_info(sync_queue, process_counter):
                 elif type == "c":
                     vars_util_main.update_cells_agents_timesteps(index, value)
                 elif type == "v":
-                    vars_util_main.update(attr_name, value)
-        except mp.queues.Empty:
+                    if attr_name != "vars":
+                        vars_util_main.update(attr_name, value)
+                    else:
+                        agent_seir_state_transition_for_day, agent_seir_state, agent_infection_type, agent_infection_severity = value
+                        vars_util_main.update("agents_seir_state_transition_for_day", agent_seir_state_transition_for_day)
+                        vars_util_main.update("agents_seir_state", agent_seir_state)
+                        vars_util_main.update("agents_infection_type", agent_infection_type)
+                        vars_util_main.update("agents_infection_severity", agent_infection_severity)
+
+        except queues.Empty:
             continue  # Queue is empty, continue polling
     
     sync_time_end = time.time()

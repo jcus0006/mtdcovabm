@@ -27,8 +27,10 @@ def main():
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 10,
-                "numthreads": 2
+                "numprocesses": 8,
+                "numthreads": 2,
+                "proc_usepool": 0, # Pool 0, Process 1, ProcessPoolExecutor = 2
+                "sync_usethreads": False # Threads True, Processes False
             }
 
     figure_count = 0
@@ -150,6 +152,9 @@ def main():
                 agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
                 agent["vaccination_days"] = [] # [[day, timestep]]
                 agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
+
+                if agent["empstatus"] == 0:
+                    agent["working_schedule"] = {}
 
                 agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
@@ -441,7 +446,9 @@ def main():
                                                     tourists_active_ids, 
                                                     hh_insts, 
                                                     params["numprocesses"],
-                                                    params["numthreads"])
+                                                    params["numthreads"],
+                                                    params["proc_usepool"],
+                                                    params["sync_usethreads"])
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken

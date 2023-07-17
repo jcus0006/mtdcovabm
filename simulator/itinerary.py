@@ -6,6 +6,7 @@ from copy import deepcopy
 from copy import copy
 from simulator import util, seirstateutil
 from simulator.epidemiology import Epidemiology, SEIRState, QuarantineType
+import time
 
 class Itinerary:
     def __init__(self, 
@@ -95,6 +96,9 @@ class Itinerary:
         self.potential_timesteps = np.arange(144)
         self.tourist_entry_infection_probability = tourist_entry_infection_probability
 
+        self.working_schedule_interprocess_communication_aggregated_time = 0
+        self.itinerary_interprocess_communication_aggregated_time = 0
+
         # Calculate probability of each activity for agent
         self.activities_by_week_days_by_age_groups = {}
 
@@ -142,12 +146,12 @@ class Itinerary:
             agent = self.agents[agentid]
 
             if self.epi_util.agents_seir_state[agentid] != SEIRState.Deceased:
-                if "working_schedule" not in agent:
-                    agent["working_schedule"] = {}
-
-                prev_working_schedule = agent["working_schedule"]
-
+                # if "working_schedule" not in agent:
+                #     agent["working_schedule"] = {}
+                
                 if agent["empstatus"] == 0: # 0: employed, 1: unemployed, 2: inactive
+                    prev_working_schedule = agent["working_schedule"]
+
                     # employed
                     agent["working_schedule"] = {} # {workingday:(start,end)}
 
@@ -276,7 +280,11 @@ class Itinerary:
                     # in this scenario, the whole agent object is being passed over to the main process to be synced (because working_schedule might not be a key in main memory)
                     # however, a better approach would be to pass an extra param to indicate creation of a key in main memory
                     # having said that, this only happens on the first day of every week, for working agents only (i.e. it may not affect considerably)
-                    self.sync_queue.put(["a", agentid, "", agent]) 
+                    # self.sync_queue.put(["a", agentid, "", agent]) 
+                    start = time.time()
+                    self.sync_queue.put(["a", agentid, "working_schedule", working_schedule])
+                    time_taken = time.time() - start
+                    self.working_schedule_interprocess_communication_aggregated_time += time_taken
 
     def generate_local_itinerary(self, simday, weekday, resident_uids):
         guardian_id, guardian_hospitalisation_days, guardian_quarantine_days, guardian_non_daily_activity_recurring, guardian_prevday_non_daily_activity_recurring, guardian_itinerary, guardian_itinerary_nextday = None, None, None, None, None, None, None
@@ -1188,13 +1196,18 @@ class Itinerary:
                     guardian_itinerary = copy(agent["itinerary"])
                     guardian_itinerary_nextday = copy(agent["itinerary_nextday"])
 
+                start = time.time()
                 self.sync_queue.put(["a", agentid, "", agent])
 
                 if agent_seir_state_transition_for_day is not None:
+                    # self.sync_queue.put(["v", agentid, "vars", [agent_seir_state_transition_for_day, agent_seir_state, agent_infection_type, agent_infection_severity]])
                     self.sync_queue.put(["v", agentid, "agents_seir_state_transition_for_day", agent_seir_state_transition_for_day])
                     self.sync_queue.put(["v", agentid, "agents_seir_state", agent_seir_state])
                     self.sync_queue.put(["v", agentid, "agents_infection_type", agent_infection_type])
                     self.sync_queue.put(["v", agentid, "agents_infection_severity", agent_infection_severity])
+
+                time_taken = time.time() - start
+                self.itinerary_interprocess_communication_aggregated_time += time_taken
 
                 # test_itinerary_keys = sorted(list(agent["itinerary"].keys()), reverse=True)
                 # test_itinerarynextday_keys = sorted(list(agent["itinerary_nextday"].keys()), reverse=True)

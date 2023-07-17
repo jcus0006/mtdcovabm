@@ -1,7 +1,5 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 453, in main
-    contactnetwork_mp.contactnetwork_parallel(day,
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 116, in contactnetwork_parallel
-    sync_queue.close()
-    ^^^^^^^^^^^^^^^^
-AttributeError: 'AutoProxy[Queue]' object has no attribute 'close'
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 450, in main
+    params["usepool"],
+    ~~~~~~^^^^^^^^^^^
+KeyError: 'usepool'
