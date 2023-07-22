@@ -160,7 +160,7 @@ def contactnetwork_worker(params):
                                                             process_index=process_index, 
                                                             sync_queue=sync_queue)
 
-        contact_network_util.simulate_contact_network(day, weekday)
+        agents_directcontacts_by_simcelltype_thisday = contact_network_util.simulate_contact_network(day, weekday)
         
         # agents_mp_cn = None
         # contact_network_util = None

@@ -35,17 +35,19 @@ class Itinerary:
                 tourist_entry_infection_probability,
                 epidemiologyparams,
                 dynparams,
-                tourists_active_ids,
-                sync_queue):
+                tourists_active_ids):
         
         self.rng = np.random.default_rng(seed=6)
 
         self.one_to_two_hours = np.arange(6, 13)
 
+        self.vars_util = vars_util
         # self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, sync_queue)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, self.vars_util, cells_households, cells_institutions, cells_accommodation, dynparams)
 
-        self.sync_queue = sync_queue
+        # self.sync_queue = sync_queue
+        # self.comm = comm
+        # self.rank = rank
         self.params = params
         self.timestepmins = timestepmins
         self.timesteps_in_hour = round(60 / self.timestepmins)
@@ -281,10 +283,13 @@ class Itinerary:
                     # however, a better approach would be to pass an extra param to indicate creation of a key in main memory
                     # having said that, this only happens on the first day of every week, for working agents only (i.e. it may not affect considerably)
                     # self.sync_queue.put(["a", agentid, "", agent]) 
-                    start = time.time()
-                    self.sync_queue.put(["a", agentid, "working_schedule", working_schedule])
-                    time_taken = time.time() - start
-                    self.working_schedule_interprocess_communication_aggregated_time += time_taken
+
+                    # start = time.time()
+                    # self.sync_queue.put(["a", agentid, "working_schedule", working_schedule])
+                    # # Share the result with the main process
+                    # # self.comm.send(["a", agentid, "working_schedule", working_schedule], dest=0, tag=self.rank)
+                    # time_taken = time.time() - start
+                    # self.working_schedule_interprocess_communication_aggregated_time += time_taken
 
     def generate_local_itinerary(self, simday, weekday, resident_uids):
         guardian_id, guardian_hospitalisation_days, guardian_quarantine_days, guardian_non_daily_activity_recurring, guardian_prevday_non_daily_activity_recurring, guardian_itinerary, guardian_itinerary_nextday = None, None, None, None, None, None, None
@@ -1196,18 +1201,25 @@ class Itinerary:
                     guardian_itinerary = copy(agent["itinerary"])
                     guardian_itinerary_nextday = copy(agent["itinerary_nextday"])
 
-                start = time.time()
-                self.sync_queue.put(["a", agentid, "", agent])
+                # start = time.time()
+                # self.sync_queue.put(["a", agentid, "", agent])
 
                 if agent_seir_state_transition_for_day is not None:
+                    # combined
                     # self.sync_queue.put(["v", agentid, "vars", [agent_seir_state_transition_for_day, agent_seir_state, agent_infection_type, agent_infection_severity]])
-                    self.sync_queue.put(["v", agentid, "agents_seir_state_transition_for_day", agent_seir_state_transition_for_day])
-                    self.sync_queue.put(["v", agentid, "agents_seir_state", agent_seir_state])
-                    self.sync_queue.put(["v", agentid, "agents_infection_type", agent_infection_type])
-                    self.sync_queue.put(["v", agentid, "agents_infection_severity", agent_infection_severity])
 
-                time_taken = time.time() - start
-                self.itinerary_interprocess_communication_aggregated_time += time_taken
+                    # self.sync_queue.put(["v", agentid, "agents_seir_state_transition_for_day", agent_seir_state_transition_for_day])
+                    # self.sync_queue.put(["v", agentid, "agents_seir_state", agent_seir_state])
+                    # self.sync_queue.put(["v", agentid, "agents_infection_type", agent_infection_type])
+                    # self.sync_queue.put(["v", agentid, "agents_infection_severity", agent_infection_severity])
+
+                    self.vars_util.agents_seir_state[agentid] = agent_seir_state
+                    self.vars_util.agents_seir_state_transition_for_day[agentid] = agent_seir_state_transition_for_day
+                    self.vars_util.agents_infection_type[agentid] = agent_infection_type
+                    self.vars_util.agent_infection_severity[agentid] = agent_infection_severity
+
+                # time_taken = time.time() - start
+                # self.itinerary_interprocess_communication_aggregated_time += time_taken
 
                 # test_itinerary_keys = sorted(list(agent["itinerary"].keys()), reverse=True)
                 # test_itinerarynextday_keys = sorted(list(agent["itinerary_nextday"].keys()), reverse=True)
@@ -1260,12 +1272,15 @@ class Itinerary:
                     
                     agent_cell_timestep_ranges.append((agentid, start_ts, end_ts))
 
-                # if curr_cell_id not in self.cells_agents_timesteps:
-                #     self.cells_agents_timesteps[curr_cell_id] = []
+                if curr_cell_id not in self.vars_util.cells_agents_timesteps:
+                    self.vars_util.cells_agents_timesteps[curr_cell_id] = []
 
-                # self.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
-                self.sync_queue.put(["c", curr_cell_id, "cells_agents_timesteps", agent_cell_timestep_ranges])
+                # start = time.time()
+                self.vars_util.cells_agents_timesteps[curr_cell_id] += agent_cell_timestep_ranges
+                # self.sync_queue.put(["c", curr_cell_id, "cells_agents_timesteps", agent_cell_timestep_ranges])
 
+                # time_taken = time.time() - start
+                # self.itinerary_interprocess_communication_aggregated_time += time_taken
             # prev_cell_id = curr_cell_id
 
     def combine_same_cell_itinerary_entries(self, start_timesteps, itinerary):
@@ -2010,7 +2025,7 @@ class Itinerary:
                     if not is_false_negative:
                         self.epi_util.contact_tracing_agent_ids.append([agentid, start_ts]) 
 
-                        agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+                        agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive)
                 else:
                     false_positive_rand = random.random()
 
@@ -2021,7 +2036,7 @@ class Itinerary:
                     if is_false_positive:
                         self.epi_util.contact_tracing_agent_ids.append([agentid, start_ts]) 
 
-                        agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agent, day, start_ts, QuarantineType.Positive)
+                        agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive)
 
                         is_quarantine_startday = True
             elif day > test_result_day:

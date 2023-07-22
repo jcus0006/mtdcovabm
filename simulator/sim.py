@@ -27,9 +27,9 @@ def main():
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 8,
-                "numthreads": 2,
-                "proc_usepool": 0, # Pool 0, Process 1, ProcessPoolExecutor = 2
+                "numprocesses": 10,
+                "numthreads": 1,
+                "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
                 "sync_usethreads": False # Threads True, Processes False
             }
 

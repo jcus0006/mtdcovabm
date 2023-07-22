@@ -16,8 +16,7 @@ class Epidemiology:
                 cells_households, 
                 cells_institutions, 
                 cells_accommodation, 
-                dyn_params,
-                sync_queue):
+                dyn_params):
         self.n_locals = n_locals
         self.n_tourists = n_tourists
         self.locals_ratio_to_full_pop = locals_ratio_to_full_pop
@@ -59,7 +58,7 @@ class Epidemiology:
         self.immunity_after_vaccination_multiplier = epidemiologyparams["immunity_after_vaccination_multiplier"]  
 
         self.dyn_params = dyn_params 
-        self.sync_queue = sync_queue    
+        # self.sync_queue = sync_queue    
 
         self.agents = agents
         self.agents_seir_state = vars_util.agents_seir_state
@@ -67,10 +66,10 @@ class Epidemiology:
         self.agents_infection_type = vars_util.agents_infection_type
         self.agents_infection_severity = vars_util.agents_infection_severity
         self.agents_vaccination_doses = vars_util.agents_vaccination_doses
-        self.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day
+        self.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day # will be initialised as empty set
         # self.tourists_active_ids = tourists_active_ids
 
-        self.contact_tracing_agent_ids = []
+        self.contact_tracing_agent_ids = vars_util.contact_tracing_agent_ids # will be initialised as empty set
 
         self.cells_households = cells_households
         self.cells_institutions = cells_institutions
@@ -189,19 +188,20 @@ class Epidemiology:
 
                     incremental_days = day
                     if exposed_rand < infection_probability: # exposed (infected but not yet infectious)
-                        agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                        agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
 
                         # self.agents_mp.set(exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day)
-                        self.sync_queue.put(["a", exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day])
-                        self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
+                        # self.sync_queue.put(["a", exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day]) # updated by ref in agent           
 
                         if agent_infection_type != InfectionType.Undefined:
-                            self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
-                        
-                        if agent_infection_severity != Severity.Undefined:
-                            self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
+                            # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
+                            self.agents_seir_state[exposed_agent_id] = agent_seir_state
+                            # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
+                            self.agents_infection_type[exposed_agent_id] = agent_infection_type
+                            # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
+                            self.agents_infection_severity[exposed_agent_id] = agent_infection_severity
 
-    def simulate_seir_state_transition(self, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days):
+    def simulate_seir_state_transition(self, exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days):
         symptomatic_day = -1
         recovered = False # if below condition is hit, False means Dead, True means recovered. 
         start_hosp_day, end_hosp_day = None, None
@@ -329,11 +329,11 @@ class Epidemiology:
 
         if start_hosp_day is not None:
             hospitalisation_days = [start_hosp_day, sampled_exposed_timestep, end_hosp_day]
-            self.schedule_hospitalisation(exposed_agent_id, hospitalisation_days)
+            self.schedule_hospitalisation(exposed_agent, exposed_agent_id, hospitalisation_days)
         
         if symptomatic_day > -1:
             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-            test_scheduled, _, test_result_day = self.schedule_test(exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
+            test_scheduled, _, test_result_day = self.schedule_test(exposed_agent, exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
             
             start_quarantine_day = None
             if test_scheduled:
@@ -345,18 +345,18 @@ class Epidemiology:
                 start_quarantine_day = symptomatic_day
 
             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-            _, _ = self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Positive, quarantine_days=agent_quarantine_days)
+            _, _ = self.schedule_quarantine(exposed_agent, exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Positive, quarantine_days=agent_quarantine_days)
 
         return agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
     
-    def schedule_test(self, agent_id, incremental_days, start_timestep, quarantine_type):
+    def schedule_test(self, agent, agent_id, incremental_days, start_timestep, quarantine_type):
         test_scheduled = False
         test_day, test_result_day = None, None
 
         if self.dyn_params.testing_enabled:
             test_already_scheduled = False
 
-            test_day = self.agents[agent_id]["test_day"]  
+            test_day = agent["test_day"]  
             # test_day = self.agents_mp.get(agent_id, "test_day")
 
             if test_day is not None and len(test_day) > 0:
@@ -384,14 +384,15 @@ class Epidemiology:
                     # agent["test_day"] = [testing_day, start_timestep]
                     test_day = [testing_day, start_timestep]
                     # self.agents_mp.set(agent_id, "test_day", test_day)
-                    self.sync_queue.put(["a", agent_id, "test_day", test_day])
+                    # self.sync_queue.put(["a", agent_id, "test_day", test_day]) # update by ref
 
                     days_until_test_result = util.sample_log_normal(self.testing_results_days_distribution_parameters[0], self.testing_results_days_distribution_parameters[1], 1, True)
 
                     # agent["test_result_day"] = [test_result_day, start_timestep] # and we know agent is infected at this point (assume positive result)
                     test_result_day = testing_day + days_until_test_result
                     # self.agents_mp.set(agent_id, "test_result_day", test_result_day)
-                    self.sync_queue.put(["a", agent_id, "test_result_day", test_result_day])
+                    # self.sync_queue.put(["a", agent_id, "test_result_day", test_result_day])
+                    agent["test_result_day"] = test_result_day
 
                     if quarantine_type == QuarantineType.Positive:
                         # to perform contact tracing (as received positive test result)
@@ -435,7 +436,7 @@ class Epidemiology:
                     quarantine_days = [start_day, start_timestep, end_day]
 
                     # self.agents_mp.set(agent_id, "quarantine_days", quarantine_days)
-                    self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
+                    # self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
 
                     quarantine_scheduled = True
 
@@ -446,7 +447,7 @@ class Epidemiology:
         # quarantine_days.append([[new_start_day, new_start_ts], [new_end_day, new_end_ts]])
 
         # self.agents_mp.set(agent_id, "quarantine_days", quarantine_days)
-        self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
+        # self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
 
     def update_quarantine_end(self, agent_id, new_end_day, new_end_timestep, quarantine_days=None):
         if quarantine_days is None:
@@ -458,10 +459,10 @@ class Epidemiology:
         quarantine_days[2] = new_end_day
 
         # self.agents_mp.set(agent_id, "quarantine_days", quarantine_days)
-        self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
+        # self.sync_queue.put(["a", agent_id, "quarantine_days", quarantine_days])
 
-    def schedule_hospitalisation(self, agent_id, hospitalisation_days):
-        agent_hospitalisation_days = self.agents[agent_id]["hospitalisation_days"]
+    def schedule_hospitalisation(self, agent, agent_id, hospitalisation_days):
+        agent_hospitalisation_days = agent["hospitalisation_days"]
         # agent_hospitalisation_days = self.agents_mp.get(agent_id, "hospitalisation_days")
 
         if agent_hospitalisation_days is not None and len(agent_hospitalisation_days) > 0:
@@ -475,7 +476,7 @@ class Epidemiology:
 
         # agent_hospitalisation_days.extend(hospitalisation_days)
         # self.agents_mp.set(agent_id, "hospitalisation_days", agent_hospitalisation_days)
-        self.sync_queue.put(["a", agent_id, "hospitalisation_days", agent_hospitalisation_days])
+        # self.sync_queue.put(["a", agent_id, "hospitalisation_days", agent_hospitalisation_days])
     
     # the outer loop iterates for a number of days back pertaining to the number of days that the public health would attempt to trace back (e.g. 1 day)
     # the next loop iterates direct contacts in each simcelltype (residence, workplace, school, community contacts) i.e. subset of contacts per sim type
@@ -700,10 +701,10 @@ class Epidemiology:
                     agent_vaccination_days.append([day + 1, sampled_timestep])
 
                     # self.agents_mp.set(agentid, "vaccination_days", agent_vaccination_days)
-                    self.sync_queue.put(["a", agentid, "vaccination_days", agent_vaccination_days])
+                    # self.sync_queue.put(["a", agentid, "vaccination_days", agent_vaccination_days])
 
                     agent_vaccination_doses += 1
-                    self.sync_queue.put(["v", agentid, "agents_vaccination_doses", agent_vaccination_doses])
+                    # self.sync_queue.put(["v", agentid, "agents_vaccination_doses", agent_vaccination_doses])
                     # self.agents_vaccination_doses[agentid] = agent_vaccination_doses
 
     def convert_simcelltype_to_contact_tracing_success_prob(self, simcelltype):

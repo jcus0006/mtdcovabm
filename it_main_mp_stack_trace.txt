@@ -1,4 +1,5 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 159, in localitinerary_parallel
-    sync_state_info(sync_queue, process_counter)
-TypeError: sync_state_info() missing 1 required positional argument: 'cpu_affinity'
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 238, in localitinerary_parallel
+    print("imap_result count " + str(len(imap_results)))
+                                     ^^^^^^^^^^^^^^^^^
+TypeError: object of type 'IMapIterator' has no len()
