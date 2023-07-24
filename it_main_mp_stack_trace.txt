@@ -1,5 +1,28 @@
+multiprocessing.pool.RemoteTraceback: 
+"""
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 238, in localitinerary_parallel
-    print("imap_result count " + str(len(imap_results)))
-                                     ^^^^^^^^^^^^^^^^^
-TypeError: object of type 'IMapIterator' has no len()
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 417, in localitinerary_worker
+    working_schedule_times_by_resid_ordered = sorted(working_schedule_times_by_resid.items(), key=working_schedule_times_by_resid.get, reverse=True)
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'NoneType' and 'NoneType'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Program Files\Python3112\Lib\multiprocessing\pool.py", line 125, in worker
+    result = (True, func(*args, **kwds))
+                    ^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 422, in localitinerary_worker
+    print("it_process crash in process {proc_index}".format(process_index))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'proc_index'
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 243, in localitinerary_parallel
+    for result in imap_results:
+  File "C:\Program Files\Python3112\Lib\multiprocessing\pool.py", line 873, in next
+    raise value
+KeyError: 'proc_index'

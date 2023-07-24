@@ -104,14 +104,19 @@ def localitinerary_parallel(day,
         #                     proc_processes.append(process)
 
             # pool = mp.Pool(initializer=init_worker, initargs=(process_counter,))
-            pool = mp.Pool()
+            pool = mp.Pool(processes=num_processes)
 
-            mp_hh_inst_indices = []
+            # mp_hh_inst_indices = []
 
-            hh_inst_indices = [i for i, _ in enumerate(hh_insts)]
-            np.random.shuffle(hh_inst_indices)
-            mp_hh_inst_indices = np.array_split(hh_inst_indices, num_processes)
+            # hh_inst_indices = [i for i, _ in enumerate(hh_insts)]
+            # np.random.shuffle(hh_inst_indices)
+            # mp_hh_inst_indices = np.array_split(hh_inst_indices, num_processes)
 
+            start = time.time()
+            mp_hh_inst_indices = split_residences_by_weight(hh_insts, num_processes)
+            time_taken = time.time() - start
+            print("split residences by indices (load balancing): " + str(time_taken))
+            
             start = time.time()
 
             proc_processes = []
@@ -236,9 +241,11 @@ def localitinerary_parallel(day,
                 start = time.time()
 
                 for result in imap_results:
-                    process_index, agents_partial, vars_util_partial = result
+                    process_index, agents_partial, vars_util_partial,  working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
 
-                    print("processing results for process " + str(process_index))
+                    print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
+                    # print(working_schedule_times_by_resid_ordered)
+                    # print(itinerary_times_by_resid_ordered)
 
                     mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
@@ -303,28 +310,44 @@ def localitinerary_parallel(day,
         with open('it_main_mp_stack_trace.txt', 'w') as f:
             traceback.print_exc(file=f)
 
+def split_residences_by_weight(residences, num_processes):
+    # Sort residences based on their weights in ascending order
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight'])
+
+    sorted_residences = [residence for _, residence in sorted_residences_with_indices]
+    sorted_indices = [index for index, _ in sorted_residences_with_indices]
+
+    process_residences_indices = [[] for i in range(num_processes)]
+    cursor = 0
+    for index, _ in enumerate(sorted_residences):
+        process_residences_indices[cursor].append(sorted_indices[index])
+
+        cursor += 1
+
+        if cursor == num_processes:
+            cursor = 0
+
+    # process_residences_indices_lengths = [len(pri) for pri in process_residences_indices]
+    # print(process_residences_indices_lengths)
+
+    return process_residences_indices
+
 def localitinerary_worker(params):
     process_index = -1
     try:  
         # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
         day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
 
-        import psutil
-        p = psutil.Process()
-        print(f"Itinerary Worker Child #{process_index+1}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(0.0001)
-        p.cpu_affinity([process_index+1])
+        print(f"Itinerary Worker Child #{process_index+1} at {str(time.time())}", flush=True)
 
-        # while True:
-        #     time.sleep(0.001)
+        # very likely affinity actually slows down the process
+        # import psutil
+        # p = psutil.Process()
+        # print(f"Itinerary Worker Child #{process_index+1}: {p}, affinity {p.cpu_affinity()} at {str(time.time())}", flush=True)
+        # time.sleep(0.0001)
+        # p.cpu_affinity([process_index+1])
 
-        print(f"Itinerary Worker Child #{process_index+1}: Set my affinity to {process_index+1}, affinity now {p.cpu_affinity()}", flush=True)
-
-        # print("process started " + str(time.time()))
-        # print("process " + str(process_index))
-
-        # agents_mp_itinerary.convert_from_shared_memory_readonly(itinerary=True)
-        # agents_mp_itinerary.convert_from_shared_memory_dynamic(itinerary=True)
+        # print(f"Itinerary Worker Child #{process_index+1}: Set my affinity to {process_index+1}, affinity now {p.cpu_affinity()}", flush=True)
 
         itinerary_util = itinerary.Itinerary(itineraryparams,
                                             timestepmins, 
@@ -353,12 +376,18 @@ def localitinerary_worker(params):
                                             dyn_params,
                                             tourists_active_ids)
 
+        num_agents_working_schedule = 0
+        working_schedule_times_by_resid = {}
         if day == 1 or weekdaystr == "Monday":
             # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
             start = time.time()
             for hh_inst in hh_insts:
+                start = time.time()
                 # print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
                 itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+                time_taken = time.time() - start
+                working_schedule_times_by_resid[hh_inst["id"]] = time_taken
+                num_agents_working_schedule += len(hh_inst["resident_uids"])
 
             time_taken = time.time() - start
             print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", proc index: " + str(process_index))
@@ -366,8 +395,14 @@ def localitinerary_worker(params):
         print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday))
         start = time.time()                    
 
+        num_agents_itinerary = 0
+        itinerary_times_by_resid = {}
         for hh_inst in hh_insts:
+            res_start = time.time()
             itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
+            res_timetaken = time.time() - res_start
+            itinerary_times_by_resid[hh_inst["id"]] = res_timetaken
+            num_agents_itinerary += len(hh_inst["resident_uids"])
 
         # if itinerary_util.epi_util.contact_tracing_agent_ids is not None and len(itinerary_util.epi_util.contact_tracing_agent_ids) > 0:
         #     itinerary_util.sync_queue.put(["v", None, "contact_tracing_agent_ids", itinerary_util.epi_util.contact_tracing_agent_ids])
@@ -379,7 +414,13 @@ def localitinerary_worker(params):
         
         print("process " + str(process_index) + ", ended at " + str(time.time()))
 
-        return process_index, agents, vars_util
+        working_schedule_times_by_resid_ordered_keys = sorted(working_schedule_times_by_resid, key=working_schedule_times_by_resid.get, reverse=True)
+        itinerary_times_by_resid_ordered_keys = sorted(itinerary_times_by_resid, key=itinerary_times_by_resid.get, reverse=True)
+
+        working_schedule_times_by_resid_ordered = {key: working_schedule_times_by_resid[key] for key in working_schedule_times_by_resid_ordered_keys}
+        itinerary_times_by_resid_ordered = {key: itinerary_times_by_resid[key] for key in itinerary_times_by_resid_ordered_keys}
+
+        return process_index, agents, vars_util, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary
     except:
         print("it_process crash in process {proc_index}".format(process_index))
 

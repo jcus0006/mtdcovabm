@@ -1,5 +1,7 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 450, in main
-    params["usepool"],
-    ~~~~~~^^^^^^^^^^^
-KeyError: 'usepool'
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 475, in main
+    contactnetwork_mp.contactnetwork_parallel(day,
+  File "C:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 59, in contactnetwork_parallel
+    cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+KeyboardInterrupt

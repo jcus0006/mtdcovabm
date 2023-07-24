@@ -30,7 +30,9 @@ def main():
                 "numprocesses": 10,
                 "numthreads": 1,
                 "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
-                "sync_usethreads": False # Threads True, Processes False
+                "sync_usethreads": False, # Threads True, Processes False,
+                "itinerary_normal_weight": 1,
+                "itinerary_worker_student_weight": 1.12
             }
 
     figure_count = 0
@@ -163,7 +165,7 @@ def main():
                 agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
             else:
                 break
-
+        
             # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
 
         temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
@@ -247,18 +249,28 @@ def main():
     hh_insts = []
     if params["loadhouseholds"]:
         for hh in households.values():
-            hh_inst = {"id": hh["hhid"], "is_hh": True, "resident_uids": hh["resident_uids"]}
+            hh_inst = {"id": hh["hhid"], "is_hh": True, "resident_uids": hh["resident_uids"], "lb_weight": 0}
             hh_insts.append(hh_inst)
 
     if params["loadinstitutions"]:
         for inst in institutions:
-            hh_inst = {"id": inst["instid"], "is_hh": False, "resident_uids": inst["resident_uids"]}
+            hh_inst = {"id": inst["instid"], "is_hh": False, "resident_uids": inst["resident_uids"], "lb_weight": 0}
             hh_insts.append(hh_inst)
+
+    # hh_insts_partial = []
+    # max_agents_count = 100000
+    # curr_agents_count = 0
 
     if hh_insts is not None:
         for hh_inst in hh_insts:
+            lb_weight = 0
             for agentid in hh_inst["resident_uids"]:
-                agent = agents[agentid]
+                agent = agents[agentid]         
+
+                if agent["empstatus"] == 0 or agent["sc_student"] == 1:
+                    lb_weight += params["itinerary_worker_student_weight"]
+                else:
+                    lb_weight += params["itinerary_normal_weight"]
 
                 if agent["age"] < 15: # assign parent/guardian at random
                     other_resident_ages_by_uids = {uid:agents[uid]["age"] for uid in hh_inst["resident_uids"] if uid != agentid}
@@ -285,6 +297,7 @@ def main():
                     else:
                         print("big problem")
 
+            hh_inst["lb_weight"] = lb_weight
 
     if params["loadworkplaces"]:
         if len(workplaces) == 0:
