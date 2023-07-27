@@ -11,10 +11,13 @@ import sys
 import copy
 import psutil
 from mpi4py import MPI
+from simulator import util
 
 agents_main = None
 vars_util_main = None
-def localitinerary_parallel(day,
+def localitinerary_parallel(manager,
+                            pool,
+                            day,
                             weekday,
                             weekdaystr,
                             itineraryparams,
@@ -48,7 +51,8 @@ def localitinerary_parallel(day,
                             num_threads=2,
                             proc_use_pool=0,
                             sync_use_threads=False,
-                            sync_use_queue=False): 
+                            sync_use_queue=False,
+                            keep_processes_open=True): 
     try:
         # p = psutil.Process()
         # print(f"main process #{0}: {p}, affinity {p.cpu_affinity()}", flush=True)
@@ -61,7 +65,7 @@ def localitinerary_parallel(day,
         agents_main = agents
         vars_util_main = vars_util
 
-        manager = mp.Manager()
+        # manager = mp.Manager()
         # sync_queue = manager.Queue()
         process_counter = manager.Value("i", num_processes)
 
@@ -104,7 +108,7 @@ def localitinerary_parallel(day,
         #                     proc_processes.append(process)
 
             # pool = mp.Pool(initializer=init_worker, initargs=(process_counter,))
-            pool = mp.Pool(processes=num_processes)
+            # pool = mp.Pool(processes=num_processes)
 
             # mp_hh_inst_indices = []
 
@@ -147,18 +151,7 @@ def localitinerary_parallel(day,
                 vars_util_partial.agents_vaccination_doses = vars_util.agents_vaccination_doses
 
                 for hh_inst in hh_insts_partial:
-                    for uid in hh_inst["resident_uids"]:
-                        agents_partial[uid] = agents[uid]
-                        agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
-
-                        if uid in vars_util.agents_seir_state_transition_for_day:
-                            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
-
-                        if uid in vars_util.agents_infection_type:
-                            vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
-
-                        if uid in vars_util.agents_infection_severity:
-                            vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
+                    agents_partial, agents_ids_by_ages_partial, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents, agents_ids_by_ages, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)                  
 
                 tourists_active_ids = []
                 tourists = None # to do - to handle
@@ -252,27 +245,13 @@ def localitinerary_parallel(day,
                     hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc] 
 
                     for hh_inst in hh_insts_partial:
-                        for uid in hh_inst["resident_uids"]:
-                            agents[uid] = agents_partial[uid]
+                        agents, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents, vars_util, agents_partial, vars_util_partial)
 
-                            if uid in vars_util_partial.agents_seir_state_transition_for_day:
-                                vars_util.agents_seir_state[uid] = vars_util_partial.agents_seir_state[uid] # not partial
-                                vars_util.agents_seir_state_transition_for_day[uid] = vars_util_partial.agents_seir_state_transition_for_day[uid]
-                                vars_util.agents_infection_type = vars_util_partial.agents_infection_type[uid]
-                                vars_util.agents_infection_severity = vars_util_partial.agents_infection_severity[uid]
-
-                    if len(vars_util_partial.contact_tracing_agent_ids) > 0:
-                        vars_util.contact_tracing_agent_ids.update(vars_util_partial.contact_tracing_agent_ids)
-
-                    if len(vars_util_partial.directcontacts_by_simcelltype_by_day) > 0:
-                        vars_util.directcontacts_by_simcelltype_by_day.update(vars_util_partial.directcontacts_by_simcelltype_by_day)
+                    vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
 
                     start_cat = time.time()
-                    for cellid, agents_timesteps in vars_util_partial.cells_agents_timesteps.items():
-                        if cellid not in vars_util.cells_agents_timesteps:
-                            vars_util.cells_agents_timesteps[cellid] = []
-
-                        vars_util.cells_agents_timesteps[cellid] += agents_timesteps
+                    
+                    vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
 
                     time_taken_cat = time.time() - start_cat
                     print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
@@ -280,26 +259,26 @@ def localitinerary_parallel(day,
                 time_taken = time.time() - start
                 print("syncing pool imap results back with main process. time taken " + str(time_taken))
 
-            start = time.time()
+            if not keep_processes_open:
+                start = time.time()
 
-            if proc_use_pool == 0 or proc_use_pool == 3: # multiprocessing.pool -> apply_async or imap
-                pool.close()
-                pool.join()
-            elif proc_use_pool == 1:
-                for process in proc_processes:
-                    process.join()
-            elif proc_use_pool == 2:
-                # Collect and print the results
-                for future in concurrent.futures.as_completed(proc_futures):
-                    result = future.result()
+                if proc_use_pool == 0 or proc_use_pool == 3: # multiprocessing.pool -> apply_async or imap
+                    pool.close()
+                    pool.join()
+                elif proc_use_pool == 1:
+                    for process in proc_processes:
+                        process.join()
+                elif proc_use_pool == 2:
+                    # Collect and print the results
+                    for future in concurrent.futures.as_completed(proc_futures):
+                        result = future.result()
 
-                    if result is not None:
-                        print("result: " + str(result))
+                        if result is not None:
+                            print("result: " + str(result))
 
-            manager.shutdown()
-            time_taken = time.time() - start
-            print("pool/processes close/join time taken " + str(time_taken))
-                
+                manager.shutdown()
+                time_taken = time.time() - start
+                print("pool/processes close/join time taken " + str(time_taken))         
         else:
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
             params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter

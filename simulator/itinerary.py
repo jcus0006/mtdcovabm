@@ -2042,7 +2042,7 @@ class Itinerary:
                         is_false_negative = True
 
                     if not is_false_negative:
-                        self.epi_util.contact_tracing_agent_ids.append([agentid, start_ts]) 
+                        self.epi_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
 
                         agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive)
                 else:
@@ -2053,7 +2053,7 @@ class Itinerary:
                         is_false_positive = True
 
                     if is_false_positive:
-                        self.epi_util.contact_tracing_agent_ids.append([agentid, start_ts]) 
+                        self.epi_util.contact_tracing_agent_ids.add((agentid, start_ts))
 
                         agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive)
 

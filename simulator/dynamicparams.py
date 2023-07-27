@@ -24,8 +24,6 @@ class DynamicParams:
         self.infectious_rate = 0
 
     def refresh_infectious_rate(self, agents_seir_state, tourists_active_ids): # to optimise
-        n_total = self.n_locals + self.n_tourists
-
         n_infectious = 0
         n_inactive = 0
 
@@ -53,6 +51,8 @@ class DynamicParams:
 
         # time_taken = time.time() - start
         # print("refresh infectious rate (loop) time taken: " + str(time_taken))
+
+        n_total = self.n_locals + len(tourists_active_ids)
 
         n_active = n_total - n_inactive
 

@@ -281,3 +281,49 @@ def get_sus_mort_prog_age_bracket_index(age):
             return 8
         else:
             return 9
+        
+def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial):
+    for uid in agents_ids:
+        agents_partial[uid] = agents[uid]
+        agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
+
+        if uid in vars_util.agents_seir_state_transition_for_day:
+            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
+
+        if uid in vars_util.agents_infection_type:
+            vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
+
+        if uid in vars_util.agents_infection_severity:
+            vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
+
+    return agents_partial, agents_ids_by_ages_partial, vars_util_partial
+
+def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial):
+    for uid in agents_ids:
+        agents[uid] = agents_partial[uid]
+
+        if uid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state[uid] = vars_util_partial.agents_seir_state[uid] # not partial
+            vars_util.agents_seir_state_transition_for_day[uid] = vars_util_partial.agents_seir_state_transition_for_day[uid]
+            vars_util.agents_infection_type = vars_util_partial.agents_infection_type[uid]
+            vars_util.agents_infection_severity = vars_util_partial.agents_infection_severity[uid]
+
+    return agents, vars_util
+
+def sync_state_info_sets(vars_util, vars_util_partial):
+    if len(vars_util_partial.contact_tracing_agent_ids) > 0:
+        vars_util.contact_tracing_agent_ids.update(vars_util_partial.contact_tracing_agent_ids)
+
+    if len(vars_util_partial.directcontacts_by_simcelltype_by_day) > 0:
+        vars_util.directcontacts_by_simcelltype_by_day.update(vars_util_partial.directcontacts_by_simcelltype_by_day)
+
+    return vars_util
+
+def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
+    for cellid, agents_timesteps in vars_util_partial.cells_agents_timesteps.items():
+        if cellid not in vars_util.cells_agents_timesteps:
+            vars_util.cells_agents_timesteps[cellid] = []
+
+        vars_util.cells_agents_timesteps[cellid] += agents_timesteps
+
+    return vars_util

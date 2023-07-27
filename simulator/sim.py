@@ -6,13 +6,13 @@ import matplotlib.pyplot as plt
 import random
 import traceback
 from cells import Cells
-from simulator import util, itinerary, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
+from simulator import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
 import multiprocessing as mp
 
 def main():
-    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -31,6 +31,7 @@ def main():
                 "numthreads": 1,
                 "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
                 "sync_usethreads": False, # Threads True, Processes False,
+                "keep_processes_open": True,
                 "itinerary_normal_weight": 1,
                 "itinerary_worker_student_weight": 1.12
             }
@@ -389,6 +390,9 @@ def main():
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
     try:
+        manager = mp.Manager()
+        pool = mp.Pool(processes=params["numprocesses"])
+
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
@@ -454,7 +458,9 @@ def main():
             if not params["quicktourismrun"]:
                 start = time.time()  
 
-                itinerary_mp.localitinerary_parallel(day, 
+                itinerary_mp.localitinerary_parallel(manager,
+                                                    pool,
+                                                    day, 
                                                     weekday, 
                                                     weekdaystr, 
                                                     itineraryparams, 
@@ -487,7 +493,8 @@ def main():
                                                     params["numprocesses"],
                                                     params["numthreads"],
                                                     params["proc_usepool"],
-                                                    params["sync_usethreads"])
+                                                    params["sync_usethreads"],
+                                                    params["keep_processes_open"])
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -498,7 +505,9 @@ def main():
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
                     start = time.time()       
 
-                    contactnetwork_mp.contactnetwork_parallel(day, 
+                    contactnetwork_mp.contactnetwork_parallel(manager,
+                                                            pool,
+                                                            day, 
                                                             weekday, 
                                                             n_locals, 
                                                             n_tourists, 
@@ -514,7 +523,8 @@ def main():
                                                             dyn_params, 
                                                             contactnetwork_sum_time_taken, 
                                                             params["numprocesses"],
-                                                            params["numthreads"])
+                                                            params["numthreads"],
+                                                            params["keep_processes_open"])
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -525,7 +535,8 @@ def main():
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                # epi_util.contact_tracing(day) # TO REVIEW
+                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                epi_util.contact_tracing(day)
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))

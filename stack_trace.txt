@@ -1,7 +1,4 @@
 Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 441, in main
-    itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 1386, in generate_tourist_itinerary
-    agent, agent_state_transition_by_day, _ = self.epi_util.simulate_seir_state_transition(agent, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-ValueError: too many values to unpack (expected 3)
+  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 539, in main
+    epi_util.contact_tracing(day)
+TypeError: Epidemiology.contact_tracing() missing 1 required positional argument: 'contact_tracing_agent_ids'

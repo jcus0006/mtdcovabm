@@ -25,9 +25,7 @@ class ContactNetwork:
                 contact_network_sum_time_taken=0, 
                 visualise=False, 
                 maintain_directcontacts_count=False, 
-                process_index=-1, 
-                sync_queue=None):
-        
+                process_index=-1):
         self.agents = agents
 
         self.cells = cells
@@ -45,18 +43,18 @@ class ContactNetwork:
         self.contactnetwork_sum_time_taken = contact_network_sum_time_taken
 
         self.process_index = process_index
-        self.sync_queue = sync_queue
+        # self.sync_queue = sync_queue
 
         self.population_per_timestep = [0 for i in range(144)]
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, sync_queue)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):        
-        agents_directcontacts_by_simcelltype_thisday  = set()
-        
+        agents_directcontacts_by_simcelltype_by_day  = set()
+        updated_agents_ids = []
         # if self.process_index >= 0:
         #     sp_cells_keys = self.mp_cells_keys[self.process_index]
         # else:
@@ -65,7 +63,7 @@ class ContactNetwork:
         print("generate contact network for " + str(len(self.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
         start = time.time()
         for cellindex, cellid in enumerate(self.cells_agents_timesteps.keys()):
-            cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+            updated_agents_ids, cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
 
             if len(cell_agents_directcontacts) > 0:
                 cell_type = cell["type"]
@@ -85,23 +83,27 @@ class ContactNetwork:
 
                     agent1_id, agent2_id = key[0], key[1]
                         
-                    agents_directcontacts_by_simcelltype_thisday.add((day, sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts))
+                    agents_directcontacts_by_simcelltype_by_day.add((day, sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts))
                     # agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
 
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
         avg_time_taken = self.contactnetwork_sum_time_taken / day
         print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
+        
+        agents_partial = {agentid: self.agents[agentid] for agentid in updated_agents_ids}
 
-        return agents_directcontacts_by_simcelltype_thisday
+        self.epi_util.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
+
+        return self.process_index, agents_partial, self.epi_util.vars_util
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
         agents_directcontacts, cell = self.generate_contact_network(cellid)
 
-        self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
+        updated_agents_ids = self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
 
-        return agents_directcontacts, cell
+        return updated_agents_ids, agents_directcontacts, cell
 
     def generate_contact_network(self, cellid):
         # print("generating contact network for cell " + str(cellid))
