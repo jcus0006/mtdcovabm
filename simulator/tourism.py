@@ -3,7 +3,7 @@ from copy import copy
 from simulator import util, seirstateutil
 
 class Tourism:
-    def __init__(self, tourismparams, cells, agents_n, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
+    def __init__(self, tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -21,7 +21,7 @@ class Tourism:
         self.outgoing_duration_shape_param, self.outgoing_duration_min, self.outgoing_duration_max = outgoing_airport_duration_dist_params[0], outgoing_airport_duration_dist_params[1], outgoing_airport_duration_dist_params[2]
 
         self.cells = cells
-        self.agents_n = agents_n
+        self.n_locals = n_locals
         self.tourists = tourists
         self.agents = agents
         self.agents_seir_state = agents_seir_state
@@ -140,7 +140,7 @@ class Tourism:
 
                         cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
 
-                        self.cells[cellindex]["place"]["member_uids"] = np.array(room_members) + self.agents_n 
+                        self.cells[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
 
                         num_tourists_in_group += len(room_members)
 
@@ -148,7 +148,7 @@ class Tourism:
                         for tourist_id in room_members: # tourists ids in room
                             tourist = self.tourists[tourist_id]
                             # new_agent_id = self.get_next_available_agent_id()
-                            new_agent_id = tourist_id + self.agents_n
+                            new_agent_id = tourist_id + self.n_locals
                             new_agent_ids.append(new_agent_id)
                             res_cell_ids.append(cellindex)
                             tourist["agentid"] = new_agent_id
@@ -168,7 +168,7 @@ class Tourism:
 
                             new_agent = self.agents[new_agent_id]
 
-                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": {}, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "test_day":[], "test_result_day":[], "quarantine_days":[], "hospitalisation_days":[]}
+                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": [], "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
 
                             new_agent, _, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(new_agent, agents_ids_by_ages, new_agent_id, self.age_brackets, None, agents_ids_by_agebrackets, set_working_age_bracket=False)
 

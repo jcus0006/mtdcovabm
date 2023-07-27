@@ -5,7 +5,7 @@ from enum import IntEnum
 from copy import deepcopy
 from copy import copy
 from simulator import util, seirstateutil
-from simulator.epidemiology import Epidemiology, SEIRState, QuarantineType
+from simulator.epidemiology import Epidemiology, SEIRState, InfectionType, QuarantineType
 import time
 
 class Itinerary:
@@ -562,8 +562,17 @@ class Itinerary:
 
                             agent_state_transition_by_day = agent["state_transition_by_day"]
                             agent_epi_age_bracket_index = agent["epi_age_bracket_index"]
+                            agent_quarantine_days = agent["quarantine_days"]
 
-                            agent, agent_state_transition_by_day, _ = self.epi_util.simulate_seir_state_transition(agent, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index)
+                            agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.epi_util.simulate_seir_state_transition(agent, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+
+                            if agent_infection_type != InfectionType.Undefined:
+                                # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
+                                self.epi_util.agents_seir_state[agentid] = agent_seir_state
+                                # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
+                                self.epi_util.agents_infection_type[agentid] = agent_infection_type
+                                # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
+                                self.epi_util.agents_infection_severity[agentid] = agent_infection_severity
                     else:
                         if len(agent["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
                             # get morning sleeptimestep
@@ -1380,9 +1389,19 @@ class Itinerary:
 
                             agent_state_transition_by_day = agent["state_transition_by_day"]
                             agent_epi_age_bracket_index = agent["epi_age_bracket_index"]
+                            agent_quarantine_days = agent["quarantine_days"]
 
-                            agent, agent_state_transition_by_day, _ = self.epi_util.simulate_seir_state_transition(agent, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index)
+                            # agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
+                            agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.epi_util.simulate_seir_state_transition(agent, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
                     
+                            if agent_infection_type != InfectionType.Undefined:
+                                # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
+                                self.epi_util.agents_seir_state[agentid] = agent_seir_state
+                                # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
+                                self.epi_util.agents_infection_type[agentid] = agent_infection_type
+                                # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
+                                self.epi_util.agents_infection_severity[agentid] = agent_infection_severity
+                                
                     new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
 
                     # this updates the state, infection type and severity (such that the itinery may also handle public health interventions)

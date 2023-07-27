@@ -1,4 +1,5 @@
 from epidemiology import SEIRState
+import time
 
 class DynamicParams:
     def __init__(self, n_locals, n_tourists, epidemiologyparams):
@@ -27,14 +28,31 @@ class DynamicParams:
 
         n_infectious = 0
         n_inactive = 0
-        for index, state in enumerate(agents_seir_state):
-            if index < self.n_locals or index in tourists_active_ids:
-                if state == SEIRState.Infectious:
-                    n_infectious += 1
-                elif state == SEIRState.Deceased:
-                    n_inactive += 1
-            else:
-                n_inactive += 1
+
+        start = time.time()
+
+        n_infectious = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
+        n_inactive = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
+
+        n_infectious += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
+        n_inactive += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
+
+        time_taken = time.time() - start
+        print("refresh infectious rate (compr) time taken: " + str(time_taken))
+
+        # start = time.time()
+
+        # for index, state in enumerate(agents_seir_state):
+        #     if index < self.n_locals or index in tourists_active_ids:
+        #         if state == SEIRState.Infectious:
+        #             n_infectious += 1
+        #         elif state == SEIRState.Deceased:
+        #             n_inactive += 1
+        #     else:
+        #         n_inactive += 1
+
+        # time_taken = time.time() - start
+        # print("refresh infectious rate (loop) time taken: " + str(time_taken))
 
         n_active = n_total - n_inactive
 

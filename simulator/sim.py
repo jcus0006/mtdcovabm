@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import random
 import traceback
 from cells import Cells
-from simulator import util, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
+from simulator import util, itinerary, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
 import multiprocessing as mp
@@ -405,19 +405,45 @@ def main():
             # agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
             # agents_directcontacts_by_simcelltype_by_day = {}
 
-            # itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
-
-            # if params["loadtourism"]:
-            #     print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
-            #     start = time.time()
-            #     agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+            if params["loadtourism"]:
+                # single process tourism section
+                itinerary_util = itinerary.Itinerary(itineraryparams, 
+                                                    params["timestepmins"], 
+                                                    n_locals, 
+                                                    n_tourists,
+                                                    locals_ratio_to_full_pop, 
+                                                    agents,
+                                                    agents_ids_by_ages,
+                                                    tourists, 
+                                                    vars_util,
+                                                    cells_industries_by_indid_by_wpid,
+                                                    cells_restaurants,
+                                                    cells_hospital, 
+                                                    cells_testinghub, 
+                                                    cells_vaccinationhub, 
+                                                    cells_entertainment_by_activityid,
+                                                    cells_religious, 
+                                                    cells_households,
+                                                    cells_breakfast_by_accomid,
+                                                    cells_airport, 
+                                                    cells_transport, 
+                                                    cells_institutions, 
+                                                    cells_accommodation, 
+                                                    tourist_entry_infection_probability,
+                                                    epidemiologyparams,
+                                                    dyn_params,
+                                                    tourists_active_ids)
                 
-            #     itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
+                start = time.time()
+                agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
                 
-            #     time_taken = time.time() - start
-            #     tourist_itinerary_sum_time_taken += time_taken
-            #     avg_time_taken = tourist_itinerary_sum_time_taken / day
-            #     print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+                itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+                
+                time_taken = time.time() - start
+                tourist_itinerary_sum_time_taken += time_taken
+                avg_time_taken = tourist_itinerary_sum_time_taken / day
+                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
