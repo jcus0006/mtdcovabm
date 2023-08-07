@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "C:\AppsPy\mtdcovabm\simulator\contacttracing_mp.py", line 151, in contacttracing_worker
+    process_index, updated_agent_ids, agents_partial, vars_util = epidemiology_util.contact_tracing(day)
+                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 571, in contact_tracing
+    quarantine_scheduled, quar_days = self.schedule_quarantine(contact_id, day, sampled_timestep, QuarantineType.PositiveContact, agent=positive_contact_agent)
+                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 444, in schedule_quarantine
+    st_day_ts = quarantine_days[0][0]
+                ~~~~~~~~~~~~~~~~~~^^^
+TypeError: 'int' object is not subscriptable

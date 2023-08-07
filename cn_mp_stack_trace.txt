@@ -1,19 +1,17 @@
 Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 173, in contactnetwork_worker
-    process_index, agents_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
-                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 66, in simulate_contact_network
-    updated_agents_ids, cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
-                                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork_mp.py", line 198, in contactnetwork_worker
+    process_index, updated_agent_ids, agents_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
+                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 65, in simulate_contact_network
+    cell_updated_agents_ids, cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+                                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "c:\AppsPy\mtdcovabm\simulator\contactnetwork.py", line 104, in simulate_contact_network_by_cellid
     updated_agents_ids = self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 196, in simulate_direct_contacts
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 198, in simulate_direct_contacts
     agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
                                                                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 343, in simulate_seir_state_transition
-    test_scheduled, _, test_result_day = self.schedule_test(exposed_agent, exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
-                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 407, in schedule_test
-    self.contact_tracing_agent_ids.add([agent_id, start_timestep])
-TypeError: unhashable type: 'list'
+  File "c:\AppsPy\mtdcovabm\simulator\epidemiology.py", line 349, in simulate_seir_state_transition
+    if test_result_day < symptomatic_day:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'list' and 'int'

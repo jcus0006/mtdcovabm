@@ -6,13 +6,14 @@ import matplotlib.pyplot as plt
 import random
 import traceback
 from cells import Cells
-from simulator import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
+from simulator import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars
+from simulator import agents as agents_util
 from simulator.epidemiology import SEIRState
 from simulator.dynamicparams import DynamicParams
 import multiprocessing as mp
 
 def main():
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "loadagents": True,
                 "loadhouseholds": True,
@@ -117,66 +118,12 @@ def main():
 
         n_locals = len(agents)
 
+        agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agents_util.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
+
         # if params["quickdebug"]:
         #     agents = {str(i):agents[str(i)] for i in range(1000)}
 
-        temp_agents = {int(k): v for k, v in agents.items()}
-
-        agents_vaccination_doses = np.array([0 for i in range(n_locals)])
-
-        locals_ratio_to_full_pop = n_locals / params["fullpop"]
-
-        if params["loadtourism"]:
-            largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
-
-            for i in range(len(tourists)):
-                temp_agents[largest_agent_id+1] = {}
-                largest_agent_id += 1
-
-        agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
-
-        # contactnetwork_sum_time_taken = 0
-        # contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False, params["numprocesses"])
-        # epi_util = contactnetwork_util.epi_util
-
-        for index, (agent_uid, agent) in enumerate(temp_agents.items()):
-            if index < n_locals: # ignore tourists for now
-                agent["curr_cellid"] = -1
-                agent["res_cellid"] = -1
-                agent["work_cellid"] = -1
-                agent["school_cellid"] = -1
-                agent["inst_cellid"] = -1
-                # agent["symptomatic"] = False
-                agent["tourist_id"] = None 
-                agent["state_transition_by_day"] = []
-                # intervention_events_by_day
-                agent["test_day"] = [] # [day, timestep]
-                agent["test_result_day"] = [] # [day, timestep]
-                agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
-                agent["vaccination_days"] = [] # [[day, timestep]]
-                agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
-
-                if agent["empstatus"] == 0:
-                    agent["working_schedule"] = {}
-
-                agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
-
-                agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
-
-                agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
-            else:
-                break
         
-            # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
-
-        temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
-
-        agents_seir_state = seirstateutil.initialize_agent_states(n_locals, initial_seir_state_distribution, agents_seir_state)
-
-        agents = temp_agents
-
-        temp_agents = None
-
         # contactnetwork_util.agents = None
         # epi_util.agents = None
         # contactnetwork_util.agents = agents
@@ -397,10 +344,12 @@ def main():
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
         
-        for day in range(1, 365+1):
+        for day in range(1, 1+1): # 365 + 1
             day_start = time.time()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
+
+            vars_util.contact_tracing_agent_ids = set()
 
             # itinerary_util.cells_agents_timesteps = {}
             # itinerary_util.epi_util = epi_util
@@ -535,8 +484,10 @@ def main():
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
-                epi_util.contact_tracing(day)
+                # epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                # epi_util.contact_tracing(day)
+
+                contacttracing_mp.contacttracing_parallel(manager, pool, day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, params["numprocesses"], params["numthreads"], params["keep_processes_open"])
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))
