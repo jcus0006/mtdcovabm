@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 490, in main
-    contacttracing_mp.contacttracing_parallel(manager, pool, day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, params["numprocesses"], params["numthreads"], params["keep_processes_open"])
-  File "C:\AppsPy\mtdcovabm\simulator\contacttracing_mp.py", line 104, in contacttracing_parallel
-    process_index, updated_agent_ids, agents_partial, vars_util_partial = result
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: cannot unpack non-iterable NoneType object

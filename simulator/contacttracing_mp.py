@@ -1,10 +1,11 @@
+import sys
 import numpy as np
 import multiprocessing as mp
 import time
 import traceback
-from simulator import util, vars
-from simulator.epidemiology import Epidemiology
-from simulator import agents as agents_util
+import util, vars
+from epidemiology import Epidemiology
+import agents as agents_util
 
 def contacttracing_parallel(manager,
                             pool,
@@ -13,7 +14,7 @@ def contacttracing_parallel(manager,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop, 
-                            agents, 
+                            ct_agents, 
                             vars_util,
                             cells_households, 
                             cells_institutions, 
@@ -21,14 +22,12 @@ def contacttracing_parallel(manager,
                             dyn_params, 
                             num_processes=10,
                             num_threads=2,
-                            keep_processes_open=True):
+                            keep_processes_open=True,
+                            log_file_name="output.txt"):
     process_counter = manager.Value("i", num_processes)
-    
-    start = time.time()
-    ct_agents = agents_util.initialize_agents_dict_ct(manager, agents)
-    time_taken = time.time() - start
-    print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
 
+    # num_processes = 1
+    
     if num_processes > 1:
         start = time.time()
         contact_tracing_agent_ids_list = list(vars_util.contact_tracing_agent_ids)
@@ -91,7 +90,8 @@ def contacttracing_parallel(manager,
                         cells_accommodation, 
                         dyn_params,
                         process_index,
-                        process_counter)
+                        process_counter,
+                        log_file_name)
                 
                 imap_params.append(params)
                 # pool.apply_async(contactnetwork_worker, args=(params,))
@@ -103,9 +103,9 @@ def contacttracing_parallel(manager,
         for result in imap_results:
             process_index, updated_agent_ids, agents_partial, vars_util_partial = result
 
-            print("processing results for process " + str(process_index))
+            print("processing results for process " + str(process_index) + ", received " + str(len(updated_agent_ids)) + " agent ids to sync")
 
-            agents, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=True)
+            ct_agents, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, ct_agents, vars_util, agents_partial, vars_util_partial, contact_tracing=True)
 
         time_taken = time.time() - start
         print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -122,19 +122,28 @@ def contacttracing_parallel(manager,
             time_taken = time.time() - start
             print("pool join time taken " + str(time_taken))
     else:
-        params = day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, ct_agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, -1, process_counter
+        params = day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, ct_agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, -1, process_counter, log_file_name
 
         contacttracing_worker(params)
 
 def contacttracing_worker(params):
+    original_stdout = None
+    f = None
+    stack_trace_log_file_name = ""
+
     try:
         start = time.time()
-        print("process started " + str(start))
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, process_index, process_counter = params
+        day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, process_index, process_counter, log_file_name = params
 
-        print("process " + str(process_index))
+        original_stdout = sys.stdout
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_ct_mp_stack_trace_" + str(process_index) + ".txt"
+        log_file_name = log_file_name.replace(".txt", "") + "_ct_" + str(process_index) + ".txt"
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
+        print("process " + str(process_index) + " started at " + str(start))
 
         epidemiology_util = Epidemiology(epidemiologyparams, 
                                             n_locals,
@@ -156,7 +165,14 @@ def contacttracing_worker(params):
 
         return process_index, updated_agent_ids, agents_partial, vars_util
     except:
-        with open('ct_mp_stack_trace.txt', 'w') as f:
+        with open(stack_trace_log_file_name, 'w') as f: # ct_mp_stack_trace.txt
             traceback.print_exc(file=f)
     finally:
         process_counter.value -= 1
+
+        if original_stdout is not None:
+            sys.stdout = original_stdout
+
+            if f is not None:
+                # Close the file
+                f.close()

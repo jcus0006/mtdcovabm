@@ -1,6 +1,6 @@
 import numpy as np
 from copy import copy
-from simulator import util, seirstateutil
+import util, seirstateutil
 
 class Tourism:
     def __init__(self, tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
@@ -168,7 +168,7 @@ class Tourism:
 
                             new_agent = self.agents[new_agent_id]
 
-                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": [], "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
+                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": [], "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "itinerary": {}, "itinerary_nextday": {}, "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
 
                             new_agent, _, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(new_agent, agents_ids_by_ages, new_agent_id, self.age_brackets, None, agents_ids_by_agebrackets, set_working_age_bracket=False)
 

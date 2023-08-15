@@ -2,7 +2,7 @@ import numpy as np
 import math
 import random
 from copy import copy
-from simulator import util
+import util
 from enum import IntEnum
 
 class Epidemiology:

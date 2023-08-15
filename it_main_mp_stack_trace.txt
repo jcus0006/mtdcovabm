@@ -1,6 +1,0 @@
-Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 279, in localitinerary_parallel
-    agents, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents, vars_util, agents_partial, vars_util_partial)
-                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\AppsPy\mtdcovabm\simulator\util.py", line -1, in sync_state_info_by_agentsids
-KeyboardInterrupt

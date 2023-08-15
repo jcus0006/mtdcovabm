@@ -1,10 +1,12 @@
+import sys
 import multiprocessing as mp
 import multiprocessing.shared_memory as shm
 import threading
 import numpy as np
 import traceback
-from simulator import contactnetwork, util, vars
+import contactnetwork, util, vars
 import time
+import agents as agents_util
 
 def contactnetwork_parallel(manager,
                             pool,
@@ -13,7 +15,7 @@ def contactnetwork_parallel(manager,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop, 
-                            agents,
+                            cn_agents,
                             vars_util,
                             cells,
                             cells_households, 
@@ -25,7 +27,8 @@ def contactnetwork_parallel(manager,
                             contact_network_sum_time_taken, 
                             num_processes=10,
                             num_threads=2,
-                            keep_processes_open=True):
+                            keep_processes_open=True,
+                            log_file_name="output.txt"):
     # manager = mp.Manager()
     # sync_queue = manager.Queue()
     process_counter = manager.Value("i", num_processes)
@@ -67,7 +70,7 @@ def contactnetwork_parallel(manager,
 
             unique_agent_ids = list(unique_agent_ids)
 
-            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, agents, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
+            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, cn_agents, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
 
             vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
@@ -89,7 +92,8 @@ def contactnetwork_parallel(manager,
                       dynparams, 
                       contact_network_sum_time_taken, 
                       process_index, 
-                      process_counter)
+                      process_counter,
+                      log_file_name)
             
             imap_params.append(params)
             # pool.apply_async(contactnetwork_worker, args=(params,))
@@ -134,11 +138,11 @@ def contactnetwork_parallel(manager,
         for result in imap_results:
             process_index, updated_agent_ids, agents_partial, vars_util_partial = result
 
-            print("processing results for process")
+            print("processing results for process " + str(process_index) + ", received " + str(len(updated_agent_ids)) + " agent ids to sync")
             # print(working_schedule_times_by_resid_ordered)
             # print(itinerary_times_by_resid_ordered)
 
-            agents, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, agents, vars_util, agents_partial, vars_util_partial)
+            cn_agents, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, cn_agents, vars_util, agents_partial, vars_util_partial)
 
             vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
 
@@ -159,7 +163,7 @@ def contactnetwork_parallel(manager,
             time_taken = time.time() - start
             print("pool join time taken " + str(time_taken))
     else:
-        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter
+        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, cn_agents, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name
 
         contactnetwork_worker(params)
 
@@ -172,13 +176,23 @@ def contactnetwork_worker(params):
     # agents, agents_seir_state, agent_seir_state_transition_for_day, agents_infection_type, agents_infection_severity
     # and to check more params from Epidemiology ctor (especially optional params)
 
+    original_stdout = None
+    f = None
+    stack_trace_log_file_name = ""
+
     try:
-        print("process started " + str(time.time()))
+        start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
+        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
 
-        print("process " + str(process_index))
+        original_stdout = sys.stdout
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(process_index) + ".txt"
+        log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(process_index) + ".txt"
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
+        print("process " + str(process_index) + " started at " + str(start))
 
         contact_network_util = contactnetwork.ContactNetwork(n_locals, 
                                                             n_tourists, 
@@ -200,14 +214,21 @@ def contactnetwork_worker(params):
         # agents_mp_cn = None
         # contact_network_util = None
         # global proc_counter
-        print("process " + str(process_index) + ", ended at " + str(time.time()))
+        print("process " + str(process_index) + " ended at " + str(time.time()))
 
         return process_index, updated_agent_ids, agents_partial, vars_util
     except:
-        with open('cn_mp_stack_trace.txt', 'w') as f:
+        with open(stack_trace_log_file_name, 'w') as f: # cn_mp_stack_trace.txt
             traceback.print_exc(file=f)
     finally:
         process_counter.value -= 1
+
+        if original_stdout is not None:
+            sys.stdout = original_stdout
+
+            if f is not None:
+                # Close the file
+                f.close()
 
 # def sync_state_info(sync_queue, process_counter):
 #     global agents_main

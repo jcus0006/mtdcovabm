@@ -3,8 +3,8 @@ import math
 import time
 from copy import copy
 from copy import deepcopy
-from simulator import util
-from simulator.epidemiology import Epidemiology
+import util
+from epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
 class ContactNetwork:

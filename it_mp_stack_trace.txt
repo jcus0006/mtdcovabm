@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 318, in localitinerary_worker
-    itinerary_util = itinerary.Itinerary(itineraryparams,
-                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 46, in __init__
-    self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, self.vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, sync_queue)
-                                                                                                                                                                                                   ^^^^^^^^^^
-NameError: name 'sync_queue' is not defined

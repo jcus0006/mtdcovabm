@@ -1,3 +1,5 @@
+import sys
+import os
 import json
 import numpy as np
 import math
@@ -6,15 +8,15 @@ import matplotlib.pyplot as plt
 import random
 import traceback
 from cells import Cells
-from simulator import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars
-from simulator import agents as agents_util
-from simulator.epidemiology import SEIRState
-from simulator.dynamicparams import DynamicParams
+import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars
+import agents as agents_util
+from dynamicparams import DynamicParams
 import multiprocessing as mp
 
 def main():
     params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
+                "simulationdays": 1, # 365
                 "loadagents": True,
                 "loadhouseholds": True,
                 "loadinstitutions": True,
@@ -32,20 +34,44 @@ def main():
                 "numthreads": 1,
                 "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
                 "sync_usethreads": False, # Threads True, Processes False,
+                "sync_usequeue": False,
                 "keep_processes_open": True,
                 "itinerary_normal_weight": 1,
-                "itinerary_worker_student_weight": 1.12
+                "itinerary_worker_student_weight": 1.12,
+                "logsubfoldername": "logs",
+                "logfilename": "memoryoptimisations2.txt"
             }
+    
+    original_stdout = sys.stdout
+
+    subfolder_name = params["logsubfoldername"]
+
+    current_directory = os.getcwd()
+
+    subfolder_name = params["logfilename"].replace(".txt", "")
+
+    # Path to the subfolder
+    subfolder_path = os.path.join(current_directory, params["logsubfoldername"], subfolder_name)
+
+    # Create the subfolder if it doesn't exist
+    if not os.path.exists(subfolder_path):
+        os.makedirs(subfolder_path)
+
+    log_file_name = os.path.join(subfolder_path, params["logfilename"])
+
+    f = open(log_file_name, "w")
+
+    sys.stdout = f
 
     figure_count = 0
 
     cellindex = 0
     cells = {}
 
-    cellsfile = open("./data/cells.json")
+    cellsfile = open(os.path.join(current_directory, "data", "cells.json"))
     cellsparams = json.load(cellsfile)
 
-    itineraryfile = open("./data/itinerary.json")
+    itineraryfile = open(os.path.join(current_directory, "data", "itinerary.json"))
     itineraryparams = json.load(itineraryfile)
 
     sleeping_hours_by_age_groups = itineraryparams["sleeping_hours_by_age_groups"]
@@ -53,7 +79,7 @@ def main():
     age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
     age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
 
-    contactnetworkfile = open("./data/contactnetwork.json")
+    contactnetworkfile = open(os.path.join(current_directory, "data", "contactnetwork.json"))
     contactnetworkparams = json.load(contactnetworkfile)
 
     sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
@@ -61,12 +87,12 @@ def main():
     powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
     # sociability_rate_options = np.arange(len(sociability_rate_distribution))
 
-    epidemiologyfile = open("./data/epidemiology.json")
+    epidemiologyfile = open(os.path.join(current_directory, "data", "epidemiology.json"))
     epidemiologyparams = json.load(epidemiologyfile)
     initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
     tourist_entry_infection_probability = epidemiologyparams["tourist_entry_infection_probability"]
 
-    tourismfile = open("./data/tourism.json")
+    tourismfile = open(os.path.join(current_directory, "data", "tourism.json"))
     tourismparams = json.load(tourismfile)
 
     population_sub_folder = ""
@@ -75,7 +101,7 @@ def main():
         params["popsubfolder"] = "10kagents"
 
     if len(params["popsubfolder"]) > 0:
-        population_sub_folder = params["popsubfolder"] + "/"
+        population_sub_folder = params["popsubfolder"]
 
     # load agents and all relevant JSON files on each node
     agents = {}
@@ -98,22 +124,22 @@ def main():
     n_tourists = 0
 
     if params["loadtourism"]:
-        touristsfile = open("./population/" + population_sub_folder + "tourists.json")
+        touristsfile = open(os.path.join(current_directory, "population", population_sub_folder, "tourists.json")) # 
         tourists = json.load(touristsfile)
         tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
         
         n_tourists = len(tourists)
 
-        touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
+        touristsgroupsfile = open(os.path.join(current_directory, "population", population_sub_folder, "touristsgroups.json"))
         touristsgroups = json.load(touristsgroupsfile)
         touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
 
-        touristsgroupsdaysfile = open("./population/" + population_sub_folder + "touristsgroupsdays.json")
+        touristsgroupsdaysfile = open(os.path.join(current_directory, "population", population_sub_folder, "touristsgroupsdays.json"))
         touristsgroupsdays = json.load(touristsgroupsdaysfile)
         touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
 
     if params["loadagents"]:
-        agentsfile = open("./population/" + population_sub_folder + "agents.json")
+        agentsfile = open(os.path.join(current_directory, "population", population_sub_folder, "agents.json"))
         agents = json.load(agentsfile)
 
         n_locals = len(agents)
@@ -165,14 +191,14 @@ def main():
     cells_util = Cells(agents, cells, cellindex)
 
     if params["loadhouseholds"]:
-        householdsfile = open("./population/" + population_sub_folder + "households.json")
+        householdsfile = open(os.path.join(current_directory, "population", population_sub_folder, "households.json"))
         households_original = json.load(householdsfile)
 
         workplaces = []
         workplaces_cells_params = []
 
         if params["loadworkplaces"]:
-            workplacesfile = open("./population/" + population_sub_folder + "workplaces.json")
+            workplacesfile = open(os.path.join(current_directory, "population", population_sub_folder, "workplaces.json"))
             workplaces = json.load(workplacesfile)
 
             workplaces_cells_params = cellsparams["workplaces"]
@@ -182,10 +208,10 @@ def main():
         # contactnetwork_util.epi_util.cells_households = cells_households
         
     if params["loadinstitutions"]:
-        institutiontypesfile = open("./population/" + population_sub_folder + "institutiontypes.json")
+        institutiontypesfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutiontypes.json"))
         institutiontypes_original = json.load(institutiontypesfile)
 
-        institutionsfile = open("./population/" + population_sub_folder + "institutions.json")
+        institutionsfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutions.json"))
         institutions = json.load(institutionsfile)
 
         institutions_cells_params = cellsparams["institutions"]
@@ -249,7 +275,7 @@ def main():
 
     if params["loadworkplaces"]:
         if len(workplaces) == 0:
-            workplacesfile = open("./population/" + population_sub_folder + "workplaces.json")
+            workplacesfile = open(os.path.join(current_directory, "population", population_sub_folder, "workplaces.json"))
             workplaces = json.load(workplacesfile)
 
         if len(workplaces_cells_params) == 0:
@@ -273,7 +299,7 @@ def main():
         accomgroups = None
 
         if params["loadtourism"]:
-            accommodationsfile = open("./population/" + population_sub_folder + "accommodations.json")
+            accommodationsfile = open(os.path.join(current_directory, "population", population_sub_folder, "accommodations.json"))
             accommodations = json.load(accommodationsfile)
 
             for accom in accommodations:
@@ -311,7 +337,7 @@ def main():
         # cellindex += 1
 
     if params["loadschools"]:
-        schoolsfile = open("./population/" + population_sub_folder + "schools.json")
+        schoolsfile = open(os.path.join(current_directory, "population", population_sub_folder, "schools.json"))
         schools = json.load(schoolsfile)
 
         schools_cells_params = cellsparams["schools"]
@@ -344,7 +370,7 @@ def main():
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
         
-        for day in range(1, 1+1): # 365 + 1
+        for day in range(1, params["simulationdays"] + 1): # 365 + 1 / 1 + 1
             day_start = time.time()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
@@ -404,6 +430,22 @@ def main():
                 if day == 1: # from day 2 onwards always calculated at eod
                     dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
 
+            # partialising agents for multiprocessing
+            start = time.time()
+            it_agents = agents_util.initialize_agents_dict_it(agents)
+            time_taken = time.time() - start
+            print("initialize_agents_dict_it, time_taken: " + str(time_taken))
+
+            start = time.time()
+            cn_agents = agents_util.initialize_agents_dict_cn(agents)
+            time_taken = time.time() - start
+            print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
+
+            start = time.time()
+            ct_agents = agents_util.initialize_agents_dict_ct(agents)
+            time_taken = time.time() - start
+            print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
+
             if not params["quicktourismrun"]:
                 start = time.time()  
 
@@ -417,7 +459,7 @@ def main():
                                                     n_locals, 
                                                     n_tourists, 
                                                     locals_ratio_to_full_pop, 
-                                                    agents,
+                                                    it_agents,
                                                     agents_ids_by_ages,                                                      
                                                     tourists, 
                                                     vars_util,
@@ -443,7 +485,9 @@ def main():
                                                     params["numthreads"],
                                                     params["proc_usepool"],
                                                     params["sync_usethreads"],
-                                                    params["keep_processes_open"])
+                                                    params["sync_usequeue"],
+                                                    params["keep_processes_open"],
+                                                    log_file_name)
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -461,7 +505,7 @@ def main():
                                                             n_locals, 
                                                             n_tourists, 
                                                             locals_ratio_to_full_pop, 
-                                                            agents, 
+                                                            cn_agents, 
                                                             vars_util,
                                                             cells, 
                                                             cells_households, 
@@ -473,7 +517,8 @@ def main():
                                                             contactnetwork_sum_time_taken, 
                                                             params["numprocesses"],
                                                             params["numthreads"],
-                                                            params["keep_processes_open"])
+                                                            params["keep_processes_open"],
+                                                            log_file_name)
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -487,7 +532,23 @@ def main():
                 # epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
                 # epi_util.contact_tracing(day)
 
-                contacttracing_mp.contacttracing_parallel(manager, pool, day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, params["numprocesses"], params["numthreads"], params["keep_processes_open"])
+                contacttracing_mp.contacttracing_parallel(manager, 
+                                                        pool, 
+                                                        day, 
+                                                        epidemiologyparams, 
+                                                        n_locals, 
+                                                        n_tourists, 
+                                                        locals_ratio_to_full_pop, 
+                                                        ct_agents, 
+                                                        vars_util, 
+                                                        cells_households, 
+                                                        cells_institutions, 
+                                                        cells_accommodation, 
+                                                        dyn_params, 
+                                                        params["numprocesses"], 
+                                                        params["numthreads"], 
+                                                        params["keep_processes_open"], 
+                                                        log_file_name)
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))
@@ -496,8 +557,8 @@ def main():
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                # epi_util.schedule_vaccinations(day) # TO REVIEW
-
+                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))
 
@@ -511,10 +572,12 @@ def main():
             day_time_taken = time.time() - day_start
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
     except:
-        with open('stack_trace.txt', 'w') as f:
+        with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as f:
             traceback.print_exc(file=f)
-
-    print(len(agents))
+    finally:
+        print(len(agents))
+        sys.stdout = original_stdout
+        f.close()
 
 if __name__ == '__main__':
     main()

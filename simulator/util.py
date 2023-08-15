@@ -304,6 +304,7 @@ def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial
 
 def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False):
+    # updated_count = 0
     for uid in agents_ids:
         curr_agent = agents_partial[uid]
         if not contact_tracing:
@@ -326,6 +327,10 @@ def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, 
         if uid in vars_util_partial.agents_infection_severity:
             vars_util.agents_infection_severity[uid] = vars_util_partial.agents_infection_severity[uid]
 
+        # updated_count += 1  
+
+    # print("synced " + str(updated_count) + " agents")
+    
     return agents, vars_util
 
 def sync_state_info_sets(vars_util, vars_util_partial):

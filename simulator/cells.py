@@ -1,10 +1,7 @@
 import numpy as np
 import random
 import math
-import copy
-import bisect
-from classes.accomgroup import AccomGroup
-from simulator import util
+import util
 
 class Cells:
     def __init__(self, agents, cells, cellindex, seed=6):

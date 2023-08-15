@@ -4,8 +4,8 @@ from enum import Enum
 from enum import IntEnum
 from copy import deepcopy
 from copy import copy
-from simulator import util, seirstateutil
-from simulator.epidemiology import Epidemiology, SEIRState, InfectionType, QuarantineType
+import util, seirstateutil
+from epidemiology import Epidemiology, SEIRState, InfectionType, QuarantineType
 import time
 
 class Itinerary:
@@ -676,7 +676,19 @@ class Itinerary:
                                                     latest_wake_up_hour -= 24 
                                         elif same_day_sleep_hour is not None:
                                             latest_wake_up_hour = same_day_sleep_hour + self.max_sleep_hours
-                                        else: # this would be previous day hospita/ quarantined (assume sleep hour as would be irrelevant and not relative to other activities)
+                                        else: # this would be previous day hospital/ quarantined (assume sleep hour as would be irrelevant and not relative to other activities)
+                                            sleep_hours_range = np.arange(self.min_sleep_hours, self.max_sleep_hours + 1)
+
+                                            # Calculate the middle index of the array
+                                            mid = len(sleep_hours_range) // 2
+
+                                            sigma = 1.0
+                                            probs = np.exp(-(np.arange(len(sleep_hours_range)) - mid)**2 / (2*sigma**2))
+                                            probs /= probs.sum()
+
+                                            # Sample from the array with probabilities favouring the middle range (normal dist)
+                                            sampled_sleep_hours_duration = self.rng.choice(sleep_hours_range, size=1, replace=False, p=probs)[0]
+
                                             latest_wake_up_hour = 0 + sampled_sleep_hours_duration
 
                                         if latest_wake_up_hour <= 24 and latest_wake_up_hour >= start_work_school_hour - 1:
@@ -1161,7 +1173,20 @@ class Itinerary:
                 elif is_departureday:
                     arr_dep_ts = sampled_departure_timestep
 
-                agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, is_departureday, is_arrivalday, arr_dep_ts, currently_on_travel_vacation, False)
+                agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
+                                                                                                       agent, 
+                                                                                                       simday, 
+                                                                                                       wakeup_timestep, 
+                                                                                                       sleep_timestep, 
+                                                                                                       start_work_school_ts, 
+                                                                                                       end_work_school_ts, 
+                                                                                                       work_school_cellid, 
+                                                                                                       work_school_action, 
+                                                                                                       is_departureday, 
+                                                                                                       is_arrivalday, 
+                                                                                                       arr_dep_ts, 
+                                                                                                       currently_on_travel_vacation, 
+                                                                                                       False)
 
                 if temp_is_hospitalised or temp_is_quarantined:
                     is_quarantined_or_hospitalised = True
@@ -1464,7 +1489,16 @@ class Itinerary:
                         agent["itinerary"] = copy(tourists_group["itinerary"])
                         agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
 
-                        agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, is_departure_day_today= is_departureday, is_arrival_day_today= is_arrivalday, arr_dep_ts= arr_dep_ts, currently_on_travel_vacation= False, is_tourist= True)
+                        agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
+                                                                                                               agent, 
+                                                                                                               simday, 
+                                                                                                               wakeup_timestep, 
+                                                                                                               sleep_timestep, 
+                                                                                                               is_departure_day_today= is_departureday, 
+                                                                                                               is_arrival_day_today= is_arrivalday, 
+                                                                                                               arr_dep_ts= arr_dep_ts, 
+                                                                                                               currently_on_travel_vacation= False, 
+                                                                                                               is_tourist= True)
 
                         # just for debugging purposes
                         if temp_is_hospitalised or temp_is_quarantined:
@@ -1492,7 +1526,16 @@ class Itinerary:
 
                             agent, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
 
-                            agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, agent, simday, wakeup_timestep, sleep_timestep, is_departure_day_today= is_departureday, is_arrival_day_today= is_arrivalday, arr_dep_ts= arr_dep_ts, currently_on_travel_vacation= False, is_tourist= True)
+                            agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
+                                                                                                                   agent, 
+                                                                                                                   simday, 
+                                                                                                                   wakeup_timestep, 
+                                                                                                                   sleep_timestep, 
+                                                                                                                   is_departure_day_today= is_departureday, 
+                                                                                                                   is_arrival_day_today= is_arrivalday, 
+                                                                                                                   arr_dep_ts= arr_dep_ts, 
+                                                                                                                   currently_on_travel_vacation= False, 
+                                                                                                                   is_tourist= True)
 
                             # just for debugging purposes
                             if temp_is_hospitalised or temp_is_quarantined:
@@ -2047,7 +2090,7 @@ class Itinerary:
                     if not is_false_negative:
                         self.epi_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
 
-                        agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent= agent)
+                        is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent)
                 else:
                     false_positive_rand = random.random()
 
@@ -2058,9 +2101,7 @@ class Itinerary:
                     if is_false_positive:
                         self.epi_util.contact_tracing_agent_ids.add((agentid, start_ts))
 
-                        agent, is_quarantine_startday = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent)
-
-                        is_quarantine_startday = True
+                        is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent)
             elif day > test_result_day:
                 agent["test_result_day"] = []
 
@@ -2086,7 +2127,7 @@ class Itinerary:
                             hospitalisation_ts = arr_dep_ts
                     else:
                         # this would be the case where arrival is beyond midnight quarantine starts from previous day at 6am
-                        hospitalisation_days = [[start_day+1, 36], [end_day+1, 36]]
+                        hospitalisation_days = [start_day+1, 36, end_day+1]
                         agent = self.epi_util.schedule_hospitalisation(agent, hospitalisation_days)
                         cancel_itinerary_beyond_hospitalisation_ts = False
 

@@ -1,9 +1,9 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-from simulator import util
+import util
 import powerlaw
-import networkx as nx
+# import networkx as nx
 import collections
 import time
 import numpy as np
