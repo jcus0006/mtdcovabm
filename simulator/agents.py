@@ -36,7 +36,6 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
             agent["res_cellid"] = -1
             agent["work_cellid"] = -1
             agent["school_cellid"] = -1
-            agent["inst_cellid"] = -1
             # agent["symptomatic"] = False
             agent["tourist_id"] = None 
             agent["itinerary"] = {}
@@ -72,6 +71,36 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
 
     return agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count
 
+def initialize_agents_dict_dynamic(agents):
+    temp_agents = {}
+
+    for agentid, props in agents.items():
+        temp_agents[agentid] = {}
+
+        if len(props) > 0:
+            if "working_schedule" in props:
+                temp_agents[agentid]["working_schedule"] = props["working_schedule"]
+
+            temp_agents[agentid]["itinerary"] = props["itinerary"]
+            temp_agents[agentid]["itinerary_nextday"] = props["itinerary_nextday"]
+
+            if "non_daily_activity_recurring" in props:
+                temp_agents[agentid]["non_daily_activity_recurring"] = props["non_daily_activity_recurring"] 
+            
+            if "prevday_non_daily_activity_recurring" in props:
+                temp_agents[agentid]["prevday_non_daily_activity_recurring"] = props["prevday_non_daily_activity_recurring"]
+
+            temp_agents[agentid]["state_transition_by_day"] = props["state_transition_by_day"]
+            temp_agents[agentid]["test_day"] = props["test_day"]
+            temp_agents[agentid]["test_result_day"] = props["test_result_day"]
+            temp_agents[agentid]["hospitalisation_days"] = props["hospitalisation_days"]
+            temp_agents[agentid]["quarantine_days"] = props["quarantine_days"]
+
+            if "vaccination_days" in props:
+                temp_agents[agentid]["vaccination_days"] = props["vaccination_days"]
+
+    return temp_agents
+
 def initialize_shared_agents_dict_ct(manager, agents):
     shared_agents = manager.dict()
 
@@ -88,44 +117,8 @@ def initialize_agents_dict_it(agents):
         temp_agents[agentid] = {}
         
         if len(props) > 0:
-            temp_agents[agentid]["res_cellid"] = props["res_cellid"]
-
-            if "work_cellid" in props:
-                temp_agents[agentid]["work_cellid"] = props["work_cellid"]
-
-            if "school_cellid" in props:
-                temp_agents[agentid]["school_cellid"] = props["school_cellid"]
-
-            if "empstatus" in props:
-                temp_agents[agentid]["empstatus"] = props["empstatus"]
-
-            if "empind" in props:
-                temp_agents[agentid]["empind"] = props["empind"]
-
-            if "empftpt" in props:
-                temp_agents[agentid]["empftpt"] = props["empftpt"]
-
-            if "sc_student" in props:
-                temp_agents[agentid]["sc_student"] = props["sc_student"]
-
-            if "guardian_id" in props:
-                temp_agents[agentid]["guardian_id"] = props["guardian_id"]
-
-            temp_agents[agentid]["age_bracket_index"] = props["age_bracket_index"]
-
-            if "working_age_bracket_index" in props:
-                temp_agents[agentid]["working_age_bracket_index"] = props["working_age_bracket_index"]
-
-            temp_agents[agentid]["epi_age_bracket_index"] = props["epi_age_bracket_index"]
-
             if "working_schedule" in props:
                 temp_agents[agentid]["working_schedule"] = props["working_schedule"]
-
-            if "ent_activity" in props:
-                temp_agents[agentid]["ent_activity"] = props["ent_activity"]
-
-            if "isshiftbased" in props:
-                temp_agents[agentid]["isshiftbased"] = props["isshiftbased"]
 
             temp_agents[agentid]["state_transition_by_day"] = props["state_transition_by_day"]
 
@@ -135,8 +128,6 @@ def initialize_agents_dict_it(agents):
             if "prevday_non_daily_activity_recurring" in props:
                 temp_agents[agentid]["prevday_non_daily_activity_recurring"] = props["prevday_non_daily_activity_recurring"]
             
-            temp_agents[agentid]["soc_rate"] = props["soc_rate"]
-            temp_agents[agentid]["pub_transp_reg"] = props["pub_transp_reg"]
             temp_agents[agentid]["itinerary"] = props["itinerary"]
             temp_agents[agentid]["itinerary_nextday"] = props["itinerary_nextday"]
             temp_agents[agentid]["test_day"] = props["test_day"]
@@ -156,10 +147,6 @@ def initialize_agents_dict_cn(agents):
         temp_agents[agentid] = {}
         
         if len(props) > 0:
-            temp_agents[agentid]["res_cellid"] = props["res_cellid"]
-            temp_agents[agentid]["soc_rate"] = props["soc_rate"]
-            temp_agents[agentid]["age_bracket_index"] = props["age_bracket_index"]
-            temp_agents[agentid]["epi_age_bracket_index"] = props["epi_age_bracket_index"]
             temp_agents[agentid]["state_transition_by_day"] = props["state_transition_by_day"]
             temp_agents[agentid]["test_day"] = props["test_day"]
             temp_agents[agentid]["test_result_day"] = props["test_result_day"]
@@ -193,8 +180,7 @@ def initialize_agents_dict_ct(agents):
     #     temp_agents[agentid]["test_result_day"] = props["test_result_day"]
     #     temp_agents[agentid]["quarantine_days"] = props["quarantine_days"]        
 
-    temp_agents = {agentid: {"res_cellid": props["res_cellid"],
-                            "test_day": props["test_day"],
+    temp_agents = {agentid: {"test_day": props["test_day"],
                             "test_result_day": props["test_result_day"],
                             "quarantine_days": props["quarantine_days"]} for agentid, props in agents.items() if len(props) > 0}
 

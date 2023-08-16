@@ -116,6 +116,20 @@ def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_bra
 
     return agent, age, agents_ids_by_ages, agents_ids_by_agebrackets
 
+def set_age_brackets_tourists(age, agents_ids_by_ages, agent_uid, age_brackets, agents_ids_by_agebrackets):
+    agents_ids_by_ages[agent_uid] = age
+
+    age_bracket_index = -1
+    for i, ab in enumerate(age_brackets):
+        if age >= ab[0] and age <= ab[1]:
+            age_bracket_index = i
+            
+            agents_ids_by_agebrackets[i].append(agent_uid)
+
+            break
+
+    return age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets
+
 def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count):
     for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
         powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]

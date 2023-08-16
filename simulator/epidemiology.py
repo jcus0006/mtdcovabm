@@ -11,7 +11,8 @@ class Epidemiology:
                 n_locals, 
                 n_tourists, 
                 locals_ratio_to_full_pop, 
-                agents, 
+                agents_static,
+                agents_dynamic, 
                 vars_util,
                 cells_households, 
                 cells_institutions, 
@@ -61,7 +62,8 @@ class Epidemiology:
         self.dyn_params = dyn_params 
         # self.sync_queue = sync_queue    
 
-        self.agents = agents
+        self.agents_static = agents_static
+        self.agents_dynamic = agents_dynamic
         self.vars_util = vars_util
         self.agents_seir_state = vars_util.agents_seir_state
         self.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day
@@ -174,13 +176,13 @@ class Epidemiology:
                         exposed_agent_id = secondary_agent_id
                         # infectious_agent_id = primary_agent_id
 
-                    exposed_agent = self.agents[exposed_agent_id]
+                    exposed_agent = self.agents_dynamic[exposed_agent_id]
 
-                    agent_epi_age_bracket_index = exposed_agent["epi_age_bracket_index"]
+                    agent_epi_age_bracket_index = self.agents_static.get(exposed_agent_id, "epi_age_bracket_index")
 
                     susceptibility_multiplier = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SusceptibilityMultiplier][agent_epi_age_bracket_index]
                     
-                    infection_probability = self.convert_celltype_to_base_infection_prob(cellid, exposed_agent["res_cellid"], cell["type"])
+                    infection_probability = self.convert_celltype_to_base_infection_prob(cellid, self.agents_static.get(exposed_agent_id, "res_cellid"), cell["type"])
 
                     infection_multiplier = max(1, math.log(contact_duration)) # to check how this affects covasim base probs
 
@@ -424,7 +426,7 @@ class Epidemiology:
             if to_schedule_quarantine:
                 if quarantine_days is None:
                     if agent is None:
-                        quarantine_days = self.agents[agent_id]["quarantine_days"]
+                        quarantine_days = self.agents_dynamic[agent_id]["quarantine_days"]
                     else:
                         quarantine_days = agent["quarantine_days"]
 
@@ -455,7 +457,7 @@ class Epidemiology:
                     if agent is not None:
                         agent["quarantine_days"] = quarantine_days
                     else:
-                        self.agents[agent_id]["quarantine_days"] = quarantine_days
+                        self.agents_dynamic[agent_id]["quarantine_days"] = quarantine_days
 
                     quarantine_scheduled = True
 
@@ -565,7 +567,7 @@ class Epidemiology:
                                 positive_contact_agent = None
 
                                 if index in sampled_quarantine_indices and contact_id not in quarantine_scheduled_ids:
-                                    positive_contact_agent = self.agents[contact_id]
+                                    positive_contact_agent = self.agents_dynamic[contact_id]
 
                                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                     quarantine_scheduled, quar_days = self.schedule_quarantine(contact_id, day, sampled_timestep, QuarantineType.PositiveContact, agent=positive_contact_agent)
@@ -578,7 +580,7 @@ class Epidemiology:
 
                                 if index in sampled_test_indices and contact_id not in test_scheduled_ids:
                                     if positive_contact_agent is None:
-                                        positive_contact_agent = self.agents[contact_id]
+                                        positive_contact_agent = self.agents_dynamic[contact_id]
 
                                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                     test_scheduled, _, _ = self.schedule_test(positive_contact_agent, contact_id, day, sampled_timestep, QuarantineType.PositiveContact)
@@ -590,7 +592,7 @@ class Epidemiology:
 
                                 if simcelltype != "residence" and positive_contact_agent is not None: # compute secondary contacts (i.e. residential), only applicable if simcelltype not already residential
                                     # res_cell_id = self.agents_mp.get(positive_contact_agent_id, "res_cellid")
-                                    res_cell_id = positive_contact_agent["res_cellid"]
+                                    res_cell_id = self.agents_static.get(contact_id, "res_cellid")
 
                                     residence = None
 
@@ -660,7 +662,7 @@ class Epidemiology:
                                                 secondary_contact_agent = None
 
                                                 if sec_index in sampled_sec_quarantine_indices and sec_contact_id not in quarantine_scheduled_ids:
-                                                    secondary_contact_agent = self.agents[sec_contact_id]
+                                                    secondary_contact_agent = self.agents_dynamic[sec_contact_id]
 
                                                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                                     quarantine_scheduled, quar_days = self.schedule_quarantine(sec_contact_id, quar_start_day, quar_start_timestep, QuarantineType.SecondaryContact, quar_end_day, agent=secondary_contact_agent)
@@ -675,7 +677,7 @@ class Epidemiology:
 
                                                 if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids:
                                                     if secondary_contact_agent is None:
-                                                        secondary_contact_agent = self.agents[sec_contact_id]
+                                                        secondary_contact_agent = self.agents_dynamic[sec_contact_id]
 
                                                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                                     test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, sec_contact_id, day, sampled_timestep, QuarantineType.SecondaryContact)
@@ -685,7 +687,7 @@ class Epidemiology:
 
                                                         updated_agent_ids.add(sec_contact_id)
 
-        return self.process_index, updated_agent_ids, self.agents, self.vars_util
+        return self.process_index, updated_agent_ids, self.agents_dynamic, self.vars_util
     
     # currently handling not vaccinated / vaccinated, but can also handle first/second dose in a similar manner
     def schedule_vaccinations(self, day):
@@ -728,7 +730,7 @@ class Epidemiology:
                     sampled_to_vaccinate_indices = np.random.choice(not_vaccinated_indices, size=num_vaccinations_today, replace=False)
 
                 for agentid in sampled_to_vaccinate_indices:
-                    agent = self.agents[agentid]
+                    agent = self.agents_dynamic[agentid]
                     agent_vaccination_days = agent["vaccination_days"]
                     agent_vaccination_doses = self.agents_vaccination_doses[agentid]
 

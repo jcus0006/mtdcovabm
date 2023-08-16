@@ -15,7 +15,7 @@ def contactnetwork_parallel(manager,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop, 
-                            cn_agents,
+                            agents_dynamic,
                             vars_util,
                             cells,
                             cells_households, 
@@ -70,7 +70,7 @@ def contactnetwork_parallel(manager,
 
             unique_agent_ids = list(unique_agent_ids)
 
-            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, cn_agents, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
+            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, agents_dynamic, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
 
             vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
@@ -142,7 +142,7 @@ def contactnetwork_parallel(manager,
             # print(working_schedule_times_by_resid_ordered)
             # print(itinerary_times_by_resid_ordered)
 
-            cn_agents, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, cn_agents, vars_util, agents_partial, vars_util_partial)
+            agents_dynamic, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
 
             vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
 
@@ -163,11 +163,13 @@ def contactnetwork_parallel(manager,
             time_taken = time.time() - start
             print("pool join time taken " + str(time_taken))
     else:
-        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, cn_agents, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name
+        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name
 
         contactnetwork_worker(params)
 
 def contactnetwork_worker(params):
+    from shared_mp import agents_static
+
     # still to see how to handle (whether mp.Array or local in process and then sync with main memory)
     # in the case of Agents, these are purely read only however, 
     #  - using mp.dict will introduce speed degradation from locking, 
@@ -184,7 +186,7 @@ def contactnetwork_worker(params):
         start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
+        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
 
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(process_index) + ".txt"
@@ -197,7 +199,8 @@ def contactnetwork_worker(params):
         contact_network_util = contactnetwork.ContactNetwork(n_locals, 
                                                             n_tourists, 
                                                             locals_ratio_to_full_pop, 
-                                                            agents,
+                                                            agents_static,
+                                                            agents_dynamic,
                                                             vars_util,
                                                             cells, 
                                                             cells_households, 

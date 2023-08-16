@@ -2,17 +2,17 @@ import sys
 import os
 import json
 import numpy as np
-import math
 import time
 import matplotlib.pyplot as plt
-import random
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars
+import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars, static, shared_mp
 import agents as agents_util
 from dynamicparams import DynamicParams
 import multiprocessing as mp
+from memory_profiler import profile
 
+# @profile
 def main():
     params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
@@ -39,7 +39,7 @@ def main():
                 "itinerary_normal_weight": 1,
                 "itinerary_worker_student_weight": 1.12,
                 "logsubfoldername": "logs",
-                "logfilename": "memoryoptimisations2.txt"
+                "logfilename": "sharedrawarray.txt"
             }
     
     original_stdout = sys.stdout
@@ -104,7 +104,7 @@ def main():
         population_sub_folder = params["popsubfolder"]
 
     # load agents and all relevant JSON files on each node
-    agents = {}
+    agents_dynamic = {}
     agents_ids_by_ages = {}
     agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
 
@@ -327,7 +327,7 @@ def main():
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
+        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
 
         # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
@@ -358,13 +358,20 @@ def main():
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
+    agents_static = static.Static()
+    agents_static.populate(agents, n_locals, n_tourists)
+
+    agents_dynamic = agents_util.initialize_agents_dict_dynamic(agents)
+
     vars_util = vars.Vars()
     vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
-    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
+
+    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
     try:
         manager = mp.Manager()
-        pool = mp.Pool(processes=params["numprocesses"])
+        # pool = mp.Pool(processes=params["numprocesses"])
+        pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -390,8 +397,9 @@ def main():
                                                     params["timestepmins"], 
                                                     n_locals, 
                                                     n_tourists,
-                                                    locals_ratio_to_full_pop, 
-                                                    agents,
+                                                    locals_ratio_to_full_pop,
+                                                    agents_static,
+                                                    agents_dynamic,
                                                     agents_ids_by_ages,
                                                     tourists, 
                                                     vars_util,
@@ -415,7 +423,7 @@ def main():
                 
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
-                agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+                agents_dynamic, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
                 
                 itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
                 
@@ -432,17 +440,17 @@ def main():
 
             # partialising agents for multiprocessing
             start = time.time()
-            it_agents = agents_util.initialize_agents_dict_it(agents)
+            it_agents = agents_util.initialize_agents_dict_it(agents_dynamic)
             time_taken = time.time() - start
             print("initialize_agents_dict_it, time_taken: " + str(time_taken))
 
             start = time.time()
-            cn_agents = agents_util.initialize_agents_dict_cn(agents)
+            cn_agents = agents_util.initialize_agents_dict_cn(agents_dynamic)
             time_taken = time.time() - start
             print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
 
             start = time.time()
-            ct_agents = agents_util.initialize_agents_dict_ct(agents)
+            ct_agents = agents_util.initialize_agents_dict_ct(agents_dynamic)
             time_taken = time.time() - start
             print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
 
@@ -557,7 +565,7 @@ def main():
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))

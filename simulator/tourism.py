@@ -3,7 +3,7 @@ from copy import copy
 import util, seirstateutil
 
 class Tourism:
-    def __init__(self, tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
+    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -23,7 +23,8 @@ class Tourism:
         self.cells = cells
         self.n_locals = n_locals
         self.tourists = tourists
-        self.agents = agents
+        self.agents_static = agents_static
+        self.agents_dynamic = agents_dynamic
         self.agents_seir_state = agents_seir_state
         self.touristsgroupsdays = touristsgroupsdays
         self.touristsgroups = touristsgroups
@@ -85,7 +86,7 @@ class Tourism:
         if len(tourist_groupids_by_nextday):
             self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday)
         
-        return self.agents, self.tourists, self.cells, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
+        return self.agents_dynamic, self.tourists, self.cells, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
     def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures):
         for tour_group_id in tourist_groupids:
@@ -166,13 +167,19 @@ class Tourism:
 
                             epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                            new_agent = self.agents[new_agent_id]
+                            new_agent = self.agents_dynamic[new_agent_id]
 
-                            new_agent = { "touristid": tourist_id, "age": tourist["age"], "curr_cellid": cellindex, "res_cellid": cellindex, "state_transition_by_day": [], "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "itinerary": {}, "itinerary_nextday": {}, "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
+                            new_agent = { "touristid": tourist_id, "state_transition_by_day": [], "itinerary": {}, "itinerary_nextday": {}, "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
 
-                            new_agent, _, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(new_agent, agents_ids_by_ages, new_agent_id, self.age_brackets, None, agents_ids_by_agebrackets, set_working_age_bracket=False)
+                            age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
 
-                            self.agents[new_agent_id] = new_agent
+                            self.agents_dynamic[new_agent_id] = new_agent
+
+                            self.agents_static.set(new_agent_id, "age", tourist["age"])
+                            self.agents_static.set(new_agent_id, "res_cellid", cellindex)
+                            self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
+                            self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
+                            self.agents_static.set(new_agent_id, "pub_transp_reg", True)
 
                             new_agents[new_agent_id] = new_agent
 
@@ -202,7 +209,7 @@ class Tourism:
                     # self.num_active_tourists += num_tourists_in_group
 
     def get_next_available_agent_id(self):
-        if not self.agents:
+        if not self.agents_static:
             return 0
         else:
-            return max(self.agents.keys()) + 1
+            return max(self.agents_static.keys()) + 1

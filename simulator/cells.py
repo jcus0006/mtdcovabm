@@ -85,7 +85,7 @@ class Cells:
     # industries_by_indid (indid) -> workplaces_by_wpid (wpid) -> cells_by_cellid (cellid) -> dict with member_uids key/value pair
     # workplaces are split into cells of max size < max_members: cellsize * (1 - cellsizespare)
     # cells are split by an algorithm that ensures that cell sizes are balanced; at the same time as close to max_members as possible
-    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccination_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_activity_dist):
+    def split_workplaces_by_cellsize(self, workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccination_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_activity_dist, itinerary_params):
         industries_by_indid = {}
         workplacescells = {}
         restaurantcells = {}
@@ -161,6 +161,9 @@ class Cells:
 
         activity_options = [activity_dist[0] for activity_dist in entertainment_activity_dist]
         activity_weights = [activity_dist[1] for activity_dist in entertainment_activity_dist]
+
+        activities_working_hours = itinerary_params["activities_workplaces_working_hours_overrides"]
+        industries_working_hours = itinerary_params["industries_working_hours"]
 
         hospital_id = 0
 
@@ -280,6 +283,7 @@ class Cells:
                             vaccinationhubcells[self.cellindex] = self.cells[self.cellindex]
 
                     sampled_activity = -1
+                    working_hours = None
                     if is_entertainment:
                         sampled_activity = np.random.choice(activity_options, 1, p=activity_weights)[0]
 
@@ -294,6 +298,14 @@ class Cells:
 
                         entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
 
+                        activity_working_hours_overrides = activities_working_hours[sampled_activity - 1]
+                        working_hours = activity_working_hours_overrides[4]
+                    else:
+                        industry_working_hours_by_ind = industries_working_hours[indid - 1]
+                        working_hours = industry_working_hours_by_ind[6]
+
+                    isshiftbased = working_hours == 24
+                    
                     if is_airport:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
@@ -309,6 +321,7 @@ class Cells:
                             agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                             agent["work_cellid"] = self.cellindex
                             agent["ent_activity"] = sampled_activity
+                            agent["isshiftbased"] = isshiftbased
 
                     self.cellindex += 1
                 else:
@@ -385,6 +398,7 @@ class Cells:
                                 vaccinationhubcells[self.cellindex] = self.cells[self.cellindex]
 
                         sampled_activity = -1
+                        working_hours = None
                         if is_entertainment:
                             sampled_activity = np.random.choice(activity_options, 1, p=activity_weights)[0]
 
@@ -398,6 +412,14 @@ class Cells:
                             entertainmentcells_by_activity = entertainmentcells[sampled_activity]
 
                             entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
+
+                            activity_working_hours_overrides = activities_working_hours[sampled_activity - 1]
+                            working_hours = activity_working_hours_overrides[4]
+                        else:
+                            industry_working_hours_by_ind = industries_working_hours[indid - 1]
+                            working_hours = industry_working_hours_by_ind[6]
+
+                        isshiftbased = working_hours == 24
 
                         if is_airport:
                             cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
@@ -414,6 +436,7 @@ class Cells:
                                 agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
                                 agent["work_cellid"] = self.cellindex
                                 agent["ent_activity"] = sampled_activity
+                                agent["isshiftbased"] = isshiftbased
                         
                         self.cellindex += 1
 
@@ -576,13 +599,12 @@ class Cells:
                 if len(self.agents) > 0:
                     for uid in residents:
                         agent = self.agents[uid]
-                        agent["inst_cellid"] = self.cellindex
                         agent["res_cellid"] = self.cellindex
                         agent["curr_cellid"] = self.cellindex
 
                     for uid in staff:
                         agent = self.agents[uid]
-                        agent["inst_cellid"] = self.cellindex
+                        agent["work_cellid"] = self.cellindex
 
                 self.cellindex += 1
             else:
@@ -626,13 +648,12 @@ class Cells:
                     if len(self.agents) > 0:
                         for uid in temp_residents:
                             agent = self.agents[uid]
-                            agent["inst_cellid"] = self.cellindex
                             agent["res_cellid"] = self.cellindex
                             agent["curr_cellid"] = self.cellindex
 
                         for uid in temp_staff:
                             agent = self.agents[uid]
-                            agent["inst_cellid"] = self.cellindex
+                            agent["work_cellid"] = self.cellindex
 
                     self.cellindex += 1
             

@@ -127,6 +127,8 @@ def contacttracing_parallel(manager,
         contacttracing_worker(params)
 
 def contacttracing_worker(params):
+    from shared_mp import agents_static
+
     original_stdout = None
     f = None
     stack_trace_log_file_name = ""
@@ -146,16 +148,17 @@ def contacttracing_worker(params):
         print("process " + str(process_index) + " started at " + str(start))
 
         epidemiology_util = Epidemiology(epidemiologyparams, 
-                                            n_locals,
-                                            n_tourists,
-                                            locals_ratio_to_full_pop,
-                                            agents,
-                                            vars_util,
-                                            cells_households,
-                                            cells_institutions,
-                                            cells_accommodation,
-                                            dyn_params,
-                                            process_index)
+                                        n_locals,
+                                        n_tourists,
+                                        locals_ratio_to_full_pop,
+                                        agents_static,
+                                        agents,
+                                        vars_util,
+                                        cells_households,
+                                        cells_institutions,
+                                        cells_accommodation,
+                                        dyn_params,
+                                        process_index)
 
         process_index, updated_agent_ids, agents_partial, vars_util = epidemiology_util.contact_tracing(day)
         
