@@ -1528,7 +1528,7 @@ class Itinerary:
 
                             agent_quar_hosp = agents_quar_hosp[tourist["agentid"]]
 
-                            agent, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
+                            agent, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp, tourist["agentid"])
 
                             agent, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
                                                                                                                    agent, 
@@ -1556,12 +1556,15 @@ class Itinerary:
                                 tourists_group["itinerary"] = copy(agent["itinerary"])
                                 tourists_group["itinerary_nextday"] = copy(agent["itinerary_nextday"])
 
-    def handle_tourism_itinerary(self, day, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp):
+    def handle_tourism_itinerary(self, day, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp, agentid = -1):
         res_cell_id = -1 # this will be updated later when calling self.update_cell_agents_timesteps
         # if "res_cellid" in agent_group:
         #     res_cell_id = agent_group["res_cellid"]
 
-        age_bracket_index = agent_group["age_bracket_index"]
+        if is_group_activity_for_day:
+            age_bracket_index = agent_group["age_bracket_index"]
+        else:
+            age_bracket_index = self.agents_static.get(agentid, "age_bracket_index")
 
         checkin_timestep, next_day_checkin_timestep, wakeup_timestep, sleep_timestep  = None, None, None, None
         start_ts, end_ts, breakfast_ts, wakeup_ts, sleep_ts, overnight_sleep_ts = None, None, None, None, None, None

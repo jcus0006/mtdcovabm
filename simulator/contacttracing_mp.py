@@ -5,7 +5,6 @@ import time
 import traceback
 import util, vars
 from epidemiology import Epidemiology
-import agents as agents_util
 
 def contacttracing_parallel(manager,
                             pool,
@@ -37,13 +36,13 @@ def contacttracing_parallel(manager,
         time_taken = time.time() - start
         print("splitting contact_tracing_agent_ids, time_taken: " + str(time_taken))
 
-        start = time.time()
-        directcontacts_by_simcelltype_by_day_list = list(vars_util.directcontacts_by_simcelltype_by_day)
-        directcontacts_by_simcelltype_by_day_indices = [i for i, _ in enumerate(directcontacts_by_simcelltype_by_day_list)]
-        np.random.shuffle(directcontacts_by_simcelltype_by_day_indices)
-        mp_directcontacts_by_simcelltype_by_day_indices = np.array_split(directcontacts_by_simcelltype_by_day_indices, num_processes)
-        time_taken = time.time() - start
-        print("splitting directcontacts_by_simcelltype_by_day, time_taken: " + str(time_taken))
+        # start = time.time()
+        # directcontacts_by_simcelltype_by_day_list = list(vars_util.directcontacts_by_simcelltype_by_day)
+        # directcontacts_by_simcelltype_by_day_indices = [i for i, _ in enumerate(directcontacts_by_simcelltype_by_day_list)]
+        # np.random.shuffle(directcontacts_by_simcelltype_by_day_indices)
+        # mp_directcontacts_by_simcelltype_by_day_indices = np.array_split(directcontacts_by_simcelltype_by_day_indices, num_processes)
+        # time_taken = time.time() - start
+        # print("splitting directcontacts_by_simcelltype_by_day, time_taken: " + str(time_taken))
 
         imap_params, imap_results = [], []
 
@@ -52,7 +51,7 @@ def contacttracing_parallel(manager,
             vars_util_partial = vars.Vars()
             
             proc_contacttracingagentids_indices = mp_contacttracingagentids_indices[process_index]
-            proc_directcontact_by_simcelltype_by_day_indices = mp_directcontacts_by_simcelltype_by_day_indices[process_index]
+            # proc_directcontact_by_simcelltype_by_day_indices = mp_directcontacts_by_simcelltype_by_day_indices[process_index]
 
             start = time.time()
             vars_util_partial.contact_tracing_agent_ids = set([contact_tracing_agent_ids_list[index] for index in proc_contacttracingagentids_indices]) # simply to retain type
@@ -61,7 +60,10 @@ def contacttracing_parallel(manager,
 
             if len(vars_util_partial.contact_tracing_agent_ids) > 0:
                 start = time.time()
-                vars_util_partial.directcontacts_by_simcelltype_by_day = set([directcontacts_by_simcelltype_by_day_list[index] for index in proc_directcontact_by_simcelltype_by_day_indices]) # simply to retain type
+                vars_util_partial.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day
+                vars_util_partial.dc_by_sct_by_day_agent1_index = sorted(vars_util.dc_by_sct_by_day_agent1_index, key=lambda x: x[0])
+                vars_util_partial.dc_by_sct_by_day_agent2_index = sorted(vars_util.dc_by_sct_by_day_agent2_index, key=lambda x: x[0])
+                # vars_util_partial.directcontacts_by_simcelltype_by_day = set([directcontacts_by_simcelltype_by_day_list[index] for index in proc_directcontact_by_simcelltype_by_day_indices]) # simply to retain type
                 time_taken = time.time() - start
                 print("partialising directcontacts_by_simcelltype_by_day, process: " + str(process_index) + ", time taken: " + str(time_taken))
 

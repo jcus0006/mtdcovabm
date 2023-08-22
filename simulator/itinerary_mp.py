@@ -10,7 +10,6 @@ import itinerary, vars
 import time
 import util
 from copy import copy, deepcopy
-import agents as agents_util
 
 def localitinerary_parallel(manager,
                             pool,

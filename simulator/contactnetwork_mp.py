@@ -6,7 +6,6 @@ import numpy as np
 import traceback
 import contactnetwork, util, vars
 import time
-import agents as agents_util
 
 def contactnetwork_parallel(manager,
                             pool,

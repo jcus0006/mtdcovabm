@@ -1,7 +1,9 @@
 class Vars:
     def __init__(self) -> None:
         self.cells_agents_timesteps = {} # cellid: [[agentid, starttimestep, endtimestep]] - IT
-        self.directcontacts_by_simcelltype_by_day = set() # (day, simcelltype, agent1_id, agent2_id, start_ts, end_ts) - CN for Contact tracing
+        self.directcontacts_by_simcelltype_by_day = [] # [day, simcelltype, agent1_id, agent2_id, start_ts, end_ts] - CN for Contact tracing (was set)
+        self.dc_by_sct_by_day_agent1_index = [] # [agent1id, index_in_directcontacts_by_simcelltype_by_day]
+        self.dc_by_sct_by_day_agent2_index = [] # [agent2id, index_in_directcontacts_by_simcelltype_by_day]
         self.contact_tracing_agent_ids = set() # (agentid, start_timestep) - CN for Contact tracing
 
         # transmission model
@@ -29,7 +31,7 @@ class Vars:
 
     def update(self, name, value, index=None):
         if name == "directcontacts_by_simcelltype_by_day":
-            self.directcontacts_by_simcelltype_by_day.add(value)
+            self.directcontacts_by_simcelltype_by_day.append(value)
         elif name == "contact_tracing_agent_ids":
             self.contact_tracing_agent_ids.add(value)
         elif name == "agents_seir_state":

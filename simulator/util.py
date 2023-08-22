@@ -241,6 +241,25 @@ def get_all_contacts_ids_by_id(id, agents_contacts_keys, agents_ids = None, agen
 
     return contacts_ids
 
+def filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_info_arr, traced_ts, min_ts, max_ts, shuffle=False):
+    if max_ts is None:
+        max_ts = traced_ts # when contact tracing is done, start from that timestep until 0
+    
+    if min_ts is None:
+        min_ts = traced_ts # when contact tracing is traced for e.g. 24 hours, trace until the same timestep on X prev days
+
+    contact_tracing_info_by_simcelltype = {}
+
+    for agent, simcelltype, start_time in contact_tracing_info_arr:
+        if min_ts <= start_time <= max_ts:
+            if simcelltype not in contact_tracing_info_by_simcelltype:
+                contact_tracing_info_by_simcelltype[simcelltype] = []
+
+            contact_tracing_info_by_simcelltype[simcelltype].append(agent)        
+
+    return contact_tracing_info_by_simcelltype
+
+
 def get_all_contacts_ids_by_id_and_timesteprange(id, agents_contacts_keys_set, traced_ts, min_ts, max_ts, shuffle=False):
     if max_ts is None:
         max_ts = traced_ts # when contact tracing is done, start from that timestep until 0
@@ -260,7 +279,7 @@ def get_all_contacts_ids_by_id_and_timesteprange(id, agents_contacts_keys_set, t
     # contacts_ids = [pairid[1] if pairid[0] == id else pairid[0] for pairid, (st_ts, _) in agents_contacts_keys_set if (id in pairid and (st_ts >= min_ts) and (st_ts <= max_ts))]
 
     contacts_ids = {agent2 if agent1 == id else agent1
-                    for (agent1, agent2), (start_time, _) in agents_contacts_keys_set
+                    for (agent1, agent2), (_, start_time, _) in agents_contacts_keys_set
                     if (agent1 == id or agent2 == id) and min_ts <= start_time <= max_ts}
             
     if len(contacts_ids) == 0:
@@ -352,7 +371,13 @@ def sync_state_info_sets(vars_util, vars_util_partial):
         vars_util.contact_tracing_agent_ids.update(vars_util_partial.contact_tracing_agent_ids)
 
     if len(vars_util_partial.directcontacts_by_simcelltype_by_day) > 0:
-        vars_util.directcontacts_by_simcelltype_by_day.update(vars_util_partial.directcontacts_by_simcelltype_by_day)
+        current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+        vars_util.directcontacts_by_simcelltype_by_day.extend(vars_util_partial.directcontacts_by_simcelltype_by_day)
+
+        for index, dc in enumerate(vars_util_partial.directcontacts_by_simcelltype_by_day):
+            new_index = current_index + index
+            vars_util.dc_by_sct_by_day_agent1_index.append([dc[2], new_index])
+            vars_util.dc_by_sct_by_day_agent2_index.append([dc[3], new_index])
 
     return vars_util
 
@@ -402,61 +427,87 @@ def split_cellsagentstimesteps_balanced(cells_agents_timesteps, num_dicts):
 
     return partitions
 
+def binary_search_2d_all_indices(arr, target, col_index=0):
+    indices = []
+    left, right = 0, len(arr) - 1
+
+    while left <= right:
+        mid = left + (right - left) // 2
+
+        if arr[mid][col_index] == target:
+            indices.append(mid)
+            # Search to the left of mid
+            i = mid - 1
+            while i >= 0 and arr[i][col_index] == target:
+                indices.append(i)
+                i -= 1
+            # Search to the right of mid
+            i = mid + 1
+            while i < len(arr) and arr[i][col_index] == target:
+                indices.append(i)
+                i += 1
+            return indices
+        elif arr[mid][col_index] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+
+    return indices  # Empty list if no matches found
+
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
-# instead another version will be used to simply split the directcontacts_by_simcelltype_by_day as balanced as possible across the processes
-def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
-    agents_partial = {}
-    dc_by_simcelltype_by_day_partial = set()
+# def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
+#     agents_partial = {}
+#     dc_by_simcelltype_by_day_partial = set()
 
-    for agent_id, _ in agentids:
-        temp_dc_by_simcelltype_by_day = {dc for dc in directcontacts_by_simcelltype_by_day if agent_id == dc[2] or agent_id == dc[3]}
+#     for agent_id, _ in agentids:
+#         temp_dc_by_simcelltype_by_day = {dc for dc in directcontacts_by_simcelltype_by_day if agent_id == dc[2] or agent_id == dc[3]}
 
-        dc_by_simcelltype_by_day_partial.update(temp_dc_by_simcelltype_by_day)
+#         dc_by_simcelltype_by_day_partial.update(temp_dc_by_simcelltype_by_day)
 
-        for props in temp_dc_by_simcelltype_by_day:
-            agentid_to_add = props[3] if agent_id == props[2] else props[2]
-            agents_partial[agentid_to_add] = agents[agentid_to_add]
+#         for props in temp_dc_by_simcelltype_by_day:
+#             agentid_to_add = props[3] if agent_id == props[2] else props[2]
+#             agents_partial[agentid_to_add] = agents[agentid_to_add]
 
-            res_cell_id =  agents_partial[agentid_to_add]["res_cellid"]
+#             res_cell_id =  agents_partial[agentid_to_add]["res_cellid"]
 
-            residence = None
+#             residence = None
 
-            residents_key = ""
-            staff_key = ""
+#             residents_key = ""
+#             staff_key = ""
 
-            if res_cell_id in cells_households:
-                residents_key = "resident_uids"
-                staff_key = "staff_uids"
-                residence = cells_households[res_cell_id] # res_cell_id
-            elif res_cell_id in cells_institutions:
-                residents_key = "resident_uids"
-                staff_key = "staff_uids"
-                residence = cells_institutions[res_cell_id]["place"] # res_cell_id 
-            elif res_cell_id in cells_accommodation:
-                residents_key = "member_uids"
-                residence = cells_accommodation[res_cell_id]["place"] # res_cell_id
+#             if res_cell_id in cells_households:
+#                 residents_key = "resident_uids"
+#                 staff_key = "staff_uids"
+#                 residence = cells_households[res_cell_id] # res_cell_id
+#             elif res_cell_id in cells_institutions:
+#                 residents_key = "resident_uids"
+#                 staff_key = "staff_uids"
+#                 residence = cells_institutions[res_cell_id]["place"] # res_cell_id 
+#             elif res_cell_id in cells_accommodation:
+#                 residents_key = "member_uids"
+#                 residence = cells_accommodation[res_cell_id]["place"] # res_cell_id
 
-            if residence is not None:
-                resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
-                contact_id_index = np.argwhere(resident_ids == agentid_to_add)
-                resident_ids = np.delete(resident_ids, contact_id_index)
+#             if residence is not None:
+#                 resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
+#                 contact_id_index = np.argwhere(resident_ids == agentid_to_add)
+#                 resident_ids = np.delete(resident_ids, contact_id_index)
 
-                employees_ids = []
+#                 employees_ids = []
 
-                if staff_key != "":
-                    employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
+#                 if staff_key != "":
+#                     employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
 
-                secondary_contact_ids = []
-                if employees_ids is None or len(employees_ids) == 0:
-                    secondary_contact_ids = resident_ids
-                else:
-                    try:
-                        secondary_contact_ids = np.concatenate((resident_ids, employees_ids))
-                    except Exception as e:
-                        print("problemos: " + e)
+#                 secondary_contact_ids = []
+#                 if employees_ids is None or len(employees_ids) == 0:
+#                     secondary_contact_ids = resident_ids
+#                 else:
+#                     try:
+#                         secondary_contact_ids = np.concatenate((resident_ids, employees_ids))
+#                     except Exception as e:
+#                         print("problemos: " + e)
 
-                if secondary_contact_ids is not None and len(secondary_contact_ids) > 0:
-                    for sec_agent_id in secondary_contact_ids:
-                        agents_partial[sec_agent_id] = agents[sec_agent_id]
+#                 if secondary_contact_ids is not None and len(secondary_contact_ids) > 0:
+#                     for sec_agent_id in secondary_contact_ids:
+#                         agents_partial[sec_agent_id] = agents[sec_agent_id]
 
-    return agents_partial, dc_by_simcelltype_by_day_partial
+#     return agents_partial, dc_by_simcelltype_by_day_partial
