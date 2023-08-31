@@ -2,7 +2,8 @@ import time
 import traceback
 import numpy as np
 import dask
-from dask.distributed import Client, LocalCluster, as_completed
+from dask.distributed import Client, as_completed, SSHCluster
+from dask_kubernetes.operator import KubeCluster
 
 def calculate_row_sum_map(matrix, start_row, end_row, process_index):
     start = time.time()
@@ -32,29 +33,30 @@ def worker_map(params):
 
         return calculate_row_sum_map(matrix, start_row, end_row, process_index)
     except:
-        with open("testdask.txt", 'w') as f:
+        with open("testdaskkubernetes_worker.txt", 'w') as f:
             traceback.print_exc(file=f)
 
 if __name__ == '__main__':
-    start = time.time()
+    # start = time.time()
+    num_processes = 6
     dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest)
     num_rows = 16384
     int_range = 10
-    num_processes = 10
 
-    matrix = np.random.randint(0, int_range, size=(num_rows, num_rows))
-    rows_per_process = num_rows // num_processes
+    cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P
+                        connect_options={"known_hosts": None},
+                        worker_options={"n_workers": num_processes},
+                        scheduler_options={"port": 0, "dashboard_address": ":8797"})
 
-    with LocalCluster(n_workers=num_processes,
-        processes=True,
-        threads_per_worker=1
-    ) as cluster, Client(cluster) as client:
-        # cluster_start = time.time()
-        # # Create a local cluster with num_processes workers
-        # cluster = LocalCluster(n_workers= num_processes)
-        # client = Client(cluster
-        # cluster_time_taken = time.time() - cluster_start
-        # print("create cluster " + str(cluster_time_taken))
+    # cluster = KubeCluster(name="my-dask-cluster", image='ghcr.io/dask/dask:2023.8.1-py3.11') # ghcr.io/dask/dask:2023.8.1-py3.11 // ghcr.io/dask/dask:latest
+    # cluster.scale(num_processes)
+
+    client = Client(cluster)
+
+    try:
+        start = time.time()
+        matrix = np.random.randint(0, int_range, size=(num_rows, num_rows))
+        rows_per_process = num_rows // num_processes
 
         params_start = time.time()
         params = []
@@ -128,3 +130,8 @@ if __name__ == '__main__':
 
         time_taken = time.time() - start
         print("all " + str(time_taken))
+    except:
+        with open("testdaskkubernetes_master.txt", 'w') as f:
+            traceback.print_exc(file=f)
+    finally:
+        client.shutdown()
