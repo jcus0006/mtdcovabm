@@ -434,7 +434,8 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
     while left <= right:
         mid = left + (right - left) // 2
 
-        if arr[mid][col_index] == target:
+        mid_value = arr[mid][col_index]
+        if mid_value == target:
             indices.append(mid)
             # Search to the left of mid
             i = mid - 1
@@ -447,7 +448,7 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
                 indices.append(i)
                 i += 1
             return indices
-        elif arr[mid][col_index] < target:
+        elif mid_value < target:
             left = mid + 1
         else:
             right = mid - 1

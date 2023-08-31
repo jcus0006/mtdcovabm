@@ -38,7 +38,7 @@ def main():
                 "itinerary_normal_weight": 1,
                 "itinerary_worker_student_weight": 1.12,
                 "logsubfoldername": "logs",
-                "logfilename": "newcontacttracing1proc.txt"
+                "logfilename": "output.txt"
             }
     
     original_stdout = sys.stdout
@@ -536,6 +536,9 @@ def main():
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
+                vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
+                vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[1],reverse=False)
+
                 epi_util = epidemiology.Epidemiology(epidemiologyparams, 
                                                     n_locals, 
                                                     n_tourists, 
@@ -547,7 +550,8 @@ def main():
                                                     cells_institutions, 
                                                     cells_accommodation, 
                                                     dyn_params)
-                epi_util.contact_tracing(day)
+                
+                process_index, updated_agent_ids, agents_dynamic, vars_util = epi_util.contact_tracing(day)
 
                 # contacttracing_mp.contacttracing_parallel(manager, 
                 #                                         pool, 
@@ -574,7 +578,7 @@ def main():
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                # epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))

@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import random
+import time
 from copy import copy
 import util
 from enum import IntEnum
@@ -516,6 +517,10 @@ class Epidemiology:
             quarantine_scheduled_ids = []
             test_scheduled_ids = []
 
+            # for the time being, when running for just 1 day, I am not filtering on days, 
+            # self.contact_tracing_days_back would be 1, 1 + 1 = 2, which means it will do all the work twice
+            # to fix this issue must make sure that the indexes, and the data is cleaned up before it gets to here, such that no loops on days are required
+            self.contact_tracing_days_back = 0 # set to 0 to make sure the work is done once only, for now
             for daybackindex in range(self.contact_tracing_days_back + 1): # assume minimum is 1 + 1, i.e. 2 iterations, i.e. 24 hours
                 dayback = day - daybackindex
 
@@ -532,9 +537,19 @@ class Epidemiology:
                     trace_back_min_ts = None
 
                 for agent_id, traced_timestep in self.contact_tracing_agent_ids:
-                    dc_by_sct_by_day_agent1_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent1_index, agent_id)
-                    dc_by_sct_by_day_agent2_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent2_index, agent_id)
+                    print("agent_id " + str(agent_id) + ", traced_timestep: " + str(traced_timestep))
 
+                    # start = time.time()
+                    dc_by_sct_by_day_agent1_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent1_index, agent_id, col_index=0)
+                    # time_taken = time.time() - start
+                    # print("agent1 binary search: " + str(time_taken))
+
+                    # start = time.time()
+                    dc_by_sct_by_day_agent2_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent2_index, agent_id, col_index=1)
+                    # time_taken = time.time() - start
+                    # print("agent2 binary search: " + str(time_taken))
+
+                    # start = time.time()
                     agent1_indices = [self.vars_util.dc_by_sct_by_day_agent1_index[idx][1] for idx in dc_by_sct_by_day_agent1_indices]
                     agent2_indices = [self.vars_util.dc_by_sct_by_day_agent2_index[idx][1] for idx in dc_by_sct_by_day_agent2_indices]
 
@@ -542,15 +557,22 @@ class Epidemiology:
                     for idx in agent1_indices:
                         params = self.directcontacts_by_simcelltype_by_day[idx]
 
-                        contact_tracing_info_arr.append([params[3], params[1], params[4]]) # agent2, simcelltype, starttimestep
+                        contact_tracing_info_arr.append([params[3], params[1], params[4]]) # agent1, simcelltype, starttimestep
 
                     for idx in agent2_indices:
                         params = self.directcontacts_by_simcelltype_by_day[idx]
 
                         contact_tracing_info_arr.append([params[2], params[1], params[4]]) # agent2, simcelltype, starttimestep
 
-                    contact_ids_by_simcelltype = util.filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_info_arr, traced_timestep, trace_back_min_ts, trace_back_max_ts, shuffle=False)
+                    # time_taken = time.time() - start
+                    # print("generating contact_tracing_info_arr: " + str(time_taken))
 
+                    # start = time.time()
+                    contact_ids_by_simcelltype = util.filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_info_arr, traced_timestep, trace_back_min_ts, trace_back_max_ts, shuffle=False)
+                    # time_taken = time.time() - start
+                    # print("filter_contacttracing_agents_by_startts_groupby_simcelltype: " + str(time_taken))
+
+                    # start = time.time()
                     for simcelltype, contact_ids in contact_ids_by_simcelltype.items():
                         contact_tracing_success_prob = self.convert_simcelltype_to_contact_tracing_success_prob(simcelltype)
 
@@ -698,6 +720,9 @@ class Epidemiology:
                                                     test_scheduled_ids.append(sec_contact_id)
 
                                                     updated_agent_ids.add(sec_contact_id)
+                
+                # time_taken = time.time() - start
+                # print("contact tracing applied: " + str(time_taken))
                 
         return self.process_index, updated_agent_ids, self.agents_dynamic, self.vars_util
     
