@@ -13,7 +13,7 @@ from memory_profiler import profile
 
 # @profile
 def main():
-    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "simulationdays": 1, # 365
                 "loadagents": True,
