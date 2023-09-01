@@ -43,7 +43,7 @@ if __name__ == '__main__':
     num_rows = 16384
     int_range = 10
 
-    cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P
+    cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
                         connect_options={"known_hosts": None},
                         worker_options={"n_workers": num_processes},
                         scheduler_options={"port": 0, "dashboard_address": ":8797"})
