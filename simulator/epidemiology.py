@@ -537,7 +537,7 @@ class Epidemiology:
                     trace_back_min_ts = None
 
                 for agent_id, traced_timestep in self.contact_tracing_agent_ids:
-                    print("agent_id " + str(agent_id) + ", traced_timestep: " + str(traced_timestep))
+                    # print("agent_id " + str(agent_id) + ", traced_timestep: " + str(traced_timestep))
 
                     # start = time.time()
                     dc_by_sct_by_day_agent1_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent1_index, agent_id, col_index=0)

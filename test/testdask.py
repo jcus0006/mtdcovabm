@@ -38,7 +38,7 @@ def worker_map(params):
 if __name__ == '__main__':
     start = time.time()
     dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest)
-    num_rows = 16384
+    num_rows = 8192 # 16384
     int_range = 10
     num_processes = 10
 
