@@ -4,6 +4,7 @@ import scipy.stats as stats
 import powerlaw
 import matplotlib.pyplot as plt
 import random
+from copy import copy, deepcopy
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -115,6 +116,20 @@ def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_bra
 
     return agent, age, agents_ids_by_ages, agents_ids_by_agebrackets
 
+def set_age_brackets_tourists(age, agents_ids_by_ages, agent_uid, age_brackets, agents_ids_by_agebrackets):
+    agents_ids_by_ages[agent_uid] = age
+
+    age_bracket_index = -1
+    for i, ab in enumerate(age_brackets):
+        if age >= ab[0] and age <= ab[1]:
+            age_bracket_index = i
+            
+            agents_ids_by_agebrackets[i].append(agent_uid)
+
+            break
+
+    return age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets
+
 def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count):
     for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
         powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]
@@ -184,6 +199,8 @@ def convert_celltype_to_simcelltype(cellid, cells=None, celltype=None):
             return "community"
         case "school":
             return "school"
+        case "classroom":
+            return "school"
         case "institution":
             return "residence"
         case "transport":
@@ -224,33 +241,52 @@ def get_all_contacts_ids_by_id(id, agents_contacts_keys, agents_ids = None, agen
 
     return contacts_ids
 
-def get_all_contacts_ids_by_id_and_timesteprange(id, agents_contacts_keys, traced_ts, min_ts, max_ts, agents_ids = None, agents_degrees = None, shuffle=False):
-    contacts_ids = []
-
+def filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_info_arr, traced_ts, min_ts, max_ts, shuffle=False):
     if max_ts is None:
         max_ts = traced_ts # when contact tracing is done, start from that timestep until 0
     
     if min_ts is None:
         min_ts = traced_ts # when contact tracing is traced for e.g. 24 hours, trace until the same timestep on X prev days
 
-    for pairid, (st_ts, _) in agents_contacts_keys:
-        if (id in pairid and 
-            (st_ts >= min_ts) and 
-            (st_ts <= max_ts)):
-            contact_id = pairid[1] if pairid[0] == id else pairid[0]
+    contact_tracing_info_by_simcelltype = {}
 
-            if agents_ids is not None and agents_degrees is not None:
-                contact_index = agents_ids.index(contact_id)
-                contact_degree = agents_degrees[contact_index]
+    for agent, simcelltype, start_time in contact_tracing_info_arr:
+        if min_ts <= start_time <= max_ts:
+            if simcelltype not in contact_tracing_info_by_simcelltype:
+                contact_tracing_info_by_simcelltype[simcelltype] = []
 
-                if contact_degree > 0:
-                    contacts_ids.append(contact_id)
-            else:
-                contacts_ids.append(contact_id)
+            contact_tracing_info_by_simcelltype[simcelltype].append(agent)        
+
+    return contact_tracing_info_by_simcelltype
+
+
+def get_all_contacts_ids_by_id_and_timesteprange(id, agents_contacts_keys_set, traced_ts, min_ts, max_ts, shuffle=False):
+    if max_ts is None:
+        max_ts = traced_ts # when contact tracing is done, start from that timestep until 0
+    
+    if min_ts is None:
+        min_ts = traced_ts # when contact tracing is traced for e.g. 24 hours, trace until the same timestep on X prev days
+
+    # contacts_ids = []
+    # for pairid, (st_ts, _) in agents_contacts_keys:
+    #     if (id in pairid and 
+    #         (st_ts >= min_ts) and 
+    #         (st_ts <= max_ts)):
+    #         contact_id = pairid[1] if pairid[0] == id else pairid[0]
+
+    #         contacts_ids.append(contact_id)
+
+    # contacts_ids = [pairid[1] if pairid[0] == id else pairid[0] for pairid, (st_ts, _) in agents_contacts_keys_set if (id in pairid and (st_ts >= min_ts) and (st_ts <= max_ts))]
+
+    contacts_ids = {agent2 if agent1 == id else agent1
+                    for (agent1, agent2), (_, start_time, _) in agents_contacts_keys_set
+                    if (agent1 == id or agent2 == id) and min_ts <= start_time <= max_ts}
             
     if len(contacts_ids) == 0:
         return None
     
+    contacts_ids = list(contacts_ids) # convert from set
+
     contacts_ids = np.array(contacts_ids)
 
     if shuffle:
@@ -281,3 +317,197 @@ def get_sus_mort_prog_age_bracket_index(age):
             return 8
         else:
             return 9
+        
+def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial, is_itinerary=False):
+    for uid in agents_ids:
+        agents_partial[uid] = agents[uid]
+
+        if is_itinerary:
+            agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
+
+        if uid in vars_util.agents_seir_state_transition_for_day:
+            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
+
+        if uid in vars_util.agents_infection_type:
+            vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
+
+        if uid in vars_util.agents_infection_severity:
+            vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
+
+    return agents_partial, agents_ids_by_ages_partial, vars_util_partial
+
+def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False):
+    # updated_count = 0
+    for uid in agents_ids:
+        curr_agent = agents_partial[uid]
+        if not contact_tracing:
+            agents[uid] = curr_agent
+        else:
+            main_agent = agents[uid] # may also add handling to update only the updated fields rather than all fields that can be updated
+            main_agent["test_day"] = curr_agent["test_day"]
+            main_agent["test_result_day"] = curr_agent["test_result_day"]
+            main_agent["quarantine_days"] = curr_agent["quarantine_days"]
+
+        if uid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state_transition_for_day[uid] = vars_util_partial.agents_seir_state_transition_for_day[uid]
+
+        if not contact_tracing or uid in vars_util_partial.agents_seir_state:
+            vars_util.agents_seir_state[uid] = vars_util_partial.agents_seir_state[uid] # not partial
+
+        if uid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[uid] = vars_util_partial.agents_infection_type[uid]
+
+        if uid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[uid] = vars_util_partial.agents_infection_severity[uid]
+
+        # updated_count += 1  
+
+    # print("synced " + str(updated_count) + " agents")
+    
+    return agents, vars_util
+
+def sync_state_info_sets(vars_util, vars_util_partial):
+    if len(vars_util_partial.contact_tracing_agent_ids) > 0:
+        vars_util.contact_tracing_agent_ids.update(vars_util_partial.contact_tracing_agent_ids)
+
+    if len(vars_util_partial.directcontacts_by_simcelltype_by_day) > 0:
+        current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+        vars_util.directcontacts_by_simcelltype_by_day.extend(vars_util_partial.directcontacts_by_simcelltype_by_day)
+
+        for index, dc in enumerate(vars_util_partial.directcontacts_by_simcelltype_by_day):
+            new_index = current_index + index
+            vars_util.dc_by_sct_by_day_agent1_index.append([dc[2], new_index])
+            vars_util.dc_by_sct_by_day_agent2_index.append([dc[3], new_index])
+
+    return vars_util
+
+def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
+    for cellid, agents_timesteps in vars_util_partial.cells_agents_timesteps.items():
+        if cellid not in vars_util.cells_agents_timesteps:
+            vars_util.cells_agents_timesteps[cellid] = []
+
+        vars_util.cells_agents_timesteps[cellid] += agents_timesteps
+
+    return vars_util
+
+# load balancing
+
+def split_residences_by_weight(residences, num_processes):
+    # Sort residences based on their weights in ascending order
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight'])
+
+    sorted_residences = [residence for _, residence in sorted_residences_with_indices]
+    sorted_indices = [index for index, _ in sorted_residences_with_indices]
+
+    process_residences_indices = [[] for i in range(num_processes)]
+    cursor = 0
+    for index, _ in enumerate(sorted_residences):
+        process_residences_indices[cursor].append(sorted_indices[index])
+
+        cursor += 1
+
+        if cursor == num_processes:
+            cursor = 0
+
+    # process_residences_indices_lengths = [len(pri) for pri in process_residences_indices]
+    # print(process_residences_indices_lengths)
+
+    return process_residences_indices
+
+def split_cellsagentstimesteps_balanced(cells_agents_timesteps, num_dicts):
+    # Sort the keys based on the length of the array in the value in ascending order
+    sorted_keys = sorted(cells_agents_timesteps.keys(), key=lambda k: len(cells_agents_timesteps[k]))
+
+    # Initialize empty dictionaries for each partition
+    partitions = [{} for _ in range(num_dicts)]
+
+    # Distribute keys evenly across partitions
+    for i, key in enumerate(sorted_keys):
+        partitions[i % num_dicts][key] = cells_agents_timesteps[key]
+
+    return partitions
+
+def binary_search_2d_all_indices(arr, target, col_index=0):
+    indices = []
+    left, right = 0, len(arr) - 1
+
+    while left <= right:
+        mid = left + (right - left) // 2
+
+        if arr[mid][col_index] == target:
+            indices.append(mid)
+            # Search to the left of mid
+            i = mid - 1
+            while i >= 0 and arr[i][col_index] == target:
+                indices.append(i)
+                i -= 1
+            # Search to the right of mid
+            i = mid + 1
+            while i < len(arr) and arr[i][col_index] == target:
+                indices.append(i)
+                i += 1
+            return indices
+        elif arr[mid][col_index] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+
+    return indices  # Empty list if no matches found
+
+# this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
+# def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
+#     agents_partial = {}
+#     dc_by_simcelltype_by_day_partial = set()
+
+#     for agent_id, _ in agentids:
+#         temp_dc_by_simcelltype_by_day = {dc for dc in directcontacts_by_simcelltype_by_day if agent_id == dc[2] or agent_id == dc[3]}
+
+#         dc_by_simcelltype_by_day_partial.update(temp_dc_by_simcelltype_by_day)
+
+#         for props in temp_dc_by_simcelltype_by_day:
+#             agentid_to_add = props[3] if agent_id == props[2] else props[2]
+#             agents_partial[agentid_to_add] = agents[agentid_to_add]
+
+#             res_cell_id =  agents_partial[agentid_to_add]["res_cellid"]
+
+#             residence = None
+
+#             residents_key = ""
+#             staff_key = ""
+
+#             if res_cell_id in cells_households:
+#                 residents_key = "resident_uids"
+#                 staff_key = "staff_uids"
+#                 residence = cells_households[res_cell_id] # res_cell_id
+#             elif res_cell_id in cells_institutions:
+#                 residents_key = "resident_uids"
+#                 staff_key = "staff_uids"
+#                 residence = cells_institutions[res_cell_id]["place"] # res_cell_id 
+#             elif res_cell_id in cells_accommodation:
+#                 residents_key = "member_uids"
+#                 residence = cells_accommodation[res_cell_id]["place"] # res_cell_id
+
+#             if residence is not None:
+#                 resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
+#                 contact_id_index = np.argwhere(resident_ids == agentid_to_add)
+#                 resident_ids = np.delete(resident_ids, contact_id_index)
+
+#                 employees_ids = []
+
+#                 if staff_key != "":
+#                     employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
+
+#                 secondary_contact_ids = []
+#                 if employees_ids is None or len(employees_ids) == 0:
+#                     secondary_contact_ids = resident_ids
+#                 else:
+#                     try:
+#                         secondary_contact_ids = np.concatenate((resident_ids, employees_ids))
+#                     except Exception as e:
+#                         print("problemos: " + e)
+
+#                 if secondary_contact_ids is not None and len(secondary_contact_ids) > 0:
+#                     for sec_agent_id in secondary_contact_ids:
+#                         agents_partial[sec_agent_id] = agents[sec_agent_id]
+
+#     return agents_partial, dc_by_simcelltype_by_day_partial

@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary_mp.py", line 291, in localitinerary_worker
-    itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
-  File "c:\AppsPy\mtdcovabm\simulator\itinerary.py", line 148, in generate_working_days_for_week_residence
-    prev_working_schedule = agent["working_schedule"]
-                            ~~~~~^^^^^^^^^^^^^^^^^^^^
-KeyError: 'working_schedule'

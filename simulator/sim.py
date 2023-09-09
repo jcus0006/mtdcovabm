@@ -1,19 +1,21 @@
+import sys
+import os
 import json
 import numpy as np
-import math
 import time
 import matplotlib.pyplot as plt
-import random
 import traceback
 from cells import Cells
-from simulator import util, itinerary_mp, contactnetwork_mp, tourism, seirstateutil, vars
-from simulator.epidemiology import SEIRState
-from simulator.dynamicparams import DynamicParams
+import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars, agentsutil, static, shared_mp
+from dynamicparams import DynamicParams
 import multiprocessing as mp
+from memory_profiler import profile
 
+# @profile
 def main():
     params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
+                "simulationdays": 1, # 365
                 "loadagents": True,
                 "loadhouseholds": True,
                 "loadinstitutions": True,
@@ -27,21 +29,48 @@ def main():
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 8,
-                "numthreads": 2,
-                "proc_usepool": 0, # Pool 0, Process 1, ProcessPoolExecutor = 2
-                "sync_usethreads": False # Threads True, Processes False
+                "numprocesses": 10,
+                "numthreads": 1,
+                "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
+                "sync_usethreads": False, # Threads True, Processes False,
+                "sync_usequeue": False,
+                "keep_processes_open": True,
+                "itinerary_normal_weight": 1,
+                "itinerary_worker_student_weight": 1.12,
+                "logsubfoldername": "logs",
+                "logfilename": "newcontacttracing1proc.txt"
             }
+    
+    original_stdout = sys.stdout
+
+    subfolder_name = params["logsubfoldername"]
+
+    current_directory = os.getcwd()
+
+    subfolder_name = params["logfilename"].replace(".txt", "")
+
+    # Path to the subfolder
+    subfolder_path = os.path.join(current_directory, params["logsubfoldername"], subfolder_name)
+
+    # Create the subfolder if it doesn't exist
+    if not os.path.exists(subfolder_path):
+        os.makedirs(subfolder_path)
+
+    log_file_name = os.path.join(subfolder_path, params["logfilename"])
+
+    f = open(log_file_name, "w")
+
+    sys.stdout = f
 
     figure_count = 0
 
     cellindex = 0
     cells = {}
 
-    cellsfile = open("./data/cells.json")
+    cellsfile = open(os.path.join(current_directory, "data", "cells.json"))
     cellsparams = json.load(cellsfile)
 
-    itineraryfile = open("./data/itinerary.json")
+    itineraryfile = open(os.path.join(current_directory, "data", "itinerary.json"))
     itineraryparams = json.load(itineraryfile)
 
     sleeping_hours_by_age_groups = itineraryparams["sleeping_hours_by_age_groups"]
@@ -49,7 +78,7 @@ def main():
     age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
     age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
 
-    contactnetworkfile = open("./data/contactnetwork.json")
+    contactnetworkfile = open(os.path.join(current_directory, "data", "contactnetwork.json"))
     contactnetworkparams = json.load(contactnetworkfile)
 
     sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
@@ -57,12 +86,12 @@ def main():
     powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
     # sociability_rate_options = np.arange(len(sociability_rate_distribution))
 
-    epidemiologyfile = open("./data/epidemiology.json")
+    epidemiologyfile = open(os.path.join(current_directory, "data", "epidemiology.json"))
     epidemiologyparams = json.load(epidemiologyfile)
     initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
     tourist_entry_infection_probability = epidemiologyparams["tourist_entry_infection_probability"]
 
-    tourismfile = open("./data/tourism.json")
+    tourismfile = open(os.path.join(current_directory, "data", "tourism.json"))
     tourismparams = json.load(tourismfile)
 
     population_sub_folder = ""
@@ -71,10 +100,10 @@ def main():
         params["popsubfolder"] = "10kagents"
 
     if len(params["popsubfolder"]) > 0:
-        population_sub_folder = params["popsubfolder"] + "/"
+        population_sub_folder = params["popsubfolder"]
 
     # load agents and all relevant JSON files on each node
-    agents = {}
+    agents_dynamic = {}
     agents_ids_by_ages = {}
     agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
 
@@ -94,86 +123,32 @@ def main():
     n_tourists = 0
 
     if params["loadtourism"]:
-        touristsfile = open("./population/" + population_sub_folder + "tourists.json")
+        touristsfile = open(os.path.join(current_directory, "population", population_sub_folder, "tourists.json")) # 
         tourists = json.load(touristsfile)
         tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
         
         n_tourists = len(tourists)
 
-        touristsgroupsfile = open("./population/" + population_sub_folder + "touristsgroups.json")
+        touristsgroupsfile = open(os.path.join(current_directory, "population", population_sub_folder, "touristsgroups.json"))
         touristsgroups = json.load(touristsgroupsfile)
         touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
 
-        touristsgroupsdaysfile = open("./population/" + population_sub_folder + "touristsgroupsdays.json")
+        touristsgroupsdaysfile = open(os.path.join(current_directory, "population", population_sub_folder, "touristsgroupsdays.json"))
         touristsgroupsdays = json.load(touristsgroupsdaysfile)
         touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
 
     if params["loadagents"]:
-        agentsfile = open("./population/" + population_sub_folder + "agents.json")
+        agentsfile = open(os.path.join(current_directory, "population", population_sub_folder, "agents.json"))
         agents = json.load(agentsfile)
 
         n_locals = len(agents)
 
+        agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agentsutil.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
+
         # if params["quickdebug"]:
         #     agents = {str(i):agents[str(i)] for i in range(1000)}
 
-        temp_agents = {int(k): v for k, v in agents.items()}
-
-        agents_vaccination_doses = np.array([0 for i in range(n_locals)])
-
-        locals_ratio_to_full_pop = n_locals / params["fullpop"]
-
-        if params["loadtourism"]:
-            largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
-
-            for i in range(len(tourists)):
-                temp_agents[largest_agent_id+1] = {}
-                largest_agent_id += 1
-
-        agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
-
-        # contactnetwork_sum_time_taken = 0
-        # contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False, params["numprocesses"])
-        # epi_util = contactnetwork_util.epi_util
-
-        for index, (agent_uid, agent) in enumerate(temp_agents.items()):
-            if index < n_locals: # ignore tourists for now
-                agent["curr_cellid"] = -1
-                agent["res_cellid"] = -1
-                agent["work_cellid"] = -1
-                agent["school_cellid"] = -1
-                agent["inst_cellid"] = -1
-                # agent["symptomatic"] = False
-                agent["tourist_id"] = None 
-                agent["state_transition_by_day"] = []
-                # intervention_events_by_day
-                agent["test_day"] = [] # [day, timestep]
-                agent["test_result_day"] = [] # [day, timestep]
-                agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
-                agent["vaccination_days"] = [] # [[day, timestep]]
-                agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
-
-                if agent["empstatus"] == 0:
-                    agent["working_schedule"] = {}
-
-                agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
-
-                agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
-
-                agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
-            else:
-                break
-
-            # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
-
-        temp_agents = util.generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count)
-
-        agents_seir_state = seirstateutil.initialize_agent_states(n_locals, initial_seir_state_distribution, agents_seir_state)
-
-        agents = temp_agents
-
-        temp_agents = None
-
+        
         # contactnetwork_util.agents = None
         # epi_util.agents = None
         # contactnetwork_util.agents = agents
@@ -215,14 +190,14 @@ def main():
     cells_util = Cells(agents, cells, cellindex)
 
     if params["loadhouseholds"]:
-        householdsfile = open("./population/" + population_sub_folder + "households.json")
+        householdsfile = open(os.path.join(current_directory, "population", population_sub_folder, "households.json"))
         households_original = json.load(householdsfile)
 
         workplaces = []
         workplaces_cells_params = []
 
         if params["loadworkplaces"]:
-            workplacesfile = open("./population/" + population_sub_folder + "workplaces.json")
+            workplacesfile = open(os.path.join(current_directory, "population", population_sub_folder, "workplaces.json"))
             workplaces = json.load(workplacesfile)
 
             workplaces_cells_params = cellsparams["workplaces"]
@@ -232,10 +207,10 @@ def main():
         # contactnetwork_util.epi_util.cells_households = cells_households
         
     if params["loadinstitutions"]:
-        institutiontypesfile = open("./population/" + population_sub_folder + "institutiontypes.json")
+        institutiontypesfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutiontypes.json"))
         institutiontypes_original = json.load(institutiontypesfile)
 
-        institutionsfile = open("./population/" + population_sub_folder + "institutions.json")
+        institutionsfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutions.json"))
         institutions = json.load(institutionsfile)
 
         institutions_cells_params = cellsparams["institutions"]
@@ -247,18 +222,28 @@ def main():
     hh_insts = []
     if params["loadhouseholds"]:
         for hh in households.values():
-            hh_inst = {"id": hh["hhid"], "is_hh": True, "resident_uids": hh["resident_uids"]}
+            hh_inst = {"id": hh["hhid"], "is_hh": True, "resident_uids": hh["resident_uids"], "lb_weight": 0}
             hh_insts.append(hh_inst)
 
     if params["loadinstitutions"]:
         for inst in institutions:
-            hh_inst = {"id": inst["instid"], "is_hh": False, "resident_uids": inst["resident_uids"]}
+            hh_inst = {"id": inst["instid"], "is_hh": False, "resident_uids": inst["resident_uids"], "lb_weight": 0}
             hh_insts.append(hh_inst)
+
+    # hh_insts_partial = []
+    # max_agents_count = 100000
+    # curr_agents_count = 0
 
     if hh_insts is not None:
         for hh_inst in hh_insts:
+            lb_weight = 0
             for agentid in hh_inst["resident_uids"]:
-                agent = agents[agentid]
+                agent = agents[agentid]         
+
+                if agent["empstatus"] == 0 or agent["sc_student"] == 1:
+                    lb_weight += params["itinerary_worker_student_weight"]
+                else:
+                    lb_weight += params["itinerary_normal_weight"]
 
                 if agent["age"] < 15: # assign parent/guardian at random
                     other_resident_ages_by_uids = {uid:agents[uid]["age"] for uid in hh_inst["resident_uids"] if uid != agentid}
@@ -285,10 +270,11 @@ def main():
                     else:
                         print("big problem")
 
+            hh_inst["lb_weight"] = lb_weight
 
     if params["loadworkplaces"]:
         if len(workplaces) == 0:
-            workplacesfile = open("./population/" + population_sub_folder + "workplaces.json")
+            workplacesfile = open(os.path.join(current_directory, "population", population_sub_folder, "workplaces.json"))
             workplaces = json.load(workplacesfile)
 
         if len(workplaces_cells_params) == 0:
@@ -312,7 +298,7 @@ def main():
         accomgroups = None
 
         if params["loadtourism"]:
-            accommodationsfile = open("./population/" + population_sub_folder + "accommodations.json")
+            accommodationsfile = open(os.path.join(current_directory, "population", population_sub_folder, "accommodations.json"))
             accommodations = json.load(accommodationsfile)
 
             for accom in accommodations:
@@ -340,7 +326,7 @@ def main():
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist)
+        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
 
         # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
@@ -350,7 +336,7 @@ def main():
         # cellindex += 1
 
     if params["loadschools"]:
-        schoolsfile = open("./population/" + population_sub_folder + "schools.json")
+        schoolsfile = open(os.path.join(current_directory, "population", population_sub_folder, "schools.json"))
         schools = json.load(schoolsfile)
 
         schools_cells_params = cellsparams["schools"]
@@ -371,19 +357,31 @@ def main():
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
+    agents_static = static.Static()
+    agents_static.populate(agents, n_locals, n_tourists)
+
+    agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents)
+
     vars_util = vars.Vars()
     vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
-    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
+
+    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
     try:
+        manager = mp.Manager()
+        # pool = mp.Pool(processes=params["numprocesses"])
+        pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
+
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
         
-        for day in range(1, 365+1):
+        for day in range(1, params["simulationdays"] + 1): # 365 + 1 / 1 + 1
             day_start = time.time()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
+
+            vars_util.contact_tracing_agent_ids = set()
 
             # itinerary_util.cells_agents_timesteps = {}
             # itinerary_util.epi_util = epi_util
@@ -392,19 +390,46 @@ def main():
             # agents_seir_state_transition_for_day = {} # always cleared for a new day, will be filled in itinerary, and used in direct contact simulation (epi)
             # agents_directcontacts_by_simcelltype_by_day = {}
 
-            # itinerary_util = itinerary.Itinerary(itineraryparams, params["timestepmins"], n_locals, n_tourists, locals_ratio_to_full_pop, agents, tourists, cells, industries, workplaces, cells_restaurants, cells_schools, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment, cells_religious, cells_households, cells_accommodation_by_accomid, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, cells_agents_timesteps, tourist_entry_infection_probability, epidemiologyparams, dyn_params, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_directcontacts_by_simcelltype_by_day, agents_vaccination_doses, tourists_active_ids)
-
-            # if params["loadtourism"]:
-            #     print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
-            #     start = time.time()
-            #     agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+            if params["loadtourism"]:
+                # single process tourism section
+                itinerary_util = itinerary.Itinerary(itineraryparams, 
+                                                    params["timestepmins"], 
+                                                    n_locals, 
+                                                    n_tourists,
+                                                    locals_ratio_to_full_pop,
+                                                    agents_static,
+                                                    agents_dynamic,
+                                                    agents_ids_by_ages,
+                                                    tourists, 
+                                                    vars_util,
+                                                    cells_industries_by_indid_by_wpid,
+                                                    cells_restaurants,
+                                                    cells_hospital, 
+                                                    cells_testinghub, 
+                                                    cells_vaccinationhub, 
+                                                    cells_entertainment_by_activityid,
+                                                    cells_religious, 
+                                                    cells_households,
+                                                    cells_breakfast_by_accomid,
+                                                    cells_airport, 
+                                                    cells_transport, 
+                                                    cells_institutions, 
+                                                    cells_accommodation, 
+                                                    tourist_entry_infection_probability,
+                                                    epidemiologyparams,
+                                                    dyn_params,
+                                                    tourists_active_ids)
                 
-            #     itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
+                start = time.time()
+                agents_dynamic, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
                 
-            #     time_taken = time.time() - start
-            #     tourist_itinerary_sum_time_taken += time_taken
-            #     avg_time_taken = tourist_itinerary_sum_time_taken / day
-            #     print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+                itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+                
+                time_taken = time.time() - start
+                tourist_itinerary_sum_time_taken += time_taken
+                avg_time_taken = tourist_itinerary_sum_time_taken / day
+                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
@@ -412,10 +437,28 @@ def main():
                 if day == 1: # from day 2 onwards always calculated at eod
                     dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
 
+            # partialising agents for multiprocessing
+            start = time.time()
+            it_agents = agentsutil.initialize_agents_dict_it(agents_dynamic)
+            time_taken = time.time() - start
+            print("initialize_agents_dict_it, time_taken: " + str(time_taken))
+
+            start = time.time()
+            cn_agents = agentsutil.initialize_agents_dict_cn(agents_dynamic)
+            time_taken = time.time() - start
+            print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
+
+            start = time.time()
+            ct_agents = agentsutil.initialize_agents_dict_ct(agents_dynamic)
+            time_taken = time.time() - start
+            print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
+
             if not params["quicktourismrun"]:
                 start = time.time()  
 
-                itinerary_mp.localitinerary_parallel(day, 
+                itinerary_mp.localitinerary_parallel(manager,
+                                                    pool,
+                                                    day, 
                                                     weekday, 
                                                     weekdaystr, 
                                                     itineraryparams, 
@@ -423,9 +466,9 @@ def main():
                                                     n_locals, 
                                                     n_tourists, 
                                                     locals_ratio_to_full_pop, 
-                                                    agents,
+                                                    it_agents,
                                                     agents_ids_by_ages,                                                      
-                                                    tourists, 
+                                                    None, 
                                                     vars_util,
                                                     cells_industries_by_indid_by_wpid,
                                                     cells_restaurants, 
@@ -448,7 +491,10 @@ def main():
                                                     params["numprocesses"],
                                                     params["numthreads"],
                                                     params["proc_usepool"],
-                                                    params["sync_usethreads"])
+                                                    params["sync_usethreads"],
+                                                    params["sync_usequeue"],
+                                                    params["keep_processes_open"],
+                                                    log_file_name)
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -459,12 +505,14 @@ def main():
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
                     start = time.time()       
 
-                    contactnetwork_mp.contactnetwork_parallel(day, 
+                    contactnetwork_mp.contactnetwork_parallel(manager,
+                                                            pool,
+                                                            day, 
                                                             weekday, 
                                                             n_locals, 
                                                             n_tourists, 
                                                             locals_ratio_to_full_pop, 
-                                                            agents, 
+                                                            cn_agents, 
                                                             vars_util,
                                                             cells, 
                                                             cells_households, 
@@ -475,7 +523,9 @@ def main():
                                                             dyn_params, 
                                                             contactnetwork_sum_time_taken, 
                                                             params["numprocesses"],
-                                                            params["numthreads"])
+                                                            params["numthreads"],
+                                                            params["keep_processes_open"],
+                                                            log_file_name)
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -486,7 +536,36 @@ def main():
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                # epi_util.contact_tracing(day) # TO REVIEW
+                epi_util = epidemiology.Epidemiology(epidemiologyparams, 
+                                                    n_locals, 
+                                                    n_tourists, 
+                                                    locals_ratio_to_full_pop,
+                                                    agents_static,
+                                                    agents_dynamic, 
+                                                    vars_util, 
+                                                    cells_households, 
+                                                    cells_institutions, 
+                                                    cells_accommodation, 
+                                                    dyn_params)
+                epi_util.contact_tracing(day)
+
+                # contacttracing_mp.contacttracing_parallel(manager, 
+                #                                         pool, 
+                #                                         day, 
+                #                                         epidemiologyparams, 
+                #                                         n_locals, 
+                #                                         n_tourists, 
+                #                                         locals_ratio_to_full_pop, 
+                #                                         ct_agents, 
+                #                                         vars_util, 
+                #                                         cells_households, 
+                #                                         cells_institutions, 
+                #                                         cells_accommodation, 
+                #                                         dyn_params, 
+                #                                         params["numprocesses"], 
+                #                                         params["numthreads"], 
+                #                                         params["keep_processes_open"], 
+                #                                         log_file_name)
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))
@@ -495,8 +574,8 @@ def main():
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                # epi_util.schedule_vaccinations(day) # TO REVIEW
-
+                # epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))
 
@@ -510,10 +589,12 @@ def main():
             day_time_taken = time.time() - day_start
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
     except:
-        with open('stack_trace.txt', 'w') as f:
+        with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as f:
             traceback.print_exc(file=f)
-
-    print(len(agents))
+    finally:
+        print(len(agents))
+        sys.stdout = original_stdout
+        f.close()
 
 if __name__ == '__main__':
     main()

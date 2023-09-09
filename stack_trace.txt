@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "C:\AppsPy\mtdcovabm\simulator\sim.py", line 450, in main
-    params["usepool"],
-    ~~~~~~^^^^^^^^^^^
-KeyError: 'usepool'
