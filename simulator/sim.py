@@ -1,4 +1,8 @@
 import sys
+
+# sys.path.append('~/AppsPy/mtdcovabm/simulator')
+sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
+
 import os
 import json
 import numpy as np
@@ -6,9 +10,10 @@ import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_mp, contactnetwork_mp, contacttracing_mp, tourism, vars, agentsutil, static, shared_mp
+import util, itinerary, epidemiology, itinerary_dask, contactnetwork_mp, contacttracing_mp, tourism, vars, agentsutil, static, shared_mp
 from dynamicparams import DynamicParams
 import multiprocessing as mp
+from dask.distributed import Client, SSHCluster
 from memory_profiler import profile
 
 # @profile
@@ -29,7 +34,7 @@ def main():
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 10,
+                "numprocesses": 8, # vm given 10 cores, limiting to 8 (2 less) for now
                 "numthreads": 1,
                 "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
                 "sync_usethreads": False, # Threads True, Processes False,
@@ -38,7 +43,7 @@ def main():
                 "itinerary_normal_weight": 1,
                 "itinerary_worker_student_weight": 1.12,
                 "logsubfoldername": "logs",
-                "logfilename": "output.txt"
+                "logfilename": "output1k_10_2.txt"
             }
     
     original_stdout = sys.stdout
@@ -358,7 +363,7 @@ def main():
     #     agents = {i:agents[i] for i in range(10_000)}
 
     agents_static = static.Static()
-    agents_static.populate(agents, n_locals, n_tourists)
+    agents_static.populate(agents, n_locals, n_tourists, is_shm=False) # for now trying without multiprocessing.RawArray
 
     agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents)
 
@@ -368,9 +373,24 @@ def main():
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
     try:
-        manager = mp.Manager()
-        # pool = mp.Pool(processes=params["numprocesses"])
-        pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
+        # manager = mp.Manager()
+        # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
+
+        cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
+                        connect_options={"known_hosts": None},
+                        worker_options={"n_workers": params["numprocesses"], },
+                        scheduler_options={"port": 0, "dashboard_address": ":8797"},) # emote_python="~/AppsPy/mtdcovabm/bin/python3.11"
+                        # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
+        
+        client = Client(cluster)
+        client.upload_file('simulator/static.py')
+        client.upload_file('simulator/util.py')
+        client.upload_file('simulator/epidemiology.py')
+        client.upload_file('simulator/dynamicparams.py')
+        client.upload_file('simulator/seirstateutil.py')
+        client.upload_file('simulator/vars.py')
+        client.upload_file('simulator/itinerary.py')
+        client.upload_file('simulator/itinerary_dask.py')
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -456,8 +476,7 @@ def main():
             if not params["quicktourismrun"]:
                 start = time.time()  
 
-                itinerary_mp.localitinerary_parallel(manager,
-                                                    pool,
+                itinerary_dask.localitinerary_parallel(client,
                                                     day, 
                                                     weekday, 
                                                     weekdaystr, 
@@ -466,6 +485,7 @@ def main():
                                                     n_locals, 
                                                     n_tourists, 
                                                     locals_ratio_to_full_pop, 
+                                                    agents_static,
                                                     it_agents,
                                                     agents_ids_by_ages,                                                      
                                                     None, 
@@ -578,7 +598,7 @@ def main():
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
+                # epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))

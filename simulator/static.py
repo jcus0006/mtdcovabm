@@ -45,7 +45,7 @@ class Static:
         self.shm_ent_activity = []
         # self.shm_busdriver = []
 
-    def populate(self, data, n_locals, n_tourists):
+    def populate(self, data, n_locals, n_tourists, is_shm=True):
         start = time.time()
 
         n_total = n_locals + n_tourists
@@ -92,8 +92,11 @@ class Static:
                 self.ent_activity.append(None)
                 # self.busdriver.append(None)
 
-        self.convert_to_shared_memory_readonly(loadall=True, clear_normal_memory=True)
-        
+        if is_shm:
+            self.convert_to_shared_memory_readonly(loadall=True, clear_normal_memory=True)
+        else:
+            self.convert_to_numpy_readonly(loadall=True, clear_normal_memory=True)
+
         time_taken = time.time() - start
         print("agents_mp populate time taken: " + str(time_taken))
         # self.convert_to_ndarray()
@@ -175,6 +178,61 @@ class Static:
         converted_data = [default_value if item is None else item for item in static_data]
 
         return mp.RawArray(type, converted_data)
+    
+    def generate_numpy_array(self, static_data):
+        return np.array(static_data)
+
+    def convert_to_numpy_readonly(self, loadall=False, itinerary=False, contactnetwork=False, clear_normal_memory=False):
+        if not loadall and not itinerary and not contactnetwork:
+            loadall = True
+    
+        start = time.time()
+
+        if loadall:
+            self.shm_age = self.generate_numpy_array(self.age)
+            self.shm_sc_student = self.generate_numpy_array(self.sc_student)
+            self.shm_empstatus = self.generate_numpy_array(self.empstatus)
+            self.shm_empind = self.generate_numpy_array(self.empind)
+            self.shm_empftpt = self.generate_numpy_array(self.empftpt)
+            self.shm_work_cellid = self.generate_numpy_array(self.work_cellid)
+            self.shm_school_cellid = self.generate_numpy_array(self.school_cellid)
+            self.shm_working_age_bracket_index = self.generate_numpy_array(self.working_age_bracket_index)
+            self.shm_guardian_id = self.generate_numpy_array(self.guardian_id)
+            self.shm_pub_transp_reg = self.generate_numpy_array(self.pub_transp_reg)
+            self.shm_ent_activity = self.generate_numpy_array(self.ent_activity)
+            self.shm_isshiftbased = self.generate_numpy_array(self.isshiftbased)
+            # self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
+            self.shm_res_cellid = self.generate_numpy_array(self.res_cellid)
+            self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
+            self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
+            self.shm_soc_rate = self.generate_numpy_array(self.soc_rate)
+        elif contactnetwork:
+            self.shm_res_cellid = self.generate_numpy_array(self.res_cellid)
+            self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
+            self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
+            self.shm_soc_rate = self.generate_numpy_array(self.soc_rate)
+        elif itinerary:
+            self.shm_age = self.generate_numpy_array(self.age)
+            self.shm_sc_student = self.generate_numpy_array(self.sc_student)
+            self.shm_empstatus = self.generate_numpy_array(self.empstatus)
+            self.shm_empind = self.generate_numpy_array(self.empind)
+            self.shm_empftpt = self.generate_numpy_array(self.empftpt)
+            self.shm_ent_activity = self.generate_numpy_array(self.ent_activity)
+            self.shm_isshiftbased = self.generate_numpy_array(self.isshiftbased)
+            self.shm_guardian_id = self.generate_numpy_array(self.guardian_id)
+            self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
+            self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
+            self.shm_working_age_bracket_index = self.generate_numpy_array(self.working_age_bracket_index)
+            self.shm_res_cellid = self.generate_numpy_array(self.res_cellid)
+            self.shm_work_cellid = self.generate_numpy_array(self.work_cellid)
+            self.shm_school_cellid = self.generate_numpy_array(self.school_cellid)
+            self.shm_pub_transp_reg = self.generate_numpy_array(self.pub_transp_reg)
+
+        if clear_normal_memory:
+            self.clear_non_shared_memory()
+
+        time_taken = time.time() - start
+        print("static.py convert_to_numpy_readonly time taken: " + str(time_taken))
     
     def get(self, index, name):
         return getattr(self, "shm_" + name)[index]

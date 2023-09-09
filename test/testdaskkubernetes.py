@@ -1,3 +1,4 @@
+import sys
 import time
 import traceback
 import numpy as np
@@ -38,9 +39,9 @@ def worker_map(params):
 
 if __name__ == '__main__':
     # start = time.time()
-    num_processes = 6
+    num_processes = 8
     dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest)
-    num_rows = 16384
+    num_rows = 8192 # 8192 (around 1gb for each process) / 16384 (around 2gb for each process)
     int_range = 10
 
     cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
