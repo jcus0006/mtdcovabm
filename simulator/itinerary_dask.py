@@ -2,6 +2,7 @@ import sys
 sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
 
 import dask
+import asyncio
 # from queue import Empty
 import threading
 import numpy as np
@@ -134,9 +135,15 @@ def localitinerary_parallel(client,
 
                 dask_params.append(params)
 
+            start = time.time()
             delayed_results = [dask.delayed(localitinerary_worker)(dask_params[i]) for i in range(num_processes)]
+            time_taken = time.time() - start
+            print("delayed_results generation: " + str(time_taken))
 
+            start = time.time()
             computed_results = dask.compute(*delayed_results)
+            time_taken = time.time() - start
+            print("computed_results generation: " + str(time_taken))
 
             time_taken = time.time() - start
 

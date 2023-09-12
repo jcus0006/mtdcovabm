@@ -4,13 +4,14 @@ import sys
 sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
 
 import os
+import shutil
 import json
 import numpy as np
 import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_dask, contactnetwork_mp, contacttracing_mp, tourism, vars, agentsutil, static, shared_mp
+import util, itinerary, epidemiology, itinerary_mp, itinerary_dask, contactnetwork_mp, tourism, vars, agentsutil, static, shared_mp
 from dynamicparams import DynamicParams
 import multiprocessing as mp
 from dask.distributed import Client, SSHCluster
@@ -18,7 +19,7 @@ from memory_profiler import profile
 
 # @profile
 def main():
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "simulationdays": 1, # 365
                 "loadagents": True,
@@ -34,16 +35,17 @@ def main():
                 "quickitineraryrun": False,
                 "visualise": False,
                 "fullpop": 519562,
-                "numprocesses": 8, # vm given 10 cores, limiting to 8 (2 less) for now
+                "numprocesses": 4, # vm given 10 cores, limiting to X for now
                 "numthreads": 1,
                 "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
                 "sync_usethreads": False, # Threads True, Processes False,
                 "sync_usequeue": False,
+                "use_mp": False,
                 "keep_processes_open": True,
                 "itinerary_normal_weight": 1,
                 "itinerary_worker_student_weight": 1.12,
                 "logsubfoldername": "logs",
-                "logfilename": "output1k_10_2.txt"
+                "logfilename": "output_dask_dashboard_500k_2.txt"
             }
     
     original_stdout = sys.stdout
@@ -59,6 +61,9 @@ def main():
 
     # Create the subfolder if it doesn't exist
     if not os.path.exists(subfolder_path):
+        os.makedirs(subfolder_path)
+    else:
+        shutil.rmtree(subfolder_path)
         os.makedirs(subfolder_path)
 
     log_file_name = os.path.join(subfolder_path, params["logfilename"])
@@ -363,7 +368,7 @@ def main():
     #     agents = {i:agents[i] for i in range(10_000)}
 
     agents_static = static.Static()
-    agents_static.populate(agents, n_locals, n_tourists, is_shm=False) # for now trying without multiprocessing.RawArray
+    agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_mp"]) # for now trying without multiprocessing.RawArray
 
     agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents)
 
@@ -372,25 +377,44 @@ def main():
 
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
-    try:
-        # manager = mp.Manager()
-        # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 
-        cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
-                        connect_options={"known_hosts": None},
-                        worker_options={"n_workers": params["numprocesses"], },
-                        scheduler_options={"port": 0, "dashboard_address": ":8797"},) # emote_python="~/AppsPy/mtdcovabm/bin/python3.11"
-                        # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
-        
-        client = Client(cluster)
-        client.upload_file('simulator/static.py')
-        client.upload_file('simulator/util.py')
-        client.upload_file('simulator/epidemiology.py')
-        client.upload_file('simulator/dynamicparams.py')
-        client.upload_file('simulator/seirstateutil.py')
-        client.upload_file('simulator/vars.py')
-        client.upload_file('simulator/itinerary.py')
-        client.upload_file('simulator/itinerary_dask.py')
+    client = None
+    try:
+        if params["use_mp"]:
+            manager = mp.Manager()
+            pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
+        else:
+            start = time.time()
+            cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
+                            connect_options={"known_hosts": None},
+                            worker_options={"n_workers": params["numprocesses"], },
+                            scheduler_options={"port": 0, "dashboard_address": ":8797"},) # remote_python="~/AppsPy/mtdcovabm/bin/python3.11"
+                            # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
+            time_taken = time.time() - start
+            print("cluster generation: " + str(time_taken))
+            # cluster.scale(params["numprocesses"])
+
+            start = time.time() - start
+            client = Client(cluster)
+            time_taken = time.time() - start
+            print("client generation: " + str(time_taken))
+
+            versions = client.get_versions(check=True)
+
+            print("versions: " + str(versions))
+
+            start = time.time() - start
+            client.upload_file('simulator/static.py')
+            client.upload_file('simulator/util.py')
+            client.upload_file('simulator/epidemiology.py')
+            client.upload_file('simulator/dynamicparams.py')
+            client.upload_file('simulator/seirstateutil.py')
+            client.upload_file('simulator/vars.py')
+            client.upload_file('simulator/itinerary.py')
+            client.upload_file('simulator/itinerary_dask.py')
+
+            time_taken = time.time() - start
+            print("upload modules remotely: " + str(time_taken))
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -468,53 +492,94 @@ def main():
             time_taken = time.time() - start
             print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
 
-            start = time.time()
-            ct_agents = agentsutil.initialize_agents_dict_ct(agents_dynamic)
-            time_taken = time.time() - start
-            print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
+            # start = time.time()
+            # ct_agents = agentsutil.initialize_agents_dict_ct(agents_dynamic)
+            # time_taken = time.time() - start
+            # print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
 
             if not params["quicktourismrun"]:
                 start = time.time()  
 
-                itinerary_dask.localitinerary_parallel(client,
-                                                    day, 
-                                                    weekday, 
-                                                    weekdaystr, 
-                                                    itineraryparams, 
-                                                    params["timestepmins"], 
-                                                    n_locals, 
-                                                    n_tourists, 
-                                                    locals_ratio_to_full_pop, 
-                                                    agents_static,
-                                                    it_agents,
-                                                    agents_ids_by_ages,                                                      
-                                                    None, 
-                                                    vars_util,
-                                                    cells_industries_by_indid_by_wpid,
-                                                    cells_restaurants, 
-                                                    cells_hospital,
-                                                    cells_testinghub, 
-                                                    cells_vaccinationhub, 
-                                                    cells_entertainment_by_activityid, 
-                                                    cells_religious, 
-                                                    cells_households, 
-                                                    cells_breakfast_by_accomid,
-                                                    cells_airport, 
-                                                    cells_transport, 
-                                                    cells_institutions, 
-                                                    cells_accommodation, 
-                                                    tourist_entry_infection_probability, 
-                                                    epidemiologyparams, 
-                                                    dyn_params, 
-                                                    tourists_active_ids, 
-                                                    hh_insts, 
-                                                    params["numprocesses"],
-                                                    params["numthreads"],
-                                                    params["proc_usepool"],
-                                                    params["sync_usethreads"],
-                                                    params["sync_usequeue"],
-                                                    params["keep_processes_open"],
-                                                    log_file_name)
+                if params["use_mp"]:
+                    itinerary_mp.localitinerary_parallel(manager,
+                                                        pool,
+                                                        day,
+                                                        weekday,
+                                                        weekdaystr,
+                                                        itineraryparams,
+                                                        params["timestepmins"],
+                                                        n_locals,
+                                                        n_tourists,
+                                                        locals_ratio_to_full_pop,
+                                                        it_agents,
+                                                        agents_ids_by_ages,                                                      
+                                                        None, 
+                                                        vars_util,
+                                                        cells_industries_by_indid_by_wpid,
+                                                        cells_restaurants, 
+                                                        cells_hospital,
+                                                        cells_testinghub, 
+                                                        cells_vaccinationhub, 
+                                                        cells_entertainment_by_activityid, 
+                                                        cells_religious, 
+                                                        cells_households, 
+                                                        cells_breakfast_by_accomid,
+                                                        cells_airport, 
+                                                        cells_transport, 
+                                                        cells_institutions, 
+                                                        cells_accommodation, 
+                                                        tourist_entry_infection_probability, 
+                                                        epidemiologyparams, 
+                                                        dyn_params, 
+                                                        tourists_active_ids, 
+                                                        hh_insts, 
+                                                        params["numprocesses"],
+                                                        params["numthreads"],
+                                                        params["proc_usepool"],
+                                                        params["sync_usethreads"],
+                                                        params["sync_usequeue"],
+                                                        params["keep_processes_open"],
+                                                        log_file_name)
+                else:
+                    itinerary_dask.localitinerary_parallel(client,
+                                                        day, 
+                                                        weekday, 
+                                                        weekdaystr, 
+                                                        itineraryparams, 
+                                                        params["timestepmins"], 
+                                                        n_locals, 
+                                                        n_tourists, 
+                                                        locals_ratio_to_full_pop, 
+                                                        agents_static,
+                                                        it_agents,
+                                                        agents_ids_by_ages,                                                      
+                                                        None, 
+                                                        vars_util,
+                                                        cells_industries_by_indid_by_wpid,
+                                                        cells_restaurants, 
+                                                        cells_hospital,
+                                                        cells_testinghub, 
+                                                        cells_vaccinationhub, 
+                                                        cells_entertainment_by_activityid, 
+                                                        cells_religious, 
+                                                        cells_households, 
+                                                        cells_breakfast_by_accomid,
+                                                        cells_airport, 
+                                                        cells_transport, 
+                                                        cells_institutions, 
+                                                        cells_accommodation, 
+                                                        tourist_entry_infection_probability, 
+                                                        epidemiologyparams, 
+                                                        dyn_params, 
+                                                        tourists_active_ids, 
+                                                        hh_insts, 
+                                                        params["numprocesses"],
+                                                        params["numthreads"],
+                                                        params["proc_usepool"],
+                                                        params["sync_usethreads"],
+                                                        params["sync_usequeue"],
+                                                        params["keep_processes_open"],
+                                                        log_file_name)
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -619,6 +684,9 @@ def main():
         print(len(agents))
         sys.stdout = original_stdout
         f.close()
+
+        if client is not None:
+            client.shutdown()
 
 if __name__ == '__main__':
     main()
