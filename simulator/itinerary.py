@@ -170,6 +170,9 @@ class Itinerary:
                     industry_working_week_start_day, industry_working_week_end_day, industry_working_days = industry_working_hours_by_ind[1], industry_working_hours_by_ind[2], industry_working_hours_by_ind[3]
 
                     ent_activity = self.agents_static.get(agentid, "ent_activity")
+                    if agent_industry == Industry.ArtEntertainmentRecreation and ent_activity is None:
+                        print("problem in agents, agent " + str(agentid) + " None ent_activity")
+                        
                     if agent_industry == Industry.ArtEntertainmentRecreation and ent_activity > -1:
                         activity_working_hours_overrides = self.activities_working_hours[ent_activity - 1]
                         industry_start_work_hour, industry_end_work_hour, industry_working_hours = activity_working_hours_overrides[2], activity_working_hours_overrides[3], activity_working_hours_overrides[4]

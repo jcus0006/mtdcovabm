@@ -11,6 +11,7 @@ import itinerary, vars
 import time
 import util
 from copy import copy, deepcopy
+from dask.distributed import get_worker, as_completed
 
 def localitinerary_parallel(client,
                             day,
@@ -136,12 +137,13 @@ def localitinerary_parallel(client,
                 dask_params.append(params)
 
             start = time.time()
-            delayed_results = [dask.delayed(localitinerary_worker)(dask_params[i]) for i in range(num_processes)]
+            delayed_computations = [dask.delayed(localitinerary_worker)(dask_params[i]) for i in range(num_processes)]
             time_taken = time.time() - start
             print("delayed_results generation: " + str(time_taken))
 
             start = time.time()
-            computed_results = dask.compute(*delayed_results)
+            # futures = client.compute(delayed_computations) # this delays computation (and doesn't seem to work with the large dataset)
+            results = dask.compute(*delayed_computations) # this blocks (and seems to work)
             time_taken = time.time() - start
             print("computed_results generation: " + str(time_taken))
 
@@ -151,7 +153,12 @@ def localitinerary_parallel(client,
 
             start = time.time()
 
-            for result in computed_results:
+            # results = client.gather(futures) # another way of collecting the results
+
+            # # for future in as_completed(futures): # to use with futures
+            for result in results: # simple traversal of already collected results (block method)
+                # result = future.result()
+
                 process_index, agents_partial, vars_util_partial, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
 
                 print("processing results for worker " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
@@ -190,8 +197,10 @@ def localitinerary_parallel(client,
 
 def localitinerary_worker(params):
     # from shared_mp import agents_static
-    import sys
-    sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
+    # import sys
+    # sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
+
+    import os
 
     process_index = -1
     original_stdout = None
@@ -207,6 +216,24 @@ def localitinerary_worker(params):
         log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(process_index) + ".txt"
         f = open(log_file_name, "w")
         sys.stdout = f
+
+        # implementation for static agents via dask plugins
+        print("interpreter: " + os.path.dirname(sys.executable))
+        print("current working directory: " + os.getcwd())
+
+        worker = get_worker()
+
+        plugin = worker.plugins['read-only-data']
+        persons = plugin.persons
+
+        persons_len = ""
+        if persons is not None:
+            persons_len = len(persons)
+        else:
+            persons_len = "None"
+
+        print("persons len: " + str(persons_len))
+        print("actual persons len: " + str(plugin.persons_len))
 
         print("cells_agents_timesteps in process " + str(process_index) + " is " + str(id(vars_util_mp.cells_agents_timesteps)))
         print(f"Itinerary Worker Child #{process_index+1} at {str(time.time())}", flush=True)

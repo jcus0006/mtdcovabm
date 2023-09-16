@@ -1,9 +1,10 @@
 import sys
-
 # sys.path.append('~/AppsPy/mtdcovabm/simulator')
-sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
-
+# sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
 import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..")) # add root to sys.path
+
 import shutil
 import json
 import numpy as np
@@ -11,15 +12,43 @@ import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_mp, itinerary_dask, contactnetwork_mp, tourism, vars, agentsutil, static, shared_mp
+import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, itinerary_dask, contactnetwork_mp, tourism, vars, agentsutil, static, shared_mp
+from utility.npencoder import NpEncoder
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, SSHCluster
+from dask.distributed import Client, LocalCluster, SSHCluster
+from dask.distributed import WorkerPlugin
+import dask.dataframe as df
+
 from memory_profiler import profile
+
+# Load configuration
+with open('config.json', 'r') as config_file:
+    config = json.load(config_file)
+
+# class ReadOnlyData(WorkerPlugin):
+#     def __init__(self, agentsfilepath):
+#         with open(agentsfilepath, "r") as read_file:          
+#             self.persons = json.load(read_file)
+#             self.persons_len = len(self.persons)
+
+def read_only_data(agentsfilepath, n_locals, n_tourists, use_mp):
+        with open(agentsfilepath, "r") as read_file:          
+            temp_agents = json.load(read_file)
+
+            agents_static = static.Static()
+            agents_static.populate(temp_agents, n_locals, n_tourists, is_shm=use_mp) # for now trying without multiprocessing.RawArray
+            return agents_static
+        
+# def initialize_mp(): # agents_static
+#     manager = mp.Manager()
+#     pool = mp.Pool()
+#     # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
+#     return manager, pool
 
 # @profile
 def main():
-    params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
                 "timestepmins": 10,
                 "simulationdays": 1, # 365
                 "loadagents": True,
@@ -37,7 +66,7 @@ def main():
                 "fullpop": 519562,
                 "numprocesses": 4, # vm given 10 cores, limiting to X for now
                 "numthreads": 1,
-                "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3
+                "proc_usepool": 4, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
                 "sync_usethreads": False, # Threads True, Processes False,
                 "sync_usequeue": False,
                 "use_mp": False,
@@ -45,7 +74,7 @@ def main():
                 "itinerary_normal_weight": 1,
                 "itinerary_worker_student_weight": 1.12,
                 "logsubfoldername": "logs",
-                "logfilename": "output_dask_dashboard_500k_2.txt"
+                "logfilename": "output_dask_1k_distmp_wip.txt"
             }
     
     original_stdout = sys.stdout
@@ -71,6 +100,9 @@ def main():
     f = open(log_file_name, "w")
 
     sys.stdout = f
+
+    print("interpreter: " + os.path.dirname(sys.executable))
+    print("current working directory: " + os.getcwd())
 
     figure_count = 0
 
@@ -148,54 +180,17 @@ def main():
         touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
 
     if params["loadagents"]:
-        agentsfile = open(os.path.join(current_directory, "population", population_sub_folder, "agents.json"))
-        agents = json.load(agentsfile)
+        agents = None
+        agentsfilepath = os.path.join(current_directory, "population", population_sub_folder, "agents.json")
+        with open(agentsfilepath, "r") as read_file:
+            agents = json.load(read_file)
+
+        # agentsfile = open(os.path.join(current_directory, "population", population_sub_folder, "agents.json"))
+        # agents = json.load(agentsfile)
 
         n_locals = len(agents)
 
         agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agentsutil.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
-
-        # if params["quickdebug"]:
-        #     agents = {str(i):agents[str(i)] for i in range(1000)}
-
-        
-        # contactnetwork_util.agents = None
-        # epi_util.agents = None
-        # contactnetwork_util.agents = agents
-        # epi_util.agents = agents
-
-        # maleagents = {k:v for k, v in agents.items() if v["gender"] == 0}
-        # femaleagents = {k:v for k, v in agents.items() if v["gender"] == 1}
-
-        # agentsbyages = {}
-        # malesbyages = {}
-        # femalesbyages = {}
-
-        # for age in range(101):
-        #     agentsbyage = {k:v for k, v in agents.items() if v["age"] == age}
-        #     malesbyage = {k:v for k, v in agentsbyage.items() if v["gender"] == 0}
-        #     femalesbyage = {k:v for k, v in agentsbyage.items() if v["gender"] == 1}
-
-        #     agentsbyages[age] = agentsbyage
-        #     malesbyages[age] = malesbyage
-        #     femalesbyages[age] = femalesbyage
-
-        # agentsemployed = {k:v for k, v in agents.items() if v["empstatus"] == 0}
-        # malesemployed = {k:v for k, v in agentsemployed.items() if v["gender"] == 0}
-        # femalesemployed = {k:v for k, v in agentsemployed.items() if v["gender"] == 1}
-
-        # agentsbyindustries = {}
-        # malesbyindustries = {}
-        # femalesbyindustries = {}
-
-        # for industry in range(1,22):
-        #     agentsbyindustry = {k:v for k, v in agentsemployed.items() if v["empind"] == industry}
-        #     malesbyindustry = {k:v for k, v in malesemployed.items() if v["empind"] == industry}
-        #     femalesbyindustry = {k:v for k, v in femalesemployed.items() if v["empind"] == industry}
-
-        #     agentsbyindustries[industry] = agentsbyindustry
-        #     malesbyindustries[industry] = malesbyindustry
-        #     femalesbyindustries[industry] = femalesbyindustry
 
     cells_util = Cells(agents, cells, cellindex)
 
@@ -367,6 +362,13 @@ def main():
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
+    agentsupdatedfilepath = os.path.join(current_directory, "population", population_sub_folder, "agents_updated.json")
+    if os.path.exists(agentsupdatedfilepath):
+        os.remove(agentsupdatedfilepath)
+
+    with open(agentsupdatedfilepath, "w", encoding="utf-8") as fp:
+        json.dump(agents, fp, ensure_ascii=False, indent=4, cls=NpEncoder)
+
     agents_static = static.Static()
     agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_mp"]) # for now trying without multiprocessing.RawArray
 
@@ -385,25 +387,33 @@ def main():
             pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
         else:
             start = time.time()
+            # cluster = LocalCluster()
+
             cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
-                            worker_options={"n_workers": params["numprocesses"], },
-                            scheduler_options={"port": 0, "dashboard_address": ":8797"},) # remote_python="~/AppsPy/mtdcovabm/bin/python3.11"
+                            worker_options={"n_workers": 1, "local_directory": config["worker_working_directory"], },
+                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
                             # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
             time_taken = time.time() - start
             print("cluster generation: " + str(time_taken))
             # cluster.scale(params["numprocesses"])
 
-            start = time.time() - start
+            # Set the working directory for the scheduler and workers
+            # os.chdir(config["scheduler_working_directory"])  # Change the current working directory for the scheduler
+            # cluster.worker_options['local_directory'] = config["worker_working_directory"]  # Worker working directory from config
+
+            start = time.time()
             client = Client(cluster)
             time_taken = time.time() - start
             print("client generation: " + str(time_taken))
 
-            versions = client.get_versions(check=True)
+            # plugin = ReadOnlyData(agentsfilepath)
+            # client.register_worker_plugin(plugin, name="read-only-data")
 
-            print("versions: " + str(versions))
+            # versions = client.get_versions(check=True)
+            # print("versions: " + str(versions))
 
-            start = time.time() - start
+            start = time.time()
             client.upload_file('simulator/static.py')
             client.upload_file('simulator/util.py')
             client.upload_file('simulator/epidemiology.py')
@@ -411,10 +421,23 @@ def main():
             client.upload_file('simulator/seirstateutil.py')
             client.upload_file('simulator/vars.py')
             client.upload_file('simulator/itinerary.py')
-            client.upload_file('simulator/itinerary_dask.py')
+            # client.upload_file('simulator/itinerary_dask.py')
+            client.upload_file('simulator/itinerary_mp.py')
+            client.upload_file('simulator/itinerary_dist.py')
+            # client.upload_file(os.path.join("population", population_sub_folder, "agents.json"))
 
+            agents_updated_filepath = os.path.join("population", population_sub_folder, "agents.json")
+
+            future_static = client.submit(read_only_data, agents_updated_filepath, n_locals, n_tourists, params["use_mp"])
+            client.replicate(future_static)
             time_taken = time.time() - start
             print("upload modules remotely: " + str(time_taken))
+
+            # start = time.time()
+            # client.run(initialize_mp()) # agents_static
+            # time_taken = time.time() - start
+            # print("generating multiprocessing pool on workers: " + str(time_taken))
+
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -506,6 +529,7 @@ def main():
                                                         day,
                                                         weekday,
                                                         weekdaystr,
+                                                        params["popsubfolder"],
                                                         itineraryparams,
                                                         params["timestepmins"],
                                                         n_locals,
@@ -541,10 +565,11 @@ def main():
                                                         params["keep_processes_open"],
                                                         log_file_name)
                 else:
-                    itinerary_dask.localitinerary_parallel(client,
+                    itinerary_dist.localitinerary_distributed(client,
                                                         day, 
                                                         weekday, 
                                                         weekdaystr, 
+                                                        params["popsubfolder"],
                                                         itineraryparams, 
                                                         params["timestepmins"], 
                                                         n_locals, 
@@ -573,7 +598,7 @@ def main():
                                                         dyn_params, 
                                                         tourists_active_ids, 
                                                         hh_insts, 
-                                                        params["numprocesses"],
+                                                        params["numprocesses"], # to cleanup from here onwards, possibly to pass info about workers rather than these params
                                                         params["numthreads"],
                                                         params["proc_usepool"],
                                                         params["sync_usethreads"],
