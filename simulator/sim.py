@@ -16,11 +16,42 @@ import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, itinerary_da
 from utility.npencoder import NpEncoder
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, LocalCluster, SSHCluster
-from dask.distributed import WorkerPlugin
+from dask.distributed import Client, Worker, LocalCluster, SSHCluster
+# from dask.distributed import WorkerPlugin
 import dask.dataframe as df
+from functools import partial
 
 from memory_profiler import profile
+
+params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+            "timestepmins": 10,
+            "simulationdays": 1, # 365
+            "loadagents": True,
+            "loadhouseholds": True,
+            "loadinstitutions": True,
+            "loadworkplaces": True,
+            "loadschools": True,
+            "loadtourism": True,
+            "religiouscells": True,
+            "year": 2021,
+            "quickdebug": False,
+            "quicktourismrun": False,
+            "quickitineraryrun": False,
+            "visualise": False,
+            "fullpop": 519562,
+            "numprocesses": 2, # vm given 10 cores, limiting to X for now
+            "numthreads": 1,
+            "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
+            "sync_usethreads": False, # Threads True, Processes False,
+            "sync_usequeue": False,
+            "use_mp": False,
+            "use_mp_rawarray": True,
+            "keep_processes_open": True,
+            "itinerary_normal_weight": 1,
+            "itinerary_worker_student_weight": 1.12,
+            "logsubfoldername": "logs",
+            "logfilename": "output_dask_500k_distmp_wip.txt"
+        }
 
 # Load configuration
 with open('config.json', 'r') as config_file:
@@ -32,13 +63,15 @@ with open('config.json', 'r') as config_file:
 #             self.persons = json.load(read_file)
 #             self.persons_len = len(self.persons)
 
-def read_only_data(agentsfilepath, n_locals, n_tourists, use_mp):
+def read_only_data(dask_worker: Worker, agentsfilepath, n_locals, n_tourists, use_mp):
         with open(agentsfilepath, "r") as read_file:          
             temp_agents = json.load(read_file)
 
             agents_static = static.Static()
-            agents_static.populate(temp_agents, n_locals, n_tourists, is_shm=use_mp) # for now trying without multiprocessing.RawArray
-            return agents_static
+            agents_static.populate(temp_agents, n_locals, n_tourists, is_shm=use_mp)
+            
+            dask_worker.data["agents_static"] = agents_static
+            # return agents_static
         
 # def initialize_mp(): # agents_static
 #     manager = mp.Manager()
@@ -46,37 +79,8 @@ def read_only_data(agentsfilepath, n_locals, n_tourists, use_mp):
 #     # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 #     return manager, pool
 
-# @profile
+@profile
 def main():
-    params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
-                "timestepmins": 10,
-                "simulationdays": 1, # 365
-                "loadagents": True,
-                "loadhouseholds": True,
-                "loadinstitutions": True,
-                "loadworkplaces": True,
-                "loadschools": True,
-                "loadtourism": True,
-                "religiouscells": True,
-                "year": 2021,
-                "quickdebug": False,
-                "quicktourismrun": False,
-                "quickitineraryrun": False,
-                "visualise": False,
-                "fullpop": 519562,
-                "numprocesses": 4, # vm given 10 cores, limiting to X for now
-                "numthreads": 1,
-                "proc_usepool": 4, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
-                "sync_usethreads": False, # Threads True, Processes False,
-                "sync_usequeue": False,
-                "use_mp": False,
-                "keep_processes_open": True,
-                "itinerary_normal_weight": 1,
-                "itinerary_worker_student_weight": 1.12,
-                "logsubfoldername": "logs",
-                "logfilename": "output_dask_1k_distmp_wip.txt"
-            }
-    
     original_stdout = sys.stdout
 
     subfolder_name = params["logsubfoldername"]
@@ -392,7 +396,8 @@ def main():
             cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
                             worker_options={"n_workers": 1, "local_directory": config["worker_working_directory"], },
-                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
+                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},
+                            worker_class="distributed.Worker") # local_directory in scheduler_options has no effect
                             # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
             time_taken = time.time() - start
             print("cluster generation: " + str(time_taken))
@@ -414,6 +419,7 @@ def main():
             # print("versions: " + str(versions))
 
             start = time.time()
+            client.upload_file('simulator/shared_mp.py')
             client.upload_file('simulator/static.py')
             client.upload_file('simulator/util.py')
             client.upload_file('simulator/epidemiology.py')
@@ -425,19 +431,12 @@ def main():
             client.upload_file('simulator/itinerary_mp.py')
             client.upload_file('simulator/itinerary_dist.py')
             # client.upload_file(os.path.join("population", population_sub_folder, "agents.json"))
+            
+            callback = partial(read_only_data, agentsfilepath=agentsupdatedfilepath, n_locals=n_locals, n_tourists=n_tourists, use_mp=params["use_mp_rawarray"])
+            client.register_worker_callbacks(callback)
 
-            agents_updated_filepath = os.path.join("population", population_sub_folder, "agents.json")
-
-            future_static = client.submit(read_only_data, agents_updated_filepath, n_locals, n_tourists, params["use_mp"])
-            client.replicate(future_static)
             time_taken = time.time() - start
             print("upload modules remotely: " + str(time_taken))
-
-            # start = time.time()
-            # client.run(initialize_mp()) # agents_static
-            # time_taken = time.time() - start
-            # print("generating multiprocessing pool on workers: " + str(time_taken))
-
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -575,7 +574,6 @@ def main():
                                                         n_locals, 
                                                         n_tourists, 
                                                         locals_ratio_to_full_pop, 
-                                                        agents_static,
                                                         it_agents,
                                                         agents_ids_by_ages,                                                      
                                                         None, 

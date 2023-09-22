@@ -6,7 +6,7 @@ import asyncio
 import threading
 import numpy as np
 import traceback
-import itinerary_mp, vars
+import itinerary_mp, vars, shared_mp
 import time
 import util
 from copy import copy, deepcopy
@@ -23,7 +23,6 @@ def localitinerary_distributed(client,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop,
-                            agents_static,
                             agents_dynamic,
                             agents_ids_by_ages,
                             tourists,
@@ -115,10 +114,9 @@ def localitinerary_distributed(client,
                     n_locals, 
                     n_tourists, 
                     locals_ratio_to_full_pop,
-                    agents_static,
                     agents_partial, 
                     agents_ids_by_ages_partial, 
-                    deepcopy(vars_util), 
+                    deepcopy(vars_util_partial), 
                     tourists, 
                     cells_industries_by_indid_by_wpid, 
                     cells_restaurants, 
@@ -138,6 +136,7 @@ def localitinerary_distributed(client,
                     dynparams, 
                     tourists_active_ids, 
                     proc_use_pool,
+                    num_processes,
                     worker_index,
                     original_log_file_name)             
 
@@ -166,11 +165,33 @@ def localitinerary_distributed(client,
         for result in results: # simple traversal of already collected results (block method)
             # result = future.result()
 
-            worker_index, agents_partial, vars_util_partial = result
+            worker_index, agents_partial_results_combined, vars_util_partial_results_combined = result
 
             print("processing results for worker " + str(worker_index))
 
-            mp_hh_inst_ids_this_proc = mp_hh_inst_indices[worker_index]
+            for i in range(1000):
+                if i in agents_partial_results_combined:
+                    if agents_partial_results_combined[i]["itinerary"] is None or len(agents_partial_results_combined[i]["itinerary"]) == 0:
+                        print("itinerary_dist results, itinerary is empty " + str(i))
+
+            agents_dynamic, vars_util = sync_results(worker_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results_combined, vars_util_partial_results_combined)
+
+        if not keep_processes_open:
+            start = time.time()
+            client.shutdown()
+            time_taken = time.time() - start
+            print("client shutdown time taken " + str(time_taken))         
+    except:
+        with open(stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
+
+def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results_combined, vars_util_partial_results_combined):
+    if agents_partial_results_combined is not None and len(agents_partial_results_combined) > 0:
+        for i in len(agents_partial_results_combined):
+            agents_partial = agents_partial_results_combined[i]
+            vars_util_partial = vars_util_partial_results_combined[i]
+
+            mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
             hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc] 
 
@@ -184,19 +205,9 @@ def localitinerary_distributed(client,
             vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
 
             time_taken_cat = time.time() - start_cat
-            print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(worker_index, str(time_taken_cat)))
+            print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
 
-            time_taken = time.time() - start
-            print("syncing results back with main process. time taken " + str(time_taken))
-
-        if not keep_processes_open:
-            start = time.time()
-            client.shutdown()
-            time_taken = time.time() - start
-            print("client shutdown time taken " + str(time_taken))         
-    except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+    return agents_dynamic, vars_util
 
 def localitinerary_worker(params):
     # from shared_mp import agents_static
@@ -212,13 +223,13 @@ def localitinerary_worker(params):
 
     try:  
         # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
-        day, weekday, weekdaystr, popsubfolder, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, agents_ids_by_ages, vars_util_mp, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, proc_use_pool, worker_index, log_file_name = params
+        day, weekday, weekdaystr, popsubfolder, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_partial, agents_ids_by_ages, vars_util_partial, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, proc_use_pool, num_processes, worker_index, log_file_name = params
         
         original_stdout = sys.stdout
         original_log_file_name = log_file_name
 
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_dist_stack_trace_" + str(worker_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(worker_index) + ".txt"
+        log_file_name = log_file_name.replace(".txt", "") + "_it_dist_" + str(worker_index) + ".txt"
         f = open(log_file_name, "w")
         sys.stdout = f
 
@@ -226,8 +237,16 @@ def localitinerary_worker(params):
         print("interpreter: " + os.path.dirname(sys.executable))
         print("current working directory: " + os.getcwd())
 
-        # worker = get_worker()
+        worker = get_worker()
+        # agents_static = worker.client.futures["agents_static"]
+        # agents_static = worker.plugins["read_only_data"]
 
+        print("worker memory limit: " + str(worker.memory_limit))
+        
+        agents_static = worker.data["agents_static"]
+        # agents_static = agents_static_future.result()
+
+        # print("agents_static: " + str(len(agents_static)))
         # plugin = worker.plugins['read-only-data']
         # persons = plugin.persons
 
@@ -245,15 +264,16 @@ def localitinerary_worker(params):
         manager, pool = None, None
 
         if proc_use_pool == 0 or proc_use_pool == 3:
+            print("generating manager and pool")
             manager = mp.Manager()
-            pool = mp.Pool()
+            pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 
         # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 
-        print("cells_agents_timesteps in process " + str(worker_index) + " is " + str(id(vars_util_mp.cells_agents_timesteps)))
+        print("cells_agents_timesteps in process " + str(worker_index) + " is " + str(id(vars_util_partial.cells_agents_timesteps)))
         print(f"Itinerary Worker Child #{worker_index+1} at {str(time.time())}", flush=True)
 
-        agents_dynamic, vars_util_mp = itinerary_mp.localitinerary_parallel(manager,
+        agents_partial, vars_util_partial = itinerary_mp.localitinerary_parallel(manager,
                                                                             pool,
                                                                             day,
                                                                             weekday,
@@ -264,10 +284,10 @@ def localitinerary_worker(params):
                                                                             n_locals, 
                                                                             n_tourists, 
                                                                             locals_ratio_to_full_pop, 
-                                                                            agents_dynamic, 
+                                                                            agents_partial, 
                                                                             agents_ids_by_ages,
                                                                             tourists,
-                                                                            vars_util_mp,
+                                                                            vars_util_partial,
                                                                             cells_industries_by_indid_by_wpid, 
                                                                             cells_restaurants,
                                                                             cells_hospital,
@@ -286,13 +306,17 @@ def localitinerary_worker(params):
                                                                             dyn_params,
                                                                             tourists_active_ids,
                                                                             hh_insts,
-                                                                            1, # to do - this is to be passed dynamically based on worker/s config/s,
-                                                                            proc_use_pool=True,
+                                                                            num_processes, # to do - this is to be passed dynamically based on worker/s config/s,
+                                                                            proc_use_pool=proc_use_pool,
                                                                             log_file_name=original_log_file_name)
 
         # to do - somehow to return and combine results
+        for i in range(1000):
+            if i in agents_partial:
+                if agents_partial[i]["itinerary"] is None or len(agents_partial[i]["itinerary"]) == 0:
+                    print("itinerary_dist, itinerary is empty " + str(i))
 
-        return worker_index, agents_dynamic, vars_util_mp
+        return worker_index, agents_partial, vars_util_partial
     except:
         with open(stack_trace_log_file_name, 'w') as f: # it_dist_stack_trace.txt
             traceback.print_exc(file=f)

@@ -82,6 +82,11 @@ def localitinerary_parallel(manager,
         # rank = comm.Get_rank()
         # size = comm.Get_size()
         # print("MPI rank {0}, size {1}".format(rank, size))
+
+        agents_partial_results_combined, vars_util_partial_results_combined = [], []
+
+        print("proc_use_pool: " + str(proc_use_pool))
+        print("num_processes: " + str(num_processes))
         
         if num_processes > 1:
         #     sync_threads = []
@@ -184,7 +189,7 @@ def localitinerary_parallel(manager,
                         locals_ratio_to_full_pop,
                         agents_partial, 
                         agents_ids_by_ages_partial, 
-                        deepcopy(vars_util), 
+                        deepcopy(vars_util_partial), 
                         tourists, 
                         cells_industries_by_indid_by_wpid, 
                         cells_restaurants, 
@@ -277,30 +282,50 @@ def localitinerary_parallel(manager,
             futures = None
             if proc_use_pool == 4:
                 futures = compute(delayed_values, scheduler="processes", num_processes=num_processes)
-
+            
             if proc_use_pool == 3 or proc_use_pool == 4:
                 start = time.time()
 
                 if proc_use_pool == 3:
                     for result in imap_results:
-                        process_index, agents_partial, vars_util_partial, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
+                        agents_partial_results, vars_util_partial_results = None, None
+
+                        process_index, agents_partial_results, vars_util_partial_results, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
+
+                        if len(agents_partial_results) == 0:
+                            print("itinerary_mp results, agents_partial_results is empty")
+                        else:
+                            print("itinerary_mp results, agents_partial_results is not empty")
+
+                        for i in range(1000):
+                            if i in agents_partial_results:
+                                if agents_partial_results[i]["itinerary"] is None or len(agents_partial_results[i]["itinerary"]) == 0:
+                                    print("itinerary_mp results, itinerary is empty " + str(i))
+
+                        agents_partial_results_combined.append(agents_partial_results)
+                        vars_util_partial_results_combined.append(vars_util_partial_results)
 
                         print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
                         # print(itinerary_times_by_resid_ordered)
 
-                        agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial)
+                        # possibly issue here, syncing at this point is unnecessary, needs to be synced once in main process
+                        # instead return the partial results only
+                        # agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial)
                 elif proc_use_pool == 4:
                     for future in as_completed(futures):
                         result = future.result()
 
-                        process_index, agents_partial, vars_util_partial = result
+                        process_index, agents_partial_results, vars_util_partial_results = result
+
+                        agents_partial_results_combined.append(agents_partial_results)
+                        vars_util_partial_results_combined.append(vars_util_partial_results)
 
                         print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
                         # print(itinerary_times_by_resid_ordered)
 
-                        agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial)
+                        # agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial)
                     
                 time_taken = time.time() - start
                 print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -329,8 +354,12 @@ def localitinerary_parallel(manager,
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
             params = day, weekday, weekdaystr, popsubfolder, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter, log_file_name
             process_index, agents_dynamic, vars_util, _, _, _, _ = localitinerary_worker(params)
+            return [agents_dynamic], [vars_util]
 
-        return agents_dynamic, vars_util  
+        if len(agents_partial_results_combined) == 0:
+            print("itinerary mp return: agents_partial_results_combined is empty")
+
+        return agents_partial_results_combined, vars_util_partial_results_combined
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
@@ -342,9 +371,6 @@ def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, va
 
     for hh_inst in hh_insts_partial:
         agents_dynamic, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial)
-
-    if 57 in vars_util_partial.cells_agents_timesteps:
-        print("57 in cells_agents_timesteps result of process " + str(process_index) + ", cells_agents_timesteps id: " + str(id(vars_util_partial.cells_agents_timesteps)))
 
     vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
 
@@ -358,7 +384,7 @@ def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, va
     return agents_dynamic, vars_util
 
 def localitinerary_worker(params):
-    # from shared_mp import agents_static
+    from shared_mp import agents_static
     import json
     import os
     
@@ -480,6 +506,11 @@ def localitinerary_worker(params):
 
         working_schedule_times_by_resid_ordered = {key: working_schedule_times_by_resid[key] for key in working_schedule_times_by_resid_ordered_keys}
         itinerary_times_by_resid_ordered = {key: itinerary_times_by_resid[key] for key in itinerary_times_by_resid_ordered_keys}
+        
+        for i in range(1000):
+            if i in agents_dynamic:
+                if agents_dynamic[i]["itinerary"] is None or len(agents_dynamic[i]["itinerary"]) == 0:
+                    print("itinerary_mp, itinerary is empty " + str(i))
 
         return process_index, agents_dynamic, vars_util_mp, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary
     except:
