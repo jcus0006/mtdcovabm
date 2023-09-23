@@ -292,9 +292,9 @@ class Cells:
                         self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
                         if sampled_activity not in entertainmentcells:
-                            entertainmentcells[sampled_activity] = {}
+                            entertainmentcells[int(sampled_activity)] = {}
 
-                        entertainmentcells_by_activity = entertainmentcells[sampled_activity]
+                        entertainmentcells_by_activity = entertainmentcells[int(sampled_activity)]
 
                         entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
 
@@ -407,9 +407,9 @@ class Cells:
                             self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
                             if sampled_activity not in entertainmentcells:
-                                entertainmentcells[sampled_activity] = {}
+                                entertainmentcells[int(sampled_activity)] = {}
 
-                            entertainmentcells_by_activity = entertainmentcells[sampled_activity]
+                            entertainmentcells_by_activity = entertainmentcells[int(sampled_activity)]
 
                             entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
 

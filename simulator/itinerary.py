@@ -60,6 +60,7 @@ class Itinerary:
         self.agents_ids_by_ages = agents_ids_by_ages
         self.tourists = tourists
         self.industries = cells_industries_by_indid_by_wpid
+        print("industries keys: " + str(self.industries.keys()))
         self.cells_restaurants = cells_restaurants
         self.cells_hospital = cells_hospital
         self.cells_testinghub = cells_testinghub
@@ -1232,7 +1233,7 @@ class Itinerary:
                 #     print("something wrong")
 
                 if len(agent["itinerary"]) == 0: 
-                    print("something wrong")
+                    print("something wrong, itinerary empty")
 
                 if agent_is_guardian:
                     guardian_hospitalisation_days = copy(agent["hospitalisation_days"])
@@ -1259,12 +1260,12 @@ class Itinerary:
                     self.vars_util.agents_infection_type[agentid] = agent_infection_type
                     self.vars_util.agent_infection_severity[agentid] = agent_infection_severity
 
-                if agent["itinerary"] is None or len(agent["itinerary"]) == 0:
-                    print("itinerary: itinerary empty for agent " + str(agentid))
-                else:
-                    if agentid < 10:
-                        first_key = list(agent["itinerary"])[0]
-                        print("first action: " + str(agent["itinerary"][first_key]))
+                # if agent["itinerary"] is None or len(agent["itinerary"]) == 0:
+                #     print("itinerary: itinerary empty for agent " + str(agentid))
+                # else:
+                #     if agentid < 10:
+                #         first_key = list(agent["itinerary"])[0]
+                #         print("first action: " + str(agent["itinerary"][first_key]))
 
                 # time_taken = time.time() - start
                 # self.itinerary_interprocess_communication_aggregated_time += time_taken

@@ -12,7 +12,10 @@ import util
 from copy import copy, deepcopy
 from dask.distributed import get_worker, as_completed
 import multiprocessing as mp
+from memory_profiler import profile
 
+# fp = open("memory_profiler_dist.log", "w+")
+# @profile(stream=fp)
 def localitinerary_distributed(client,
                             day,
                             weekday,
@@ -51,6 +54,7 @@ def localitinerary_distributed(client,
                             sync_use_threads=False,
                             sync_use_queue=False,
                             keep_processes_open=True,
+                            use_mp=False, # in this context use_mp means use single dask worker and mp in each node
                             log_file_name="output.txt"): 
     original_log_file_name = log_file_name
     stack_trace_log_file_name = ""
@@ -61,7 +65,9 @@ def localitinerary_distributed(client,
 
         vars_util.reset_cells_agents_timesteps()
 
-        workers = client.scheduler_info()["workers"].keys()
+        workers = client.scheduler_info()["workers"].keys() # list()
+        # worker = client.scheduler_info()["workers"][workers[0]]
+        # print("local_directory: " + str(worker["local_directory"]))
         
         num_workers = len(workers)
 
@@ -104,46 +110,74 @@ def localitinerary_distributed(client,
             print("starting process index " + str(worker_index) + " at " + str(time.time()))
 
             # Define parameters
-            params = (day, 
-                    weekday, 
-                    weekdaystr, 
-                    popsubfolder,
-                    hh_insts_partial, 
-                    itineraryparams, 
-                    timestepmins, 
-                    n_locals, 
-                    n_tourists, 
-                    locals_ratio_to_full_pop,
-                    agents_partial, 
-                    agents_ids_by_ages_partial, 
-                    deepcopy(vars_util_partial), 
-                    tourists, 
-                    cells_industries_by_indid_by_wpid, 
-                    cells_restaurants, 
-                    cells_hospital,
-                    cells_testinghub, 
-                    cells_vaccinationhub, 
-                    cells_entertainment_by_activityid, 
-                    cells_religious, 
-                    cells_households, 
-                    cells_breakfast_by_accomid, 
-                    cells_airport, 
-                    cells_transport, 
-                    cells_institutions, 
-                    cells_accommodation, 
-                    tourist_entry_infection_probability, 
-                    epidemiologyparams, 
-                    dynparams, 
-                    tourists_active_ids, 
-                    proc_use_pool,
-                    num_processes,
-                    worker_index,
-                    original_log_file_name)             
+            if use_mp: # call itinerary_dist.localitinerary_dist_worker
+                params = (day, 
+                        weekday, 
+                        weekdaystr, 
+                        popsubfolder,
+                        hh_insts_partial, 
+                        itineraryparams, 
+                        timestepmins, 
+                        n_locals, 
+                        n_tourists, 
+                        locals_ratio_to_full_pop,
+                        agents_partial, 
+                        agents_ids_by_ages_partial, 
+                        deepcopy(vars_util_partial), 
+                        tourists, 
+                        cells_industries_by_indid_by_wpid, 
+                        cells_restaurants, 
+                        cells_hospital,
+                        cells_testinghub, 
+                        cells_vaccinationhub, 
+                        cells_entertainment_by_activityid, 
+                        cells_religious, 
+                        cells_households, 
+                        cells_breakfast_by_accomid, 
+                        cells_airport, 
+                        cells_transport, 
+                        cells_institutions, 
+                        cells_accommodation, 
+                        tourist_entry_infection_probability, 
+                        epidemiologyparams, 
+                        dynparams, 
+                        tourists_active_ids, 
+                        proc_use_pool,
+                        num_processes,
+                        worker_index,
+                        original_log_file_name) 
+            else: # call itinerary_mp.localitinerary_worker
+                params = (day, 
+                        weekday, 
+                        weekdaystr,
+                        popsubfolder, 
+                        hh_insts_partial, 
+                        itineraryparams, 
+                        timestepmins, 
+                        n_locals, 
+                        n_tourists, 
+                        locals_ratio_to_full_pop,
+                        agents_partial, 
+                        agents_ids_by_ages_partial, 
+                        deepcopy(vars_util_partial), 
+                        tourists,
+                        tourist_entry_infection_probability, 
+                        epidemiologyparams, 
+                        dynparams, 
+                        tourists_active_ids, 
+                        False, # use_shm (in this case use np)
+                        worker_index, 
+                        None,
+                        log_file_name)  
 
             dask_params.append(params)
 
         start = time.time()
-        delayed_computations = [dask.delayed(localitinerary_worker)(dask_params[i]) for i in range(num_workers)]
+        if use_mp:
+            delayed_computations = [dask.delayed(localitinerary_dist_worker)(dask_params[i]) for i in range(num_workers)]
+        else:
+            delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(num_workers)]
+        
         time_taken = time.time() - start
         print("delayed_results generation: " + str(time_taken))
 
@@ -165,7 +199,10 @@ def localitinerary_distributed(client,
         for result in results: # simple traversal of already collected results (block method)
             # result = future.result()
 
-            worker_index, agents_partial_results_combined, vars_util_partial_results_combined = result
+            if use_mp:
+                worker_index, agents_partial_results_combined, vars_util_partial_results_combined = result
+            else:
+                worker_index, agents_partial_results_combined, vars_util_partial_results_combined, _, _, _, _ = result
 
             print("processing results for worker " + str(worker_index))
 
@@ -185,31 +222,27 @@ def localitinerary_distributed(client,
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
 
-def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results_combined, vars_util_partial_results_combined):
-    if agents_partial_results_combined is not None and len(agents_partial_results_combined) > 0:
-        for i in len(agents_partial_results_combined):
-            agents_partial = agents_partial_results_combined[i]
-            vars_util_partial = vars_util_partial_results_combined[i]
+def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
+    if agents_partial is not None and len(agents_partial) > 0:
+        mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
-            mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
+        hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc] 
 
-            hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc] 
+        for hh_inst in hh_insts_partial:
+            agents_dynamic, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial)
 
-            for hh_inst in hh_insts_partial:
-                agents_dynamic, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial)
+        vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
 
-            vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
+        start_cat = time.time()
+        
+        vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
 
-            start_cat = time.time()
-            
-            vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
-
-            time_taken_cat = time.time() - start_cat
-            print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
+        time_taken_cat = time.time() - start_cat
+        print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
 
     return agents_dynamic, vars_util
 
-def localitinerary_worker(params):
+def localitinerary_dist_worker(params):
     # from shared_mp import agents_static
     # import sys
     # sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')

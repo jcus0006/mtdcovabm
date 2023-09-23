@@ -20,7 +20,7 @@ from dask.distributed import Client, Worker, LocalCluster, SSHCluster
 # from dask.distributed import WorkerPlugin
 import dask.dataframe as df
 from functools import partial
-
+import gc
 from memory_profiler import profile
 
 params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
@@ -44,13 +44,14 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False,
-            "use_mp_rawarray": True,
+            "use_mp": False, # if this is true, single node, multiprocessing is used
+            "use_mp_rawarray": False, # this is applicable for any case of mp (if not using mp, set to False)
+            "dask_use_mp": False, # if this is true, dask is used, and multiprocessing is used in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
             "logsubfoldername": "logs",
-            "logfilename": "output_dask_500k_distmp_wip.txt"
+            "logfilename": "output_dask_1k_distmp_2_celloptimisation.txt"
         }
 
 # Load configuration
@@ -63,23 +64,56 @@ with open('config.json', 'r') as config_file:
 #             self.persons = json.load(read_file)
 #             self.persons_len = len(self.persons)
 
-def read_only_data(dask_worker: Worker, agentsfilepath, n_locals, n_tourists, use_mp):
-        with open(agentsfilepath, "r") as read_file:          
-            temp_agents = json.load(read_file)
+def read_only_data(dask_worker: Worker, n_locals, n_tourists, use_mp):
+    import os
 
-            agents_static = static.Static()
-            agents_static.populate(temp_agents, n_locals, n_tourists, is_shm=use_mp)
-            
-            dask_worker.data["agents_static"] = agents_static
-            # return agents_static
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_households_updated.json"), "cells_households")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_institutions_updated.json"), "cells_institutions")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_transport_updated.json"), "cells_transport")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_industries_by_indid_by_wpid_updated.json"), "cells_industries_by_indid_by_wpid")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_restaurants_updated.json"), "cells_restaurants")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_hospital_updated.json"), "cells_hospital")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_testinghub_updated.json"), "cells_testinghub")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_vaccinationhub_updated.json"), "cells_vaccinationhub")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_entertainment_by_activityid_updated.json"), "cells_entertainment_by_activityid")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_breakfast_by_accomid_updated.json"), "cells_breakfast_by_accomid")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_airport_updated.json"), "cells_airport")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_accommodation_updated.json"), "cells_accommodation")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_religious_updated.json"), "cells_religious")
+
+    agentsupdatedfilepath = os.path.join(dask_worker.local_directory, "agents_updated.json")
+    with open(agentsupdatedfilepath, "r") as read_file: 
+        temp_agents = json.load(read_file)
+
+        agents_static = static.Static()
+        agents_static.populate(temp_agents, n_locals, n_tourists, is_shm=use_mp)
         
+        dask_worker.data["agents_static"] = agents_static
+
+def load_dask_worker_data(dask_worker, filepath, propname):
+    with open(filepath, "r") as read_file: 
+        temp = json.load(read_file, object_hook=jsonKeys2int)
+        dask_worker.data[propname] = temp
+
+def jsonKeys2int(x):
+    new_dict = {}
+    for k, v in x.items():
+        try:
+            new_key = int(k)
+        except:
+            new_key = k
+        if type(v) == dict:
+            v = jsonKeys2int(v)
+        new_dict[new_key] = v
+    return new_dict
 # def initialize_mp(): # agents_static
 #     manager = mp.Manager()
 #     pool = mp.Pool()
 #     # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 #     return manager, pool
 
-@profile
+# fp = open("memory_profiler.log", "w+")
+# @profile(stream=fp)
 def main():
     original_stdout = sys.stdout
 
@@ -148,6 +182,8 @@ def main():
     if len(params["popsubfolder"]) > 0:
         population_sub_folder = params["popsubfolder"]
 
+    dynamic_json_paths = [] # to be uploaded to remote nodes
+
     # load agents and all relevant JSON files on each node
     agents_dynamic = {}
     agents_ids_by_ages = {}
@@ -211,21 +247,23 @@ def main():
 
             workplaces_cells_params = cellsparams["workplaces"]
 
-        households, cells_households, householdsworkplaces, cells_householdsworkplaces = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
+        households, cells_households, _, _ = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
+        
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_households_updated.json", cells_households))
 
         # contactnetwork_util.epi_util.cells_households = cells_households
         
     if params["loadinstitutions"]:
-        institutiontypesfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutiontypes.json"))
-        institutiontypes_original = json.load(institutiontypesfile)
+        # institutiontypesfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutiontypes.json"))
+        # institutiontypes_original = json.load(institutiontypesfile)
 
         institutionsfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutions.json"))
         institutions = json.load(institutionsfile)
 
         institutions_cells_params = cellsparams["institutions"]
 
-        institutiontypes, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
-
+        _, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_institutions_updated.json", cells_institutions))
         # contactnetwork_util.epi_util.cells_institutions = cells_institutions  
 
     hh_insts = []
@@ -298,6 +336,8 @@ def main():
         entertainment_acitvity_dist = cellsparams["entertainmentactivitydistribution"]
 
         transport, cells_transport = cells_util.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
+        
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_transport_updated.json", cells_transport))
 
         # cells_accommodation_by_accomid = {} # {accomid: [{cellid: {cellinfo}}]}
         accommodations = []
@@ -335,8 +375,17 @@ def main():
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        cells_industries_by_indid_by_wpid, cells_industries, cells_restaurants, cells_accommodation, cells_accommodation_by_accomid, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
+        cells_industries_by_indid_by_wpid, _, cells_restaurants, cells_accommodation, _, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
 
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_industries_by_indid_by_wpid_updated.json", cells_industries_by_indid_by_wpid))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_restaurants_updated.json", cells_restaurants))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_hospital_updated.json", cells_hospital))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_testinghub_updated.json", cells_testinghub))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_vaccinationhub_updated.json", cells_vaccinationhub))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_entertainment_by_activityid_updated.json", cells_entertainment_by_activityid))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_breakfast_by_accomid_updated.json", cells_breakfast_by_accomid))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_airport_updated.json", cells_airport))
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_accommodation_updated.json", cells_accommodation))
         # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
 
@@ -355,35 +404,36 @@ def main():
         print("Min classroom size: " + str(min_classroom_size) + ", Max classroom size: " + str(max_classroom_size))
         print("Min non-teaching staff size: " + str(min_nts_size) + ", Max classroom size: " + str(max_nts_size))
 
-        schooltypes, cells_schools, cells_classrooms = cells_util.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
+        cells_util.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
 
     if params["religiouscells"]:
         religious_cells_params = cellsparams["religious"]
 
-        churches, cells_religious = cells_util.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
+        _, cells_religious = cells_util.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
+
+        dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_religious_updated.json", cells_religious))
 
     # this might cause problems when referring to related agents, by household, workplaces etc
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
-    agentsupdatedfilepath = os.path.join(current_directory, "population", population_sub_folder, "agents_updated.json")
-    if os.path.exists(agentsupdatedfilepath):
-        os.remove(agentsupdatedfilepath)
-
-    with open(agentsupdatedfilepath, "w", encoding="utf-8") as fp:
-        json.dump(agents, fp, ensure_ascii=False, indent=4, cls=NpEncoder)
+    dynamic_json_paths.append(convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
 
     agents_static = static.Static()
-    agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_mp"]) # for now trying without multiprocessing.RawArray
+    agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_mp_rawarray"]) # for now trying without multiprocessing.RawArray
 
     agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents)
+
+    del agents
 
     vars_util = vars.Vars()
     vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
 
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
-
+    
+    gc.collect()
+    
     client = None
     try:
         if params["use_mp"]:
@@ -393,11 +443,17 @@ def main():
             start = time.time()
             # cluster = LocalCluster()
 
+            num_workers = 0
+            if params["dask_use_mp"]:
+                num_workers = 1
+            else:
+                num_workers = params["numprocesses"]
+
             cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
-                            worker_options={"n_workers": 1, "local_directory": config["worker_working_directory"], },
-                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},
-                            worker_class="distributed.Worker") # local_directory in scheduler_options has no effect
+                            worker_options={"n_workers": num_workers, "local_directory": config["worker_working_directory"], }, # "memory_limit": "3GB" (in worker_options)
+                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
+                            # worker_class="distributed.Worker", 
                             # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
             time_taken = time.time() - start
             print("cluster generation: " + str(time_taken))
@@ -431,8 +487,11 @@ def main():
             client.upload_file('simulator/itinerary_mp.py')
             client.upload_file('simulator/itinerary_dist.py')
             # client.upload_file(os.path.join("population", population_sub_folder, "agents.json"))
+
+            for dynamicjsonpath in dynamic_json_paths:
+                client.upload_file(dynamicjsonpath)
             
-            callback = partial(read_only_data, agentsfilepath=agentsupdatedfilepath, n_locals=n_locals, n_tourists=n_tourists, use_mp=params["use_mp_rawarray"])
+            callback = partial(read_only_data, n_locals=n_locals, n_tourists=n_tourists, use_mp=params["use_mp_rawarray"])
             client.register_worker_callbacks(callback)
 
             time_taken = time.time() - start
@@ -598,10 +657,11 @@ def main():
                                                         hh_insts, 
                                                         params["numprocesses"], # to cleanup from here onwards, possibly to pass info about workers rather than these params
                                                         params["numthreads"],
-                                                        params["proc_usepool"],
+                                                        params["proc_usepool"],                                                   
                                                         params["sync_usethreads"],
                                                         params["sync_usequeue"],
                                                         params["keep_processes_open"],
+                                                        params["dask_use_mp"],
                                                         log_file_name)
                 
                 time_taken = time.time() - start
@@ -704,12 +764,22 @@ def main():
         with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as f:
             traceback.print_exc(file=f)
     finally:
-        print(len(agents))
+        # print(len(agents))
         sys.stdout = original_stdout
         f.close()
 
         if client is not None:
             client.shutdown()
+
+def convert_to_json_file(current_directory, folder, subfolder, filename, array):
+    temp_filepath = os.path.join(current_directory, folder, subfolder, filename)
+    if os.path.exists(temp_filepath):
+        os.remove(temp_filepath)
+
+    with open(temp_filepath, "w", encoding="utf-8") as fp:
+        json.dump(array, fp, ensure_ascii=False, indent=4, cls=NpEncoder)
+
+    return temp_filepath
 
 if __name__ == '__main__':
     main()
