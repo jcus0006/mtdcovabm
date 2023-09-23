@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from epidemiology import SEIRState, SEIRStateTransition, InfectionType, Severity
+from epidemiologyclasses import SEIRState, SEIRStateTransition, InfectionType, Severity
 
 def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_state):
     partial_agents_seir_state = agents_seir_state[:n]
@@ -39,17 +39,17 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 # if day is in agent["state_transition_by_day"]
 #   - update agent state (as required) - to be logged
 #   - clear agent["state_transition_by_day"] for day
-def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, day):
+def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, day, task_agent_ids=None):
     if day in agent["state_transition_by_day"]:
         seir_state_transition, timestep = agent["state_transition_by_day"][day]
-        current_seir_state = agents_seir_state[agentid]
+        current_seir_state = agents_seir_state_get(agents_seir_state, agentid, task_agent_ids)
         current_infection_type = agents_infection_type[agentid]
         current_infection_severity = agents_infection_severity[agentid]
 
         new_seir_state, new_infection_type, new_infection_severity = convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition)
 
         if new_seir_state != current_seir_state: # to be logged
-            agents_seir_state[agentid] = new_seir_state
+            agents_seir_state = agents_seir_state_update(agents_seir_state, new_seir_state, agentid, task_agent_ids)
 
         if new_infection_type != current_infection_type: # to be logged
             agents_infection_type[agentid] = new_infection_type
@@ -62,6 +62,20 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
         return new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
 
     return None
+
+def agents_seir_state_get(agents_seir_state, agentid, agentids=None):
+    if agentids is None:
+        return agents_seir_state[agentid]
+    else:
+        return agents_seir_state[agentids.index(agentid)]
+
+def agents_seir_state_update(agents_seir_state, new_seir_state, agentid, agentids=None):
+    if agentids is None:
+        agents_seir_state[agentid] = new_seir_state
+    else:
+        agents_seir_state[agentids.index(agentid)] = new_seir_state
+
+    return agents_seir_state
 
 # returns new: (state, infection_type, severity)
 def convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition):

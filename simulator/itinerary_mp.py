@@ -18,7 +18,6 @@ def localitinerary_parallel(manager,
                             day,
                             weekday,
                             weekdaystr,
-                            popsubfolder,
                             itineraryparams,
                             timestepmins,
                             n_locals, 
@@ -26,7 +25,6 @@ def localitinerary_parallel(manager,
                             locals_ratio_to_full_pop,
                             agents_dynamic,
                             agents_ids_by_ages,
-                            tourists,
                             vars_util, 
                             cells_industries_by_indid_by_wpid,
                             cells_restaurants, 
@@ -41,10 +39,8 @@ def localitinerary_parallel(manager,
                             cells_transport, 
                             cells_institutions, 
                             cells_accommodation, 
-                            tourist_entry_infection_probability,
                             epidemiologyparams,
                             dynparams,
-                            tourists_active_ids,
                             hh_insts,
                             num_processes=10,
                             num_threads=2,
@@ -163,10 +159,7 @@ def localitinerary_parallel(manager,
                 vars_util_partial.cells_agents_timesteps = {}
 
                 for hh_inst in hh_insts_partial:
-                    agents_partial, agents_ids_by_ages_partial, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, agents_ids_by_ages, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial, is_itinerary=True)                  
-
-                tourists_active_ids = []
-                tourists = None # to do - to handle
+                    agents_partial, agents_ids_by_ages_partial, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages, agents_ids_by_ages_partial, is_itinerary=True)                  
 
                 # agents_partial = {uid:agents[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
                 # agents_ids_by_ages_partial = {uid:agents_ids_by_ages[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
@@ -180,7 +173,6 @@ def localitinerary_parallel(manager,
                 params = (day, 
                         weekday, 
                         weekdaystr,
-                        popsubfolder, 
                         hh_insts_partial, 
                         itineraryparams, 
                         timestepmins, 
@@ -190,7 +182,6 @@ def localitinerary_parallel(manager,
                         agents_partial, 
                         agents_ids_by_ages_partial, 
                         deepcopy(vars_util_partial), 
-                        tourists, 
                         cells_industries_by_indid_by_wpid, 
                         cells_restaurants, 
                         cells_hospital,
@@ -204,10 +195,8 @@ def localitinerary_parallel(manager,
                         cells_transport, 
                         cells_institutions, 
                         cells_accommodation, 
-                        tourist_entry_infection_probability, 
                         epidemiologyparams, 
                         dynparams, 
-                        tourists_active_ids, 
                         True, # use_shm
                         process_index, 
                         process_counter,
@@ -353,7 +342,7 @@ def localitinerary_parallel(manager,
                 print("pool/processes close/join time taken " + str(time_taken))       
         else:
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
-            params = day, weekday, weekdaystr, popsubfolder, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter, log_file_name
+            params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dynparams, -1, process_counter, log_file_name
             process_index, agents_dynamic, vars_util, _, _, _, _ = localitinerary_worker(params)
             return [agents_dynamic], [vars_util]
 
@@ -388,27 +377,44 @@ def localitinerary_worker(params):
     import os
     import sys
 
+    process_counter = None
     process_index = -1
     original_stdout = None
     f = None
     stack_trace_log_file_name = ""
 
     try:  
+        use_mp = False
         # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
-        if len(params) > 22:
-            day, weekday, weekdaystr, popsubfolder, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, use_shm, process_index, process_counter, log_file_name = params
+        if len(params) > 9:
+            use_mp = True
+            day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, process_index, process_counter, log_file_name = params
         else:
-            day, weekday, weekdaystr, popsubfolder, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, tourists, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, use_shm, process_index, process_counter, log_file_name = params
+            day, weekday, weekdaystr, hh_insts, agents_dynamic, vars_util_mp, dyn_params, process_index, log_file_name = params
         
+        original_stdout = sys.stdout
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_mp_stack_trace_" + str(process_index) + ".txt"
+        log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(process_index) + ".txt"
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
         agents_static = None
         worker = None
-        if use_shm:
+        if use_mp:
             from shared_mp import agents_static
         else:
             worker = get_worker()
             # agents_static = worker.client.futures["agents_static"]
             # agents_static = worker.plugins["read_only_data"]
 
+            agents_ids_by_ages = worker.data["agents_ids_by_ages"]
+            timestepmins = worker.data["timestepmins"]
+            n_locals = worker.data["n_locals"]
+            n_tourists = worker.data["n_tourists"]
+            locals_ratio_to_full_pop = worker.data["locals_ratio_to_full_pop"]
+
+            itineraryparams = worker.data["itineraryparams"]
+            epidemiologyparams = worker.data["epidemiologyparams"]
             cells_industries_by_indid_by_wpid = worker.data["cells_industries_by_indid_by_wpid"] 
             cells_restaurants = worker.data["cells_restaurants"] 
             cells_hospital = worker.data["cells_hospital"] 
@@ -424,12 +430,6 @@ def localitinerary_worker(params):
             cells_accommodation = worker.data["cells_accommodation"] 
             agents_static = worker.data["agents_static"]
 
-        original_stdout = sys.stdout
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_mp_stack_trace_" + str(process_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(process_index) + ".txt"
-        f = open(log_file_name, "w")
-        sys.stdout = f
-
         # print("cells_agents_timesteps id in process " + str(process_index) + " is " + str(id(vars_util_mp.cells_agents_timesteps)))
         print(f"Itinerary Worker Child #{process_index+1} at {str(time.time())}", flush=True)
 
@@ -439,13 +439,6 @@ def localitinerary_worker(params):
             print("worker interpreter: " + os.path.dirname(sys.executable))
             # print("worker.data cwd: " + str(worker.data["cwd"]))
             # print("worker.data interpreter: " + str(worker.data["interpreter"]))
-
-        # very likely affinity actually slows down the process
-        # import psutil
-        # p = psutil.Process()
-        # print(f"Itinerary Worker Child #{process_index+1}: {p}, affinity {p.cpu_affinity()} at {str(time.time())}", flush=True)
-        # time.sleep(0.0001)
-        # p.cpu_affinity([process_index+1])
 
         # print(f"Itinerary Worker Child #{process_index+1}: Set my affinity to {process_index+1}, affinity now {p.cpu_affinity()}", flush=True)
         
@@ -473,7 +466,6 @@ def localitinerary_worker(params):
                                             agents_static,
                                             agents_dynamic, 
                                             agents_ids_by_ages,
-                                            tourists,
                                             vars_util_mp,
                                             cells_industries_by_indid_by_wpid, 
                                             cells_restaurants,
@@ -488,11 +480,9 @@ def localitinerary_worker(params):
                                             cells_transport, 
                                             cells_institutions, 
                                             cells_accommodation,
-                                            tourist_entry_infection_probability, 
                                             epidemiologyparams, 
                                             dyn_params,
-                                            tourists_active_ids,
-                                            process_index)
+                                            process_index= process_index)
 
         num_agents_working_schedule = 0
         working_schedule_times_by_resid = {}

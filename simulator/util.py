@@ -5,6 +5,7 @@ import powerlaw
 import matplotlib.pyplot as plt
 import random
 from copy import copy, deepcopy
+import seirstateutil
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -318,11 +319,15 @@ def get_sus_mort_prog_age_bracket_index(age):
         else:
             return 9
         
-def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial, is_itinerary=False):
+def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False):
     for uid in agents_ids:
         agents_partial[uid] = agents[uid]
 
-        if is_itinerary:
+        if is_dask_task:
+            vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
+            vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
+
+        if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
         if uid in vars_util.agents_seir_state_transition_for_day:
@@ -336,7 +341,7 @@ def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, 
 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial
 
-def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False):
+def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False, task_agent_ids=None):
     # updated_count = 0
     for uid in agents_ids:
         curr_agent = agents_partial[uid]
@@ -351,8 +356,8 @@ def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, 
         if uid in vars_util_partial.agents_seir_state_transition_for_day:
             vars_util.agents_seir_state_transition_for_day[uid] = vars_util_partial.agents_seir_state_transition_for_day[uid]
 
-        if not contact_tracing or uid in vars_util_partial.agents_seir_state:
-            vars_util.agents_seir_state[uid] = vars_util_partial.agents_seir_state[uid] # not partial
+        if not contact_tracing:
+            vars_util.agents_seir_state[uid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, uid, task_agent_ids)
 
         if uid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[uid] = vars_util_partial.agents_infection_type[uid]

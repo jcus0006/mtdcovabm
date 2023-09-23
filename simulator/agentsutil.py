@@ -1,6 +1,6 @@
 import numpy as np
 import util, seirstateutil
-from epidemiology import SEIRState
+from epidemiologyclasses import SEIRState
 import multiprocessing as mp
 
 def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages):

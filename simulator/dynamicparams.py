@@ -1,4 +1,4 @@
-from epidemiology import SEIRState
+from epidemiologyclasses import SEIRState
 import time
 
 class DynamicParams:

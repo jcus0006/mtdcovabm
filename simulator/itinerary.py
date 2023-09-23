@@ -5,7 +5,8 @@ from enum import IntEnum
 from copy import deepcopy
 from copy import copy
 import util, seirstateutil
-from epidemiology import Epidemiology, SEIRState, InfectionType, QuarantineType
+from epidemiology import Epidemiology
+from epidemiologyclasses import SEIRState, InfectionType, QuarantineType
 import time
 
 class Itinerary:
@@ -17,8 +18,7 @@ class Itinerary:
                 locals_ratio_to_full_pop,
                 agents_static,
                 agents_dynamic, 
-                agents_ids_by_ages,
-                tourists,  
+                agents_ids_by_ages,          
                 vars_util,
                 cells_industries_by_indid_by_wpid, 
                 cells_restaurants, 
@@ -33,10 +33,11 @@ class Itinerary:
                 cells_transport, 
                 cells_institutions, 
                 cells_accommodation, 
-                tourist_entry_infection_probability,
                 epidemiologyparams,
                 dynparams,
-                tourists_active_ids,
+                tourists=None,  
+                tourist_entry_infection_probability=None,
+                task_agent_ids=None,
                 process_index=-1):
         
         self.rng = np.random.default_rng(seed=6)
@@ -45,7 +46,7 @@ class Itinerary:
 
         self.vars_util = vars_util
         # self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, self.vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, self.vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, task_agent_ids, process_index)
 
         # self.sync_queue = sync_queue
         # self.comm = comm
@@ -60,7 +61,7 @@ class Itinerary:
         self.agents_ids_by_ages = agents_ids_by_ages
         self.tourists = tourists
         self.industries = cells_industries_by_indid_by_wpid
-        print("industries keys: " + str(self.industries.keys()))
+        # print("industries keys: " + str(self.industries.keys()))
         self.cells_restaurants = cells_restaurants
         self.cells_hospital = cells_hospital
         self.cells_testinghub = cells_testinghub
@@ -104,7 +105,8 @@ class Itinerary:
 
         self.working_schedule_interprocess_communication_aggregated_time = 0
         self.itinerary_interprocess_communication_aggregated_time = 0
-
+        
+        self.task_agent_ids = task_agent_ids
         self.process_index = process_index
 
         # Calculate probability of each activity for agent
@@ -153,7 +155,7 @@ class Itinerary:
         for agentid in resident_uids:
             agent_dynamic = self.agents_dynamic[agentid]
 
-            if self.epi_util.agents_seir_state[agentid] != SEIRState.Deceased:
+            if seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid, self.task_agent_ids) != SEIRState.Deceased:
                 # if "working_schedule" not in agent:
                 #     agent["working_schedule"] = {}
                 
@@ -317,29 +319,29 @@ class Itinerary:
         for agentid, age in cohab_agents_ids_by_ages:
             agent = self.agents_dynamic[agentid]
 
-            agent_seir_state = self.epi_util.agents_seir_state[agentid]
+            agent_seir_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid, self.task_agent_ids)
 
-            if self.epi_util.agents_seir_state[agentid] != SEIRState.Deceased:  
+            if agent_seir_state != SEIRState.Deceased:  
                 agent_is_guardian = guardian_id is not None and agentid == guardian_id
 
                 new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
 
                 agent_seir_state_transition_for_day = None
-                agent_infection_type = self.epi_util.agents_infection_type[agentid] if agentid in self.epi_util.agents_infection_type else None
-                agent_infection_severity = self.epi_util.agents_infection_severity[agentid] if agentid in self.epi_util.agents_infection_severity else None
+                agent_infection_type = self.vars_util.agents_infection_type[agentid] if agentid in self.vars_util.agents_infection_type else None
+                agent_infection_severity = self.vars_util.agents_infection_severity[agentid] if agentid in self.vars_util.agents_infection_severity else None
 
                 if res_cellid is None:
                     res_cellid = self.agents_static.get(agentid, "res_cellid")
 
                  # this updates the state, infection type and severity (such that the itinery may also handle public health interventions)
-                new_states = seirstateutil.update_agent_state(agent_seir_state, agent_infection_type, agent_infection_severity, agentid, agent, simday)
+                new_states = seirstateutil.update_agent_state(agent_seir_state, agent_infection_type, agent_infection_severity, agentid, agent, simday, self.task_agent_ids)
 
                 if new_states is not None:
                     agent_state_transition_by_day, new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
 
                     # self.agents_mp.set(agentid, "state_transition_by_day", agent_state_transition_by_day)
                     agent_seir_state_transition_for_day = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
-                    # self.epi_util.agents_seir_state_transition_for_day[agentid] = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
+                    # self.vars_util.agents_seir_state_transition_for_day[agentid] = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
                     agent_seir_state = new_seir_state
                     agent_infection_type = new_infection_type
                     agent_infection_severity = new_infection_severity
@@ -574,11 +576,11 @@ class Itinerary:
 
                             if agent_infection_type != InfectionType.Undefined:
                                 # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
-                                self.epi_util.agents_seir_state[agentid] = agent_seir_state
+                                self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, agentid, self.task_agent_ids)
                                 # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
-                                self.epi_util.agents_infection_type[agentid] = agent_infection_type
+                                self.vars_util.agents_infection_type[agentid] = agent_infection_type
                                 # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
-                                self.epi_util.agents_infection_severity[agentid] = agent_infection_severity
+                                self.vars_util.agents_infection_severity[agentid] = agent_infection_severity
                     else:
                         if len(agent["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
                             # get morning sleeptimestep
@@ -1255,7 +1257,7 @@ class Itinerary:
                     # self.sync_queue.put(["v", agentid, "agents_infection_type", agent_infection_type])
                     # self.sync_queue.put(["v", agentid, "agents_infection_severity", agent_infection_severity])
 
-                    self.vars_util.agents_seir_state[agentid] = agent_seir_state
+                    self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, agentid, self.task_agent_ids)
                     self.vars_util.agents_seir_state_transition_for_day[agentid] = agent_seir_state_transition_for_day
                     self.vars_util.agents_infection_type[agentid] = agent_infection_type
                     self.vars_util.agent_infection_severity[agentid] = agent_infection_severity
@@ -1436,21 +1438,21 @@ class Itinerary:
                     
                             if agent_infection_type != InfectionType.Undefined:
                                 # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
-                                self.epi_util.agents_seir_state[agentid] = agent_seir_state
+                                self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, agentid, self.task_agent_ids)
                                 # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
-                                self.epi_util.agents_infection_type[agentid] = agent_infection_type
+                                self.vars_util.agents_infection_type[agentid] = agent_infection_type
                                 # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
-                                self.epi_util.agents_infection_severity[agentid] = agent_infection_severity
+                                self.vars_util.agents_infection_severity[agentid] = agent_infection_severity
                                 
                     new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
 
                     # this updates the state, infection type and severity (such that the itinerary may also handle public health interventions)
-                    new_states = seirstateutil.update_agent_state(self.epi_util.agents_seir_state, self.epi_util.agents_infection_type, self.epi_util.agents_infection_severity, agentid, agent, simday)
+                    new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent, simday, self.task_agent_ids)
 
                     if new_states is not None:
                         new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
 
-                        self.epi_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
+                        self.vars_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
 
                     if len(agent["hospitalisation_days"]) > 0:
                         hosp_start_day, hosp_end_day = agent["hospitalisation_days"][0], agent["hospitalisation_days"][2]
@@ -2101,7 +2103,7 @@ class Itinerary:
             if day == test_result_day:
                 start_ts = agent["test_result_day"][1]
 
-                seir_state = self.epi_util.agents_seir_state[agentid]
+                seir_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid, self.task_agent_ids)
                 
                 if seir_state == SEIRState.Exposed or seir_state == SEIRState.Infectious: # this mostly handles asymptomatic cases
                     false_negative_rand = random.random()
@@ -2111,7 +2113,7 @@ class Itinerary:
                         is_false_negative = True
 
                     if not is_false_negative:
-                        self.epi_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
+                        self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
 
                         is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent)
                 else:
@@ -2122,7 +2124,7 @@ class Itinerary:
                         is_false_positive = True
 
                     if is_false_positive:
-                        self.epi_util.contact_tracing_agent_ids.add((agentid, start_ts))
+                        self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts))
 
                         is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent)
             elif day > test_result_day:

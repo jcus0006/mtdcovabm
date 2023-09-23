@@ -37,7 +37,7 @@ def worker_map(params):
 
 if __name__ == '__main__':
     start = time.time()
-    dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest)
+    dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest), 3 clientsubmit with scattering of matrix into distributed memory
     num_rows = 8192 # 16384
     int_range = 10
     num_processes = 10
@@ -58,15 +58,26 @@ if __name__ == '__main__':
 
         params_start = time.time()
         params = []
-        # Spawn processes to calculate row sums
-        for process_index in range(num_processes):
-            start_row = process_index * rows_per_process
-            end_row = start_row + rows_per_process
-            if process_index == num_processes - 1:
-                # Adjust end row for the last process to include remaining rows
-                end_row = num_rows
+        if dask_method != 3:
+            # Spawn processes to calculate row sums
+            for process_index in range(num_processes):
+                start_row = process_index * rows_per_process
+                end_row = start_row + rows_per_process
+                if process_index == num_processes - 1:
+                    # Adjust end row for the last process to include remaining rows
+                    end_row = num_rows
 
-            params.append((matrix, start_row, end_row, process_index))
+                params.append((matrix, start_row, end_row, process_index))
+        else:
+            # Spawn processes to calculate row sums
+            for process_index in range(num_processes):
+                start_row = process_index * rows_per_process
+                end_row = start_row + rows_per_process
+                if process_index == num_processes - 1:
+                    # Adjust end row for the last process to include remaining rows
+                    end_row = num_rows
+
+                params.append((start_row, end_row, process_index))
 
         params_time_taken = time.time() - params_start
         print("params " + str(params_time_taken))
@@ -78,9 +89,13 @@ if __name__ == '__main__':
             for param in params:
                 future = client.submit(worker_map, param)
                 delayed_results.append(future)
-
         elif dask_method == 1:
             delayed_results = [dask.delayed(worker_map)(params[i]) for i in range(num_processes)]
+        elif dask_method == 3:
+            x_future = client.scatter(matrix)
+            for param in params:
+                future = client.submit(calculate_row_sum_map, x_future, param[0], param[1], param[2])
+                delayed_results.append(future)
         else:
             delayed_results = client.map(worker_map, [params[i] for i in range(num_processes)])  
 
@@ -98,7 +113,7 @@ if __name__ == '__main__':
         results_start = time.time()
         results = {}
         # Now you can iterate over the computed results
-        if dask_method == 0:
+        if dask_method == 0 or dask_method == 3:
             for future in as_completed(delayed_results):
                 res = future.result()
                 start_index, result = res[0][0], res[0][1]
