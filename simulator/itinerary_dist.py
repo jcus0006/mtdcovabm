@@ -10,14 +10,14 @@ import itinerary, itinerary_mp, vars, shared_mp
 import time
 import util
 from copy import copy, deepcopy
-from dask.distributed import get_worker, as_completed
+from dask.distributed import Client, get_worker, as_completed
 import multiprocessing as mp
 from memory_profiler import profile
 
 # fp = open("memory_profiler_dist.log", "w+")
 # @profile(stream=fp)
 
-def localitinerary_finegrained_distributed(client, 
+def localitinerary_finegrained_distributed(client: Client, 
                                            hh_insts, 
                                            day, 
                                            weekday, 
@@ -26,36 +26,97 @@ def localitinerary_finegrained_distributed(client,
                                            vars_util, 
                                            dyn_params,
                                            keep_workers_open=True, 
+                                           dask_mode=0, # 0 client.submit, 1 dask.delayed (client.compute), 2 dask.delayed (dask.compute), 3 client.map
+                                           dask_scatter=False,
                                            log_file_name="output.txt"):
     original_log_file_name = log_file_name
     stack_trace_log_file_name = ""
+    task_results_stack_trace_log_file_name = ""
     try:
         start = time.time()
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_stack_trace" + ".txt"
+        task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
 
         delayed_computations = []
         futures = []
+
+        agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future = None, None, None, None, None
+        if dask_scatter:
+            scatter_start_time = time.time()
+
+            agents_dynamic_future = client.scatter(agents_dynamic, broadcast=True, direct=True)
+            agents_seir_state_future = client.scatter(vars_util.agents_seir_state, broadcast=True, direct=True)
+
+            if len(vars_util.agents_infection_type) > 0:
+                agents_infection_type_future = client.scatter(vars_util.agents_infection_type, broadcast=True, direct=True)
+            else:
+                agents_infection_type_future = vars_util.agents_infection_type
+
+            if len(vars_util.agents_infection_severity) > 0:
+                agents_infection_severity_future = client.scatter(vars_util.agents_infection_severity, broadcast=True, direct=True)
+            else:
+                agents_infection_severity_future = vars_util.agents_infection_severity
+
+            dyn_params_future = client.scatter(dyn_params, broadcast=True, direct=True)
+
+            scatter_time_taken = time.time() - scatter_start_time
+            print("scatter time_taken: " + str(scatter_time_taken))
+            # agents_dynamic_future, future2, future3, future4 = client.scatter(agents_dynamic, vars_util.cells_agents_timesteps, vars_util.contact_tracing_agent_ids, vars_util.agents_seir_state)
+        
+        map_params = []
         for hh_inst in hh_insts:
             agents_dynamic_partial = {}
             vars_util_partial = vars.Vars()
-            vars_util_partial.agents_seir_state = [] # to be populated hereunder
-            vars_util_partial.agents_vaccination_doses = [] # to be populated hereunder
-            vars_util_partial.cells_agents_timesteps = {}
 
-            agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)                  
-            
-            params = day, weekday, weekdaystr, hh_inst, agents_dynamic_partial, vars_util_partial, dyn_params, log_file_name
-            future = client.submit(localitinerary_worker_res, params)
-            futures.append(future)
-            # delayed_computations.append(dask.delayed(localitinerary_worker)(params))
+            if not dask_scatter:
+                vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                vars_util_partial.agents_vaccination_doses = [] # to be populated hereunder
+                vars_util_partial.cells_agents_timesteps = {}
 
-        for future in as_completed(futures):
-            result = future.result()
+                agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)                  
+                
+                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_partial, vars_util_partial, dyn_params, dask_scatter, log_file_name
+            else:
+                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future, dask_scatter, log_file_name
 
-            agents_dynamic_partial_result, vars_util_partial_result = result
+            if dask_mode == 0:
+                future = client.submit(localitinerary_worker_res, params)
+                futures.append(future)
+            elif dask_mode == 1 or dask_mode == 2:
+                delayed = dask.delayed(localitinerary_worker_res)(params)
+                delayed_computations.append(delayed)
+            elif dask_mode == 3:
+                map_params.append(params)
 
-            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+        results = []
+        if dask_mode == 1:
+            futures = client.compute(delayed_computations)
+        elif dask_mode == 2:
+            results = dask.compute(*delayed_computations)
+        elif dask_mode == 3:
+            futures = client.map(localitinerary_worker_res, map_params)
 
+        if dask_mode == 0 or dask_mode == 1 or dask_mode == 3:
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+
+                    agents_dynamic_partial_result, vars_util_partial_result = result
+
+                    agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+                
+                    agents_dynamic_partial_result, vars_util_partial_result = None, None
+                except:
+                    with open(task_results_stack_trace_log_file_name, 'a') as f:
+                        traceback.print_exc(file=f)
+                finally:
+                    future.release()
+        else:
+            for result in results:
+                agents_dynamic_partial_result, vars_util_partial_result = result
+
+                agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+        
         if not keep_workers_open:
             start = time.time()
             client.shutdown()
@@ -290,7 +351,11 @@ def localitinerary_worker_res(params):
     stack_trace_log_file_name = ""
 
     try:
-        day, weekday, weekdaystr, hh_inst, agents_dynamic, vars_util_mp, dyn_params, log_file_name = params
+        if len(params) == 9:
+            day, weekday, weekdaystr, hh_inst, agents_dynamic, vars_util_mp, dyn_params, dask_scatter, log_file_name = params
+        else:
+            day, weekday, weekdaystr, hh_inst, agents_dynamic, agents_seir_state, agents_infection_type, agents_infection_severity, dyn_params, dask_scatter, log_file_name = params
+            vars_util_mp = vars.Vars(agents_seir_state=agents_seir_state, agents_infection_type=agents_infection_type, agents_infection_severity=agents_infection_severity)
 
         worker = get_worker()
         
@@ -362,6 +427,14 @@ def localitinerary_worker_res(params):
         itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
         # time_taken = time.time() - start
         # print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
+        
+        if dask_scatter:
+            agents_dynamic_partial = {}
+            vars_util_partial = vars.Vars()
+
+            agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util_mp, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)
+
+            return agents_dynamic_partial, vars_util_partial
         
         return agents_dynamic, vars_util_mp
     except:

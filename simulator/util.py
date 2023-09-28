@@ -325,7 +325,9 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
 
         if is_dask_task:
             vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
-            vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
+
+            if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
+                vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
 
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]

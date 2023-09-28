@@ -37,7 +37,7 @@ def worker_map(params):
 
 if __name__ == '__main__':
     start = time.time()
-    dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest), 3 clientsubmit with scattering of matrix into distributed memory
+    dask_method = 1 # 0 clientsubmit (also futures but lazy evaluation / slowest) 1 delayed (lazy evaluation / fastest) 2 futures (non lazy evaluation (similar to 0) / second fastest), 3 clientsubmit with scattering of matrix into distributed memory 4 client map
     num_rows = 8192 # 16384
     int_range = 10
     num_processes = 10
@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
         params_start = time.time()
         params = []
-        if dask_method != 3:
+        if dask_method != 3 and dask_method != 4:
             # Spawn processes to calculate row sums
             for process_index in range(num_processes):
                 start_row = process_index * rows_per_process

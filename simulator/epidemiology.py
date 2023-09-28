@@ -5,7 +5,7 @@ import time
 from copy import copy
 import util
 import seirstateutil
-from epidemiologyclasses import SEIRState, SEIRStateTransition, InfectionType, Severity
+from epidemiologyclasses import SEIRState, SEIRStateTransition, InfectionType, Severity, EpidemiologyProbabilities, QuarantineType
 
 class Epidemiology:
     def __init__(self, 

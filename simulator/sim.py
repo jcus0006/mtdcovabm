@@ -23,7 +23,7 @@ from functools import partial
 import gc
 from memory_profiler import profile
 
-params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
             "simulationdays": 1, # 365
             "loadagents": True,
@@ -39,7 +39,7 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 4, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": 1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -48,11 +48,13 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "use_mp_rawarray": False, # this is applicable for any case of mp (if not using mp, set to False)
             "dask_use_mp": False, # if this is true, dask is used, and multiprocessing is used in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_fg": True,
+            "dask_fg_mode": 3, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute) 3 client.map
+            "dask_scatter": False, # scattering of data into distributed memory (works with dask_fg_mode 0, not sure with rest)
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
             "logsubfoldername": "logs",
-            "logfilename": "output_dask_500k_distmp_4_celloptimisation.txt"
+            "logfilename": "distributedtest_500k_2nodes_1worker_2.txt" # output_dask_500k_fg_3_2_scatter.txt
         }
 
 # Load configuration
@@ -463,7 +465,7 @@ def main():
             else:
                 num_workers = params["numprocesses"]
 
-            cluster = SSHCluster(["localhost", "localhost"], # LAPTOP-FDQJ136P / localhost
+            cluster = SSHCluster(["localhost", "localhost", "192.168.1.18"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
                             worker_options={"n_workers": num_workers, "local_directory": config["worker_working_directory"], }, # "memory_limit": "3GB" (in worker_options)
                             scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
@@ -651,6 +653,8 @@ def main():
                                                                               vars_util,
                                                                               dyn_params,
                                                                               True,
+                                                                              params["dask_fg_mode"],
+                                                                              params["dask_scatter"],
                                                                               log_file_name)
                     else:
                         itinerary_dist.localitinerary_distributed(client,
