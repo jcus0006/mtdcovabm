@@ -12,11 +12,11 @@ class Vars:
                 agents_infection_type=customdict.CustomDict(),
                 agents_infection_severity=customdict.CustomDict(),
                 agents_vaccination_doses=[]) -> None:
-        self.cells_agents_timesteps = cells_agents_timesteps # cellid: [[agentid, starttimestep, endtimestep]] - IT
-        self.directcontacts_by_simcelltype_by_day = directcontacts_by_simcelltype_by_day # [day, simcelltype, agent1_id, agent2_id, start_ts, end_ts] - CN for Contact tracing (was set)
-        self.dc_by_sct_by_day_agent1_index = dc_by_sct_by_day_agent1_index # [agent1id, index_in_directcontacts_by_simcelltype_by_day]
-        self.dc_by_sct_by_day_agent2_index = dc_by_sct_by_day_agent2_index # [agent2id, index_in_directcontacts_by_simcelltype_by_day]
-        self.contact_tracing_agent_ids = contact_tracing_agent_ids # (agentid, start_timestep) - CN for Contact tracing
+        self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [[agentid, starttimestep, endtimestep]]} - IT
+        self.directcontacts_by_simcelltype_by_day = directcontacts_by_simcelltype_by_day # [[day, simcelltype, agent1_id, agent2_id, start_ts, end_ts]] - CN for Contact tracing (was set)
+        self.dc_by_sct_by_day_agent1_index = dc_by_sct_by_day_agent1_index # [[agent1id, index_in_directcontacts_by_simcelltype_by_day]]
+        self.dc_by_sct_by_day_agent2_index = dc_by_sct_by_day_agent2_index # [[agent2id, index_in_directcontacts_by_simcelltype_by_day]]
+        self.contact_tracing_agent_ids = contact_tracing_agent_ids # {(agentid, start_timestep)} - CN for Contact tracing
 
         # transmission model
         self.agents_seir_state = agents_seir_state # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
