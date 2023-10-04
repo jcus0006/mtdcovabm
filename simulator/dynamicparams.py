@@ -1,5 +1,6 @@
 from epidemiologyclasses import SEIRState
 import time
+# import json
 
 class DynamicParams:
     def __init__(self, n_locals, n_tourists, epidemiologyparams):
@@ -157,3 +158,9 @@ class DynamicParams:
             val=none_val
 
         return val
+    
+# class DynamicParamsEncoder(json.JSONEncoder):
+#     def default(self, obj):
+#         if isinstance(obj, DynamicParams):
+#             return {"data": obj.data}
+#         return super().default(obj)

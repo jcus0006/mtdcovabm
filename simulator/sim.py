@@ -12,8 +12,7 @@ import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, itinerary_dask, contactnetwork_mp, tourism, vars, agentsutil, static, shared_mp
-from utility.npencoder import NpEncoder
+import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, itinerary_dask, contactnetwork_mp, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from dynamicparams import DynamicParams
 import multiprocessing as mp
 from dask.distributed import Client, Worker, LocalCluster, SSHCluster
@@ -39,7 +38,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 2, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": 1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -49,12 +48,16 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "dask_use_mp": False, # if this is true, dask is used, and multiprocessing is used in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_fg": True,
             "dask_fg_mode": 3, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute) 3 client.map
-            "dask_scatter": False, # scattering of data into distributed memory (works with dask_fg_mode 0, not sure with rest)
+            "dask_scatter": True, # scattering of data into distributed memory (works with dask_fg_mode 0, not sure with rest)
+            "dask_nodes": ["localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
+            "dask_batch_size": -1, # (last tried with 2 workers and batches of  2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
+            "dask_batch_recurring": False, # if recurring send batch size recurringly, else, send batch size the first time, then 1 task per "as_completed" future 
+            "dask_autoclose_cluster": True,
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
             "logsubfoldername": "logs",
-            "logfilename": "distributedtest_500k_2nodes_1worker_2.txt" # output_dask_500k_fg_3_2_scatter.txt
+            "logfilename": "test_500k_3_2_scatter_customdict.txt" # output_dask_500k_fg_3_2_scatter.txt
         }
 
 # Load configuration
@@ -103,20 +106,9 @@ def read_only_data(dask_worker: Worker, agents_ids_by_ages, timestepmins, n_loca
 
 def load_dask_worker_data(dask_worker, filepath, propname):
     with open(filepath, "r") as read_file: 
-        temp = json.load(read_file, object_hook=jsonKeys2int)
+        temp = json.load(read_file, object_hook=jsonutil.jsonKeys2int)
         dask_worker.data[propname] = temp
 
-def jsonKeys2int(x):
-    new_dict = {}
-    for k, v in x.items():
-        try:
-            new_key = int(k)
-        except:
-            new_key = k
-        if type(v) == dict:
-            v = jsonKeys2int(v)
-        new_dict[new_key] = v
-    return new_dict
 # def initialize_mp(): # agents_static
 #     manager = mp.Manager()
 #     pool = mp.Pool()
@@ -201,7 +193,7 @@ def main():
         population_sub_folder = params["popsubfolder"]
 
     # load agents and all relevant JSON files on each node
-    agents_dynamic = {}
+    agents_dynamic = customdict.CustomDict()
     agents_ids_by_ages = {}
     agents_ids_by_agebrackets = {i:[] for i in range(len(age_brackets))}
 
@@ -265,7 +257,7 @@ def main():
 
         households, cells_households, _, _ = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
         
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_households_updated.json", cells_households))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_households_updated.json", cells_households))
 
         # contactnetwork_util.epi_util.cells_households = cells_households
         
@@ -279,7 +271,7 @@ def main():
         institutions_cells_params = cellsparams["institutions"]
 
         _, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_institutions_updated.json", cells_institutions))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_institutions_updated.json", cells_institutions))
         # contactnetwork_util.epi_util.cells_institutions = cells_institutions  
 
     hh_insts = []
@@ -353,7 +345,7 @@ def main():
 
         transport, cells_transport = cells_util.create_transport_cells(transport_cells_params[2], transport_cells_params[0], transport_cells_params[1], transport_cells_params[3], transport_cells_params[4])
         
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_transport_updated.json", cells_transport))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_transport_updated.json", cells_transport))
 
         # cells_accommodation_by_accomid = {} # {accomid: [{cellid: {cellinfo}}]}
         accommodations = []
@@ -393,15 +385,15 @@ def main():
         # handle cell splitting (on workplaces & accommodations)
         cells_industries_by_indid_by_wpid, _, cells_restaurants, cells_accommodation, _, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
 
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_industries_by_indid_by_wpid_updated.json", cells_industries_by_indid_by_wpid))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_restaurants_updated.json", cells_restaurants))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_hospital_updated.json", cells_hospital))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_testinghub_updated.json", cells_testinghub))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_vaccinationhub_updated.json", cells_vaccinationhub))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_entertainment_by_activityid_updated.json", cells_entertainment_by_activityid))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_breakfast_by_accomid_updated.json", cells_breakfast_by_accomid))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_airport_updated.json", cells_airport))
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_accommodation_updated.json", cells_accommodation))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_industries_by_indid_by_wpid_updated.json", cells_industries_by_indid_by_wpid))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_restaurants_updated.json", cells_restaurants))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_hospital_updated.json", cells_hospital))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_testinghub_updated.json", cells_testinghub))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_vaccinationhub_updated.json", cells_vaccinationhub))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_entertainment_by_activityid_updated.json", cells_entertainment_by_activityid))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_breakfast_by_accomid_updated.json", cells_breakfast_by_accomid))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_airport_updated.json", cells_airport))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_accommodation_updated.json", cells_accommodation))
         # contactnetwork_util.epi_util.cells_accommodation = cells_accommodation
         # airport_cells_params = cellsparams["airport"]
 
@@ -427,18 +419,20 @@ def main():
 
         _, cells_religious = cells_util.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
-        json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "cells_religious_updated.json", cells_religious))
+        json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_religious_updated.json", cells_religious))
 
     # this might cause problems when referring to related agents, by household, workplaces etc
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
-    json_paths_to_upload.append(convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
+    json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
 
     agents_static = static.Static()
     agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_mp_rawarray"]) # for now trying without multiprocessing.RawArray
 
-    agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents)
+    agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents, agents_dynamic)
+
+    # jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_dynamic_updated.json", agents_dynamic)
 
     del agents
 
@@ -465,12 +459,13 @@ def main():
             else:
                 num_workers = params["numprocesses"]
 
-            cluster = SSHCluster(["localhost", "localhost", "192.168.1.18"], # LAPTOP-FDQJ136P / localhost
+            cluster = SSHCluster(params["dask_nodes"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
                             worker_options={"n_workers": num_workers, "local_directory": config["worker_working_directory"], }, # "memory_limit": "3GB" (in worker_options)
                             scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
                             # worker_class="distributed.Worker", 
                             # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
+            
             time_taken = time.time() - start
             print("cluster generation: " + str(time_taken))
             # cluster.scale(params["numprocesses"])
@@ -491,6 +486,9 @@ def main():
             # print("versions: " + str(versions))
 
             start = time.time()
+            client.upload_file('simulator/customdict.py')
+            client.upload_file('simulator/npencoder.py')
+            client.upload_file('simulator/jsonutil.py')
             client.upload_file('simulator/epidemiologyclasses.py')
             client.upload_file('simulator/shared_mp.py')
             client.upload_file('simulator/static.py')
@@ -504,7 +502,6 @@ def main():
             # client.upload_file('simulator/itinerary_dask.py')
             client.upload_file('simulator/itinerary_mp.py')
             client.upload_file('simulator/itinerary_dist.py')
-            # client.upload_file(os.path.join("population", population_sub_folder, "agents.json"))
 
             for dynamicjsonpath in json_paths_to_upload:
                 client.upload_file(dynamicjsonpath)
@@ -645,17 +642,19 @@ def main():
                 else:
                     if params["dask_use_fg"]:
                         itinerary_dist.localitinerary_finegrained_distributed(client,
-                                                                              hh_insts,
-                                                                              day,
-                                                                              weekday,
-                                                                              weekdaystr,
-                                                                              agents_dynamic,
-                                                                              vars_util,
-                                                                              dyn_params,
-                                                                              True,
-                                                                              params["dask_fg_mode"],
-                                                                              params["dask_scatter"],
-                                                                              log_file_name)
+                                                                            hh_insts,
+                                                                            day,
+                                                                            weekday,
+                                                                            weekdaystr,
+                                                                            agents_dynamic,
+                                                                            vars_util,
+                                                                            dyn_params,
+                                                                            True,
+                                                                            params["dask_fg_mode"],
+                                                                            params["dask_scatter"],
+                                                                            params["dask_batch_size"],
+                                                                            params["dask_batch_recurring"],
+                                                                            log_file_name)
                     else:
                         itinerary_dist.localitinerary_distributed(client,
                                                             day, 
@@ -798,18 +797,8 @@ def main():
         sys.stdout = original_stdout
         f.close()
 
-        if client is not None:
+        if params["dask_autoclose_cluster"] and client is not None:
             client.shutdown()
-
-def convert_to_json_file(current_directory, folder, subfolder, filename, array):
-    temp_filepath = os.path.join(current_directory, folder, subfolder, filename)
-    if os.path.exists(temp_filepath):
-        os.remove(temp_filepath)
-
-    with open(temp_filepath, "w", encoding="utf-8") as fp:
-        json.dump(array, fp, ensure_ascii=False, indent=4, cls=NpEncoder)
-
-    return temp_filepath
 
 if __name__ == '__main__':
     main()

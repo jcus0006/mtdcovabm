@@ -1,16 +1,19 @@
 import sys
 # sys.path.insert(0, '~/AppsPy/mtdcovabm/simulator')
+
 import dask
-import asyncio
+import json
+# import asyncio
 # from queue import Empty
-import threading
+# import threading
+import math
 import numpy as np
 import traceback
-import itinerary, itinerary_mp, vars, shared_mp
+import itinerary, itinerary_mp, vars, shared_mp, jsonutil, customdict
 import time
 import util
 from copy import copy, deepcopy
-from dask.distributed import Client, get_worker, as_completed
+from dask.distributed import Client, get_worker, as_completed, Variable
 import multiprocessing as mp
 from memory_profiler import profile
 
@@ -28,6 +31,8 @@ def localitinerary_finegrained_distributed(client: Client,
                                            keep_workers_open=True, 
                                            dask_mode=0, # 0 client.submit, 1 dask.delayed (client.compute), 2 dask.delayed (dask.compute), 3 client.map
                                            dask_scatter=False,
+                                           dask_batch_size=-1,
+                                           dask_batch_recurring=False,
                                            log_file_name="output.txt"):
     original_log_file_name = log_file_name
     stack_trace_log_file_name = ""
@@ -44,26 +49,48 @@ def localitinerary_finegrained_distributed(client: Client,
         if dask_scatter:
             scatter_start_time = time.time()
 
-            agents_dynamic_future = client.scatter(agents_dynamic, broadcast=True, direct=True)
-            agents_seir_state_future = client.scatter(vars_util.agents_seir_state, broadcast=True, direct=True)
+            agents_dynamic_future = client.scatter(agents_dynamic, broadcast=False) # broadcast=True, direct=True
+            # agents_dynamic_str = jsonutil.convert_to_json_str(agents_dynamic)
+            # agents_dynamic_future = client.submit(load_json_future, agents_dynamic_str)
+            # agents_dynamic_str = None
+            # agents_dynamic_future = client.submit(load_data_future, agents_dynamic)
+            
+            agents_seir_state_future = client.scatter(vars_util.agents_seir_state, broadcast=False) # broadcast=True, direct=True
+            # agents_seir_state_str = jsonutil.convert_to_json_str(vars_util.agents_seir_state)
+            # agents_seir_state_future = client.submit(load_json_future, agents_seir_state_str)
+            # agents_seir_state_str = None
+            # agents_seir_state_future = client.submit(load_data_future, vars_util.agents_seir_state)
 
             if len(vars_util.agents_infection_type) > 0:
-                agents_infection_type_future = client.scatter(vars_util.agents_infection_type, broadcast=True, direct=True)
+                agents_infection_type_future = client.scatter(vars_util.agents_infection_type, broadcast=False) # broadcast=True, direct=True
+                # agents_infection_type_str = jsonutil.convert_to_json_str(vars_util.agents_infection_type)
+                # agents_infection_type_future = client.submit(load_json_future, agents_infection_type_str)
+                # agents_infection_type_str = None
+                # agents_infection_type_future = client.submit(load_data_future, vars_util.agents_infection_type)
             else:
                 agents_infection_type_future = vars_util.agents_infection_type
 
             if len(vars_util.agents_infection_severity) > 0:
-                agents_infection_severity_future = client.scatter(vars_util.agents_infection_severity, broadcast=True, direct=True)
+                agents_infection_severity_future = client.scatter(vars_util.agents_infection_severity, broadcast=False) # broadcast=True, direct=True
+                # agents_infection_severity_str = jsonutil.convert_to_json_str(vars_util.agents_infection_severity)
+                # agents_infection_severity_future = client.submit(load_json_future, agents_infection_severity_str)
+                # agents_infection_severity_str = None
+                # agents_infection_severity_future = client.submit(load_data_future, vars_util.agents_infection_severity)
             else:
                 agents_infection_severity_future = vars_util.agents_infection_severity
 
-            dyn_params_future = client.scatter(dyn_params, broadcast=True, direct=True)
+            dyn_params_future = client.scatter(dyn_params, broadcast=False) # broadcast=True, direct=True
+            # dyn_params_str = jsonutil.convert_to_json_str(dyn_params, is_class=True)
+            # dyn_params_future = client.submit(load_json_future, dyn_params_str)
+            # dyn_params_str = None
+            # dyn_params_future = client.submit(load_data_future, dyn_params)
 
             scatter_time_taken = time.time() - scatter_start_time
-            print("scatter time_taken: " + str(scatter_time_taken))
+            print("scatter/upload time_taken: " + str(scatter_time_taken))
             # agents_dynamic_future, future2, future3, future4 = client.scatter(agents_dynamic, vars_util.cells_agents_timesteps, vars_util.contact_tracing_agent_ids, vars_util.agents_seir_state)
         
         map_params = []
+        count = 0
         for hh_inst in hh_insts:
             agents_dynamic_partial = {}
             vars_util_partial = vars.Vars()
@@ -80,13 +107,23 @@ def localitinerary_finegrained_distributed(client: Client,
                 params = day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future, dask_scatter, log_file_name
 
             if dask_mode == 0:
-                future = client.submit(localitinerary_worker_res, params)
-                futures.append(future)
+                if dask_batch_size == -1 or count < dask_batch_size:
+                    future = client.submit(localitinerary_worker_res, params)
+                    futures.append(future)
+                else:
+                    map_params.append(params)
             elif dask_mode == 1 or dask_mode == 2:
                 delayed = dask.delayed(localitinerary_worker_res)(params)
                 delayed_computations.append(delayed)
             elif dask_mode == 3:
                 map_params.append(params)
+
+            count += 1
+
+        tasks_still_to_assign = len(hh_insts) - len(futures)
+        safe_recurion_call_count = 964
+        num_batches_required = math.ceil(tasks_still_to_assign / dask_batch_size) 
+        num_recursive_calls_required = math.ceil(num_batches_required / safe_recurion_call_count)
 
         results = []
         if dask_mode == 1:
@@ -95,22 +132,14 @@ def localitinerary_finegrained_distributed(client: Client,
             results = dask.compute(*delayed_computations)
         elif dask_mode == 3:
             futures = client.map(localitinerary_worker_res, map_params)
-
-        if dask_mode == 0 or dask_mode == 1 or dask_mode == 3:
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-
-                    agents_dynamic_partial_result, vars_util_partial_result = result
-
-                    agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
-                
-                    agents_dynamic_partial_result, vars_util_partial_result = None, None
-                except:
-                    with open(task_results_stack_trace_log_file_name, 'a') as f:
-                        traceback.print_exc(file=f)
-                finally:
-                    future.release()
+        
+        if (dask_mode == 0 and dask_batch_size == -1) or dask_mode == 1 or dask_mode == 3:
+            agents_dynamic, vars_util = handle_futures(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name)
+        elif dask_mode == 0 and not dask_batch_recurring:
+            agents_dynamic, vars_util = handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
+        elif dask_mode == 0 and dask_batch_recurring:
+            for i in range(num_recursive_calls_required):
+                agents_dynamic, vars_util = handle_futures_recurring_batches(client, dask_batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
         else:
             for result in results:
                 agents_dynamic_partial_result, vars_util_partial_result = result
@@ -128,6 +157,93 @@ def localitinerary_finegrained_distributed(client: Client,
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
+
+def handle_futures(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name):
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+
+            agents_dynamic_partial_result, vars_util_partial_result = result
+
+            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+        
+            agents_dynamic_partial_result, vars_util_partial_result = None, None
+        except:
+            with open(task_results_stack_trace_log_file_name, 'a') as f:
+                traceback.print_exc(file=f)
+        finally:
+            future.release()
+
+    return agents_dynamic, vars_util
+
+def handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
+    if batch_size > len(map_params):
+        batch_size = len(map_params)
+
+    current_params = map_params[:batch_size]
+    del map_params[:batch_size]
+
+    futures = []
+
+    for params in current_params:
+        future = client.submit(localitinerary_worker_res, params)
+        futures.append(future)
+
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+
+            agents_dynamic_partial_result, vars_util_partial_result = result
+
+            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+        
+            agents_dynamic_partial_result, vars_util_partial_result = None, None
+        except:
+            with open(task_results_stack_trace_log_file_name, 'a') as f:
+                traceback.print_exc(file=f)
+        finally:
+            future.release()
+
+    if len(map_params) == 0 or recursion_count == max_recursion_calls:
+        return agents_dynamic, vars_util
+    else:
+        recursion_count += 1
+        return handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count)
+
+def handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params):
+    temp_futures = []
+
+    if len(futures) == 0 and len(map_params) > 0: # take care of all remaining with this batch
+        for params in map_params:
+            future = client.submit(localitinerary_worker_res, params)
+            futures.append(future)
+
+        map_params = []
+
+    for future in as_completed(futures):
+        try:
+            result = future.result()
+
+            agents_dynamic_partial_result, vars_util_partial_result = result
+
+            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+        
+            agents_dynamic_partial_result, vars_util_partial_result = None, None
+        except:
+            with open(task_results_stack_trace_log_file_name, 'a') as f:
+                traceback.print_exc(file=f)
+        finally:
+            future.release()
+
+            if len(map_params) > 0:
+                params = map_params.pop(0)
+                future = client.submit(localitinerary_worker_res, params)
+                temp_futures.append(future)
+
+    if len(temp_futures) == 0 and len(map_params) == 0:
+        return agents_dynamic, vars_util
+    else:
+        return handle_futures_non_recurring_batches(client, temp_futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
 
 def localitinerary_distributed(client,
                             day,
@@ -341,7 +457,13 @@ def sync_results_res(agents_dynamic, vars_util, agents_partial, vars_util_partia
     # print("cells_agents_timesteps sync, time taken: {0}".format(str(time_taken_cat)))
 
     return agents_dynamic, vars_util
-    
+
+def load_json_future(jsonstr):
+    return json.loads(jsonstr, object_hook=jsonutil.jsonKeys2int)
+
+def load_data_future(data):
+    return data
+
 def localitinerary_worker_res(params):
     import os
     import sys
@@ -351,11 +473,21 @@ def localitinerary_worker_res(params):
     stack_trace_log_file_name = ""
 
     try:
+        agents_dynamic, vars_util_mp = None, None
         if len(params) == 9:
             day, weekday, weekdaystr, hh_inst, agents_dynamic, vars_util_mp, dyn_params, dask_scatter, log_file_name = params
         else:
-            day, weekday, weekdaystr, hh_inst, agents_dynamic, agents_seir_state, agents_infection_type, agents_infection_severity, dyn_params, dask_scatter, log_file_name = params
-            vars_util_mp = vars.Vars(agents_seir_state=agents_seir_state, agents_infection_type=agents_infection_type, agents_infection_severity=agents_infection_severity)
+            day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state, agents_infection_type, agents_infection_severity, dyn_params, dask_scatter, log_file_name = params
+            vars_util_mp_future = vars.Vars(agents_seir_state=agents_seir_state, agents_infection_type=agents_infection_type, agents_infection_severity=agents_infection_severity)
+
+        if dask_scatter:
+            agents_dynamic_partial = customdict.CustomDict()
+            vars_util_partial = vars.Vars()
+
+            agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids_copy(hh_inst["resident_uids"], agents_dynamic_future, vars_util_mp_future, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)
+
+            agents_dynamic = agents_dynamic_partial
+            vars_util_mp = vars_util_partial
 
         worker = get_worker()
         
@@ -427,14 +559,6 @@ def localitinerary_worker_res(params):
         itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
         # time_taken = time.time() - start
         # print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
-        
-        if dask_scatter:
-            agents_dynamic_partial = {}
-            vars_util_partial = vars.Vars()
-
-            agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util_mp, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)
-
-            return agents_dynamic_partial, vars_util_partial
         
         return agents_dynamic, vars_util_mp
     except:

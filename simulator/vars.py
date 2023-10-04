@@ -1,4 +1,4 @@
-import pickle
+import customdict
 
 class Vars:
     def __init__(self, 
@@ -8,9 +8,9 @@ class Vars:
                 dc_by_sct_by_day_agent2_index=[],
                 contact_tracing_agent_ids=set(),
                 agents_seir_state=[],
-                agents_seir_state_transition_for_day={},
-                agents_infection_type={},
-                agents_infection_severity={},
+                agents_seir_state_transition_for_day=customdict.CustomDict(),
+                agents_infection_type=customdict.CustomDict(),
+                agents_infection_severity=customdict.CustomDict(),
                 agents_vaccination_doses=[]) -> None:
         self.cells_agents_timesteps = cells_agents_timesteps # cellid: [[agentid, starttimestep, endtimestep]] - IT
         self.directcontacts_by_simcelltype_by_day = directcontacts_by_simcelltype_by_day # [day, simcelltype, agent1_id, agent2_id, start_ts, end_ts] - CN for Contact tracing (was set)

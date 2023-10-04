@@ -5,7 +5,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "..")) # add root to sys.path
 import numpy as np
 import matplotlib.pyplot as plt
-from utility.npencoder import NpEncoder
+from simulator.npencoder import NpEncoder
 
 class fdvalidation:
 

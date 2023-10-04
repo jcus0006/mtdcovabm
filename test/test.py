@@ -1,7 +1,7 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-import util
+import math
 import powerlaw
 # import networkx as nx
 import collections
@@ -36,6 +36,15 @@ def binary_search_2d_all_indices(arr, target):
             right = mid - 1
 
     return indices  # Empty list if no matches found
+
+# temp test
+
+# tasks_still_to_assign = 149999
+# dask_batch_size = 120
+# safe_recurion_call_count = 999
+# num_batches_required = math.ceil(tasks_still_to_assign / dask_batch_size) 
+# num_recursive_calls_required = math.ceil(num_batches_required / safe_recurion_call_count)
+# calls_per_recursion = math.ceil(num_batches_required / num_recursive_calls_required)
 
 # Example 2D array sorted by the first element
 array = [[1, 2], [1, 3], [2, 4], [3, 5], [4, 6], [4,7]]

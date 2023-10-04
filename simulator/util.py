@@ -343,6 +343,30 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial
 
+def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False):
+    for uid in agents_ids:
+        agents_partial[uid] = deepcopy(agents[uid])
+
+        if is_dask_task:
+            vars_util_partial.agents_seir_state.append(copy(vars_util.agents_seir_state[uid]))
+
+            if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
+                vars_util_partial.agents_vaccination_doses.append(copy(vars_util.agents_vaccination_doses[uid]))
+
+        if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
+            agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
+
+        if uid in vars_util.agents_seir_state_transition_for_day:
+            vars_util_partial.agents_seir_state_transition_for_day[uid] = copy(vars_util.agents_seir_state_transition_for_day[uid])
+
+        if uid in vars_util.agents_infection_type:
+            vars_util_partial.agents_infection_type[uid] = copy(vars_util.agents_infection_type[uid])
+
+        if uid in vars_util.agents_infection_severity:
+            vars_util_partial.agents_infection_severity[uid] = copy(vars_util.agents_infection_severity[uid])
+
+    return agents_partial, agents_ids_by_ages_partial, vars_util_partial
+
 def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False, task_agent_ids=None):
     # updated_count = 0
     for uid in agents_ids:

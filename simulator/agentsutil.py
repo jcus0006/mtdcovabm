@@ -71,9 +71,7 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
 
     return agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count
 
-def initialize_agents_dict_dynamic(agents):
-    temp_agents = {}
-
+def initialize_agents_dict_dynamic(agents, temp_agents):
     for agentid, props in agents.items():
         temp_agents[agentid] = {}
 

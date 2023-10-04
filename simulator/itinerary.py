@@ -2360,6 +2360,9 @@ class Itinerary:
     # the dictionary is used at the end of the itinerary generation process to update the cells_agents_timesteps dict (used in contact network)
     # method does not allow replacing of key, in which case the timestep is incremented, and the method is called recursively until finding a freeslot
     def add_to_itinerary(self, agent, timestep, action, cellid, next_day=False):
+        cellid = int(cellid)
+        timestep = int(timestep)
+        
         if not next_day:
             if timestep not in agent["itinerary"]:
                 agent["itinerary"][timestep] = (action, cellid)
