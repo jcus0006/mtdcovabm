@@ -20,8 +20,8 @@ class Epidemiology:
                 cells_institutions, 
                 cells_accommodation, 
                 dyn_params,
-                task_agent_ids=None,
-                process_index=-1):
+                process_index=-1,
+                agents_seir_indices=None): # only used when called from contact network
         self.n_locals = n_locals
         self.n_tourists = n_tourists
         self.locals_ratio_to_full_pop = locals_ratio_to_full_pop
@@ -67,6 +67,7 @@ class Epidemiology:
 
         self.agents_static = agents_static
         self.agents_dynamic = agents_dynamic
+        self.agents_seir_indices = agents_seir_indices
         self.vars_util = vars_util
         self.agents_seir_state = vars_util.agents_seir_state
         self.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day
@@ -83,7 +84,6 @@ class Epidemiology:
 
         self.timestep_options = np.arange(42, 121) # 7.00 - 20.00
 
-        self.task_agent_ids = task_agent_ids
         self.process_index = process_index
 
     def simulate_direct_contacts(self, agents_directcontacts, cellid, cell, day):
@@ -91,7 +91,7 @@ class Epidemiology:
         for pairid, timesteps in agents_directcontacts.items():
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
 
-            primary_agent_state, secondary_agent_state = seirstateutil.agents_seir_state_get(self.agents_seir_state, primary_agent_id, self.task_agent_ids), seirstateutil.agents_seir_state_get(self.agents_seir_state, secondary_agent_id, self.task_agent_ids)
+            primary_agent_state, secondary_agent_state = seirstateutil.agents_seir_state_get(self.agents_seir_state, primary_agent_id, self.agents_seir_indices), seirstateutil.agents_seir_state_get(self.agents_seir_state, secondary_agent_id, self.agents_seir_indices)
 
             primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = None, None, None
             if primary_agent_id in self.agents_seir_state_transition_for_day:
@@ -208,7 +208,7 @@ class Epidemiology:
 
                         if agent_infection_type != InfectionType.Undefined:
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
-                            self.agents_seir_state = seirstateutil.agents_seir_state_update(self.agents_seir_state, agent_seir_state, exposed_agent_id, self.task_agent_ids)
+                            self.agents_seir_state = seirstateutil.agents_seir_state_update(self.agents_seir_state, agent_seir_state, exposed_agent_id, self.agents_seir_indices)
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
                             self.agents_infection_type[exposed_agent_id] = agent_infection_type
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])

@@ -39,17 +39,17 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 # if day is in agent["state_transition_by_day"]
 #   - update agent state (as required) - to be logged
 #   - clear agent["state_transition_by_day"] for day
-def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, day, task_agent_ids=None):
+def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, agentindex, day):
     if day in agent["state_transition_by_day"]:
         seir_state_transition, timestep = agent["state_transition_by_day"][day]
-        current_seir_state = agents_seir_state_get(agents_seir_state, agentid, task_agent_ids)
+        current_seir_state = agents_seir_state_get(agents_seir_state, agentid) #agentindex
         current_infection_type = agents_infection_type[agentid]
         current_infection_severity = agents_infection_severity[agentid]
 
         new_seir_state, new_infection_type, new_infection_severity = convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition)
 
         if new_seir_state != current_seir_state: # to be logged
-            agents_seir_state = agents_seir_state_update(agents_seir_state, new_seir_state, agentid, task_agent_ids)
+            agents_seir_state = agents_seir_state_update(agents_seir_state, new_seir_state, agentid)
 
         if new_infection_type != current_infection_type: # to be logged
             agents_infection_type[agentid] = new_infection_type
@@ -63,17 +63,33 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
 
     return None
 
-def agents_seir_state_get(agents_seir_state, agentid, agentids=None):
-    if agentids is None:
-        return agents_seir_state[agentid]
-    else:
-        return agents_seir_state[agentids.index(agentid)]
+# this depends on the context where it is called from. may be called with agentid directly or with agentindex (in global space, agentid == agentindex, but not in partial cases)
+def agents_seir_state_get(agents_seir_state, agent_id_or_idx, agents_seir_indices=None):
+    return agents_seir_state[agent_id_or_idx]
 
-def agents_seir_state_update(agents_seir_state, new_seir_state, agentid, agentids=None):
-    if agentids is None:
-        agents_seir_state[agentid] = new_seir_state
-    else:
-        agents_seir_state[agentids.index(agentid)] = new_seir_state
+    # if agents_seir_indices is None:
+    #     return agents_seir_state[agent_id_or_idx]
+    # else:
+    #     return agents_seir_state[agents_seir_indices[agent_id_or_idx]]
+    
+    # if agentids is None:
+    #     return agents_seir_state[agentid]
+    # else:
+    #     return agents_seir_state[agentids.index(agentid)] # extremely slow
+
+# this depends on the context where it is called from. may be called with agentid directly or with agentindex (in global space, agentid == agentindex, but not in partial cases)
+def agents_seir_state_update(agents_seir_state, new_seir_state, agent_id_or_idx, agents_seir_indices=None):
+    agents_seir_state[agent_id_or_idx] = new_seir_state
+
+    # if agents_seir_indices is None:
+    #     agents_seir_state[agent_id_or_idx] = new_seir_state
+    # else:
+    #     agents_seir_state[agents_seir_indices[agent_id_or_idx]]
+
+    # if agentids is None:
+    #     agents_seir_state[agentid] = new_seir_state
+    # else:
+    #     agents_seir_state[agentids.index(agentid)] = new_seir_state # extremely slow
 
     return agents_seir_state
 

@@ -51,8 +51,8 @@ def contactnetwork_parallel(manager,
             cells_agents_timesteps_partial = {}
             agents_partial, agents_ids_by_ages_partial = {}, {}
             vars_util_partial = vars.Vars()
-            vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-            vars_util_partial.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day
+            vars_util_partial.agents_seir_state = vars_util.agents_seir_state # may be optimized by sending only specific day
+            vars_util_partial.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day # to check re comment in above line for this line
 
             # cells_keys = mp_cells_keys[process_index]
 

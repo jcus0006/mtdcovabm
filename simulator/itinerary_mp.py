@@ -45,10 +45,13 @@ def localitinerary_parallel(manager,
                             num_processes=10,
                             num_threads=2,
                             proc_use_pool=0, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
+                            use_shm=True,
                             sync_use_threads=False,
                             sync_use_queue=False,
                             keep_processes_open=True,
-                            log_file_name="output.txt"): 
+                            log_file_name="output.txt",
+                            dask=False,
+                            agents_static=None): 
     stack_trace_log_file_name = ""
     try:
         # p = psutil.Process()
@@ -155,7 +158,6 @@ def localitinerary_parallel(manager,
                 agents_partial, agents_ids_by_ages_partial = {}, {}
                 vars_util_partial = vars.Vars()
                 vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                vars_util_partial.agents_vaccination_doses = vars_util.agents_vaccination_doses
                 vars_util_partial.cells_agents_timesteps = {}
 
                 for hh_inst in hh_insts_partial:
@@ -197,7 +199,7 @@ def localitinerary_parallel(manager,
                         cells_accommodation, 
                         epidemiologyparams, 
                         dynparams, 
-                        True, # use_shm
+                        use_shm, # use_shm
                         process_index, 
                         process_counter,
                         log_file_name)
@@ -277,45 +279,49 @@ def localitinerary_parallel(manager,
                 start = time.time()
 
                 if proc_use_pool == 3:
-                    for result in imap_results:
-                        agents_partial_results, vars_util_partial_results = None, None
+                    if dask:
+                        for result in imap_results:
+                            agents_partial_results, vars_util_partial_results = None, None
 
-                        process_index, agents_partial_results, vars_util_partial_results, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
+                            process_index, agents_partial_results, vars_util_partial_results, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
 
-                        if len(agents_partial_results) == 0:
-                            print("itinerary_mp results, agents_partial_results is empty")
-                        else:
-                            print("itinerary_mp results, agents_partial_results is not empty")
+                            if dask:
+                                if len(agents_partial_results) == 0:
+                                    print("itinerary_mp results, agents_partial_results is empty")
+                                else:
+                                    print("itinerary_mp results, agents_partial_results is not empty")
 
-                        for i in range(1000):
-                            if i in agents_partial_results:
-                                if agents_partial_results[i]["itinerary"] is None or len(agents_partial_results[i]["itinerary"]) == 0:
-                                    print("itinerary_mp results, itinerary is empty " + str(i))
+                                for i in range(1000):
+                                    if i in agents_partial_results:
+                                        if agents_partial_results[i]["itinerary"] is None or len(agents_partial_results[i]["itinerary"]) == 0:
+                                            print("itinerary_mp results, itinerary is empty " + str(i))
 
-                        agents_partial_results_combined.extend(agents_partial_results)
-                        vars_util_partial_results_combined.extend(vars_util_partial_results) # TODO - Not an array, crashes
+                                agents_partial_results_combined.extend(agents_partial_results)
+                                vars_util_partial_results_combined.extend(vars_util_partial_results) # TODO - Not an array, crashes
+                    else:
+                        for result in imap_results:
+                            agents_partial_results, vars_util_partial_results = None, None
 
-                        print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
-                        # print(working_schedule_times_by_resid_ordered)
-                        # print(itinerary_times_by_resid_ordered)
+                            process_index, agents_partial_results, vars_util_partial_results, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
 
-                        # possibly issue here, syncing at this point is unnecessary, needs to be synced once in main process
-                        # instead return the partial results only
-                        # agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial)
+                            agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
+
+                            print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))             
                 elif proc_use_pool == 4:
                     for future in as_completed(futures):
                         result = future.result()
 
                         process_index, agents_partial_results, vars_util_partial_results = result
 
-                        agents_partial_results_combined.extend(agents_partial_results)
-                        vars_util_partial_results_combined.extend(vars_util_partial_results)
+                        if dask:
+                            agents_partial_results_combined.extend(agents_partial_results)
+                            vars_util_partial_results_combined.extend(vars_util_partial_results)
+                        else:
+                            agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
 
                         print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
-                        # print(itinerary_times_by_resid_ordered)
-
-                        # agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial)
+                        # print(itinerary_times_by_resid_ordered)             
                     
                 time_taken = time.time() - start
                 print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -330,9 +336,9 @@ def localitinerary_parallel(manager,
                     for process in proc_processes:
                         process.join()
                 elif proc_use_pool == 2:
-                    # Collect and print the results
+                    # Collect and print the results (incomplete)
                     for future in concurrent.futures.as_completed(proc_futures):
-                        result = future.result()
+                        result = future.result() 
 
                         if result is not None:
                             print("result: " + str(result))
@@ -342,32 +348,49 @@ def localitinerary_parallel(manager,
                 print("pool/processes close/join time taken " + str(time_taken))       
         else:
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
-            params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dynparams, -1, process_counter, log_file_name
+            params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dynparams, use_shm, -1, process_counter, log_file_name, agents_static
             process_index, agents_dynamic, vars_util, _, _, _, _ = localitinerary_worker(params)
-            return [agents_dynamic], [vars_util]
 
-        if len(agents_partial_results_combined) == 0:
-            print("itinerary mp return: agents_partial_results_combined is empty")
+            if dask:
+                return [agents_dynamic], [vars_util]
+            else:
+                return agents_dynamic, vars_util
 
-        return agents_partial_results_combined, vars_util_partial_results_combined
+        if dask:
+            if len(agents_partial_results_combined) == 0:
+                print("itinerary mp return: agents_partial_results_combined is empty")
+        
+            return agents_partial_results_combined, vars_util_partial_results_combined
+        else:
+            return agents_dynamic, vars_util
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
 
-def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_partial, vars_util_partial):
+def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
+    index_start_time = time.time()
     mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
     hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc] 
+    index_time_taken = time.time() - index_start_time
+    print("index in process " + str(process_index) + ", time_taken: " + str(index_time_taken))
 
+    agentsids_start_time = time.time()
+    resident_uids = []
     for hh_inst in hh_insts_partial:
-        agents_dynamic, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial)
+        resident_uids.extend(hh_inst["resident_uids"])
 
+    agents_dynamic, vars_util = util.sync_state_info_by_agentsids(resident_uids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
+
+    agentsids_time_taken = time.time() - agentsids_start_time
+    print("agentsids in process " + str(process_index) + ", time_taken: " + str(agentsids_time_taken))
+
+    sets_start_time = time.time()
     vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
+    sets_time_taken = time.time() - sets_start_time
 
     start_cat = time.time()
-    
     vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
-
     time_taken_cat = time.time() - start_cat
     print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
 
@@ -385,23 +408,30 @@ def localitinerary_worker(params):
 
     try:  
         use_mp = False
+        agents_static = None
         # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
         if len(params) > 9:
-            use_mp = True
-            day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, process_index, process_counter, log_file_name = params
+            use_mp = True # could likely be in else of line 409
+
+            if len(params) > 31:
+                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, process_index, process_counter, log_file_name, agents_static = params
+            else:
+                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, process_index, process_counter, log_file_name = params
         else:
             day, weekday, weekdaystr, hh_insts, agents_dynamic, vars_util_mp, dyn_params, process_index, log_file_name = params
-        
+
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_mp_stack_trace_" + str(process_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(process_index) + ".txt"
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        
+        if use_mp:
+            log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(process_index) + ".txt"
+            f = open(log_file_name, "w")
+            sys.stdout = f
 
-        agents_static = None
         worker = None
         if use_mp:
-            from shared_mp import agents_static
+            if use_shm:
+                from shared_mp import agents_static
         else:
             worker = get_worker()
             # agents_static = worker.client.futures["agents_static"]
@@ -429,7 +459,7 @@ def localitinerary_worker(params):
             cells_institutions = worker.data["cells_institutions"] 
             cells_accommodation = worker.data["cells_accommodation"] 
             agents_static = worker.data["agents_static"]
-
+            
         # print("cells_agents_timesteps id in process " + str(process_index) + " is " + str(id(vars_util_mp.cells_agents_timesteps)))
         print(f"Itinerary Worker Child #{process_index+1} at {str(time.time())}", flush=True)
 

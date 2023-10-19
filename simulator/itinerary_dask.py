@@ -208,8 +208,7 @@ def localitinerary_worker(params):
     stack_trace_log_file_name = ""
 
     try:  
-        # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
-        day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, agents_ids_by_ages, vars_util_mp, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, log_file_name = params
+        day, weekday, weekdaystr, hh_insts, agents_dynamic, vars_util_mp, dyn_params, process_index, log_file_name = params
         
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_mp_stack_trace_" + str(process_index) + ".txt"
@@ -223,17 +222,28 @@ def localitinerary_worker(params):
 
         worker = get_worker()
 
-        plugin = worker.plugins['read-only-data']
-        persons = plugin.persons
+        agents_ids_by_ages = worker.data["agents_ids_by_ages"]
+        timestepmins = worker.data["timestepmins"]
+        n_locals = worker.data["n_locals"]
+        n_tourists = worker.data["n_tourists"]
+        locals_ratio_to_full_pop = worker.data["locals_ratio_to_full_pop"]
 
-        persons_len = ""
-        if persons is not None:
-            persons_len = len(persons)
-        else:
-            persons_len = "None"
-
-        print("persons len: " + str(persons_len))
-        print("actual persons len: " + str(plugin.persons_len))
+        itineraryparams = worker.data["itineraryparams"]
+        epidemiologyparams = worker.data["epidemiologyparams"]
+        cells_industries_by_indid_by_wpid = worker.data["cells_industries_by_indid_by_wpid"] 
+        cells_restaurants = worker.data["cells_restaurants"] 
+        cells_hospital = worker.data["cells_hospital"] 
+        cells_testinghub = worker.data["cells_testinghub"] 
+        cells_vaccinationhub = worker.data["cells_vaccinationhub"] 
+        cells_entertainment_by_activityid = worker.data["cells_entertainment_by_activityid"] 
+        cells_religious = worker.data["cells_religious"] 
+        cells_households = worker.data["cells_households"] 
+        cells_breakfast_by_accomid = worker.data["cells_breakfast_by_accomid"] 
+        cells_airport = worker.data["cells_airport"] 
+        cells_transport = worker.data["cells_transport"] 
+        cells_institutions = worker.data["cells_institutions"] 
+        cells_accommodation = worker.data["cells_accommodation"] 
+        agents_static = worker.data["agents_static"]
 
         print("cells_agents_timesteps in process " + str(process_index) + " is " + str(id(vars_util_mp.cells_agents_timesteps)))
         print(f"Itinerary Worker Child #{process_index+1} at {str(time.time())}", flush=True)
@@ -246,7 +256,6 @@ def localitinerary_worker(params):
                                             agents_static,
                                             agents_dynamic, 
                                             agents_ids_by_ages,
-                                            tourists,
                                             vars_util_mp,
                                             cells_industries_by_indid_by_wpid, 
                                             cells_restaurants,
@@ -261,11 +270,9 @@ def localitinerary_worker(params):
                                             cells_transport, 
                                             cells_institutions, 
                                             cells_accommodation,
-                                            tourist_entry_infection_probability, 
                                             epidemiologyparams, 
                                             dyn_params,
-                                            tourists_active_ids,
-                                            process_index)
+                                            process_index= process_index)
 
         num_agents_working_schedule = 0
         working_schedule_times_by_resid = {}

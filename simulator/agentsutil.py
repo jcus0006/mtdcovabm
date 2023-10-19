@@ -1,5 +1,5 @@
 import numpy as np
-import util, seirstateutil
+import util, seirstateutil, customdict
 from epidemiologyclasses import SEIRState
 import multiprocessing as mp
 
@@ -71,7 +71,7 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
 
     return agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count
 
-def initialize_agents_dict_dynamic(agents, temp_agents):
+def initialize_agents_dict_dynamic(agents, temp_agents, dask_bag=False):
     for agentid, props in agents.items():
         temp_agents[agentid] = {}
 
@@ -97,6 +97,9 @@ def initialize_agents_dict_dynamic(agents, temp_agents):
             if "vaccination_days" in props:
                 temp_agents[agentid]["vaccination_days"] = props["vaccination_days"]
 
+    # if dask_bag:
+    #     temp_agents = db.from_sequence(temp_agents, 128)
+
     return temp_agents
 
 def initialize_shared_agents_dict_ct(manager, agents):
@@ -109,7 +112,7 @@ def initialize_shared_agents_dict_ct(manager, agents):
     return shared_agents
 
 def initialize_agents_dict_it(agents):
-    temp_agents = {}
+    temp_agents = customdict.CustomDict()
 
     for agentid, props in agents.items():
         temp_agents[agentid] = {}
@@ -139,7 +142,7 @@ def initialize_agents_dict_it(agents):
     return temp_agents
 
 def initialize_agents_dict_cn(agents):
-    temp_agents = {}
+    temp_agents = temp_agents = customdict.CustomDict()
 
     for agentid, props in agents.items():
         temp_agents[agentid] = {}

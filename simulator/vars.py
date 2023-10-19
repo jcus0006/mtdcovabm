@@ -1,4 +1,7 @@
 import customdict
+# import pandas as pd
+# import dask.dataframe as df
+# import dask.array as da
 
 class Vars:
     def __init__(self, 
@@ -37,6 +40,14 @@ class Vars:
 
     def reset_cells_agents_timesteps(self):
         self.cells_agents_timesteps = {}
+
+    # def convert_to_dask_collections(self, partition_size):
+    #     # self.cells_agents_timesteps = db.from_sequence(self.cells_agents_timesteps.items(), partition_size=128)
+    #     # self.directcontacts_by_simcelltype_by_day = da.from_array(self.directcontacts_by_simcelltype_by_day, chunks=128)
+    #     # self.contact_tracing_agent_ids = db.from_sequence(self.contact_tracing_agent_ids.items(), partition_size=128)
+    #     self.agents_seir_state = da.from_array(self.agents_seir_state, chunks=partition_size)
+    #     self.agents_infection_type = df.from_pandas(pd.DataFrame(self.agents_infection_type), npartitions=partition_size)
+    #     self.agents_infection_severity = df.from_pandas(pd.DataFrame(self.agents_infection_severity), npartitions=partition_size)
 
     # def update_cells_agents_timesteps(self, cellid, agent_cell_timestep_ranges):
     #     if cellid not in self.cells_agents_timesteps:

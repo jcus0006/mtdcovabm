@@ -8,10 +8,10 @@ import json
 # import threading
 import math
 import numpy as np
+import numpy.ma as ma
 import traceback
-import itinerary, itinerary_mp, vars, shared_mp, jsonutil, customdict
+import itinerary, itinerary_mp, vars, shared_mp, jsonutil, customdict, daskutil, util
 import time
-import util
 from copy import copy, deepcopy
 from dask.distributed import Client, get_worker, as_completed, Variable
 import multiprocessing as mp
@@ -20,7 +20,7 @@ from memory_profiler import profile
 # fp = open("memory_profiler_dist.log", "w+")
 # @profile(stream=fp)
 
-def localitinerary_finegrained_distributed(client: Client, 
+def localitinerary_distributed_finegrained(client: Client, 
                                            hh_insts, 
                                            day, 
                                            weekday, 
@@ -89,22 +89,27 @@ def localitinerary_finegrained_distributed(client: Client,
             print("scatter/upload time_taken: " + str(scatter_time_taken))
             # agents_dynamic_future, future2, future3, future4 = client.scatter(agents_dynamic, vars_util.cells_agents_timesteps, vars_util.contact_tracing_agent_ids, vars_util.agents_seir_state)
         
+        # if dask_persist:
+        #     agents_dynamic_future = client.persist(agents_dynamic)
+        #     agents_seir_state_future = client.persist(vars_util.agents_seir_state)
+        #     agents_infection_type_future = client.persist(vars_util.agents_infection_type)
+        #     agents_infection_severity_future = client.persist(vars_util.agents_infection_severity)
+
         map_params = []
         count = 0
         for hh_inst in hh_insts:
             agents_dynamic_partial = {}
             vars_util_partial = vars.Vars()
 
-            if not dask_scatter:
+            if not dask_scatter: # and not dask_persist
                 vars_util_partial.agents_seir_state = [] # to be populated hereunder
-                vars_util_partial.agents_vaccination_doses = [] # to be populated hereunder
                 vars_util_partial.cells_agents_timesteps = {}
 
                 agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)                  
                 
-                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_partial, vars_util_partial, dyn_params, dask_scatter, log_file_name
+                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_partial, vars_util_partial, dyn_params, dask_scatter, True, log_file_name
             else:
-                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future, dask_scatter, log_file_name
+                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future, True, True, log_file_name
 
             if dask_mode == 0:
                 if dask_batch_size == -1 or count < dask_batch_size:
@@ -134,7 +139,7 @@ def localitinerary_finegrained_distributed(client: Client,
             futures = client.map(localitinerary_worker_res, map_params)
         
         if (dask_mode == 0 and dask_batch_size == -1) or dask_mode == 1 or dask_mode == 3:
-            agents_dynamic, vars_util = handle_futures(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name)
+            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name)
         elif dask_mode == 0 and not dask_batch_recurring:
             agents_dynamic, vars_util = handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
         elif dask_mode == 0 and dask_batch_recurring:
@@ -144,7 +149,7 @@ def localitinerary_finegrained_distributed(client: Client,
             for result in results:
                 agents_dynamic_partial_result, vars_util_partial_result = result
 
-                agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+                agents_dynamic, vars_util = daskutil.sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
         
         if not keep_workers_open:
             start = time.time()
@@ -158,23 +163,474 @@ def localitinerary_finegrained_distributed(client: Client,
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
 
-def handle_futures(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name):
-    for future in as_completed(futures):
-        try:
-            result = future.result()
+def localitinerary_distributed_finegrained_chunks(client: Client, 
+                                                hh_insts, 
+                                                day, 
+                                                weekday, 
+                                                weekdaystr, 
+                                                agents_dynamic, 
+                                                vars_util, 
+                                                dyn_params,
+                                                keep_workers_open=True, 
+                                                dask_mode=0, # 0 client.submit, 1 dask.delayed (client.compute), 2 dask.delayed (dask.compute), 3 client.map
+                                                dask_chunk_size=1,
+                                                dask_single_item_per_task=True,
+                                                dask_full_array_mapping=False,
+                                                log_file_name="output.txt"): 
+    original_log_file_name = log_file_name
+    stack_trace_log_file_name = ""
+    task_results_stack_trace_log_file_name = ""
+    try:
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dist_stack_trace" + ".txt"
+        task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
 
-            agents_dynamic_partial_result, vars_util_partial_result = result
+        vars_util.reset_cells_agents_timesteps()
 
-            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+        if dask_single_item_per_task:
+            for hh_insts_partial in util.yield_chunks(hh_insts, dask_chunk_size):
+                dask_params = []
+                delayed_computations = []
+                futures = []
+
+                for hh_inst in hh_insts_partial:
+                    agents_dynamic_partial = {}
+                    vars_util_partial = vars.Vars()
+
+                    if not dask_full_array_mapping:
+                        vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    else:
+                        vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                    
+                    vars_util_partial.cells_agents_timesteps = {}
+
+                    agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=dask_full_array_mapping)                  
+                    
+                    params = day, weekday, weekdaystr, hh_inst, agents_dynamic_partial, vars_util_partial, dyn_params, False, dask_full_array_mapping, log_file_name  
+
+                    # start = time.time()
+                    if dask_mode == 0:
+                        future = client.submit(localitinerary_worker_res, params)
+                        futures.append(future)
+                    elif dask_mode == 1 or dask_mode == 2:
+                        delayed_computation = dask.delayed(localitinerary_worker_res)(params)
+                        delayed_computations.append(delayed_computation)
+                        # delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(len(dask_params))]
+                    elif dask_mode == 3:
+                        dask_params.append(params)
+                
+                    # time_taken = time.time() - start
+                    # print("delayed_results generation: " + str(time_taken))
+
+                start = time.time()
+
+                if dask_mode == 1:
+                    futures = client.compute(delayed_computations) # client.compute delays computation (and doesn't seem to work with the large dataset)
+                elif dask_mode == 2:
+                    futures = dask.compute(delayed_computations)
+                elif dask_mode == 3:
+                    futures = client.map(localitinerary_worker_res, dask_params)
+
+                time_taken = time.time() - start
+                print("computed_results generation: " + str(time_taken))
+
+                start = time.time()
+                agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+
+                time_taken = time.time() - start
+                print("sync results: " + str(time_taken))
+        else:
+            dask_params = []
+            delayed_computations = []
+            futures = []
+            
+            chunk_start = time.time()
+            for hh_insts_partial in util.yield_chunks(hh_insts, dask_chunk_size):
+                agents_dynamic_partial = {}
+                vars_util_partial = vars.Vars()
+
+                if not dask_full_array_mapping:
+                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                else:
+                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+
+                vars_util_partial.cells_agents_timesteps = {}
+                
+                for hh_inst in hh_insts_partial:
+                    agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=dask_full_array_mapping)                  
+
+                params = day, weekday, weekdaystr, hh_insts_partial, agents_dynamic_partial, vars_util_partial, dyn_params, False, dask_full_array_mapping, log_file_name
+            
+                # start = time.time()
+                if dask_mode == 0:
+                    future = client.submit(localitinerary_worker_res, params)
+                    futures.append(future)
+                elif dask_mode == 1 or dask_mode == 2:
+                    delayed_computation = dask.delayed(localitinerary_worker_res)(params)
+                    delayed_computations.append(delayed_computation)
+                elif dask_mode == 3:
+                    dask_params.append(params)
+            
+                # time_taken = time.time() - start
+                # print("delayed_results generation: " + str(time_taken))
+            
+            chunk_time_taken = time.time() - chunk_start
+            print("chunk stage: " + str(chunk_time_taken))
+
+            start = time.time()
+
+            if dask_mode == 1:
+                futures = client.compute(delayed_computations) # client.compute delays computation (and doesn't seem to work with the large dataset)
+            elif dask_mode == 2:
+                futures = dask.compute(delayed_computations)
+            elif dask_mode == 3:
+                futures = client.map(localitinerary_worker_res, dask_params)
+
+            time_taken = time.time() - start
+            print("computed_results: " + str(time_taken))
+
+            start = time.time()
+            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            time_taken = time.time() - start
+            print("sync results: " + str(time_taken))
+
+        if not keep_workers_open:
+            start = time.time()
+            client.shutdown()
+            time_taken = time.time() - start
+            print("client shutdown time taken " + str(time_taken))         
+    except:
+        with open(stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
+
+def localitinerary_distributed_map_batched(client: Client, 
+                                    hh_insts, 
+                                    day, 
+                                    weekday, 
+                                    weekdaystr, 
+                                    agents_dynamic, 
+                                    vars_util, 
+                                    dyn_params,
+                                    keep_workers_open=True,
+                                    dask_batch_size=1,
+                                    dask_full_array_mapping=False,
+                                    dask_scatter=False,
+                                    dask_submit=False,
+                                    dask_map_batched_results=True,
+                                    log_file_name="output.txt"): 
+    original_log_file_name = log_file_name
+    stack_trace_log_file_name = ""
+    task_results_stack_trace_log_file_name = ""
+    try:
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dist_stack_trace" + ".txt"
+        task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
+
+        vars_util.reset_cells_agents_timesteps()
+
+        dask_params = []
+
+        agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future = None, None, None, None, None
+        if dask_scatter or dask_submit:
+            scatter_start_time = time.time()
+
+            if dask_scatter:
+                agents_dynamic_future = client.scatter(agents_dynamic) # broadcast=True, direct=True
+            else:
+                agents_dynamic_future = client.submit(load_data_future, agents_dynamic)
+           
+            if dask_scatter:
+                agents_seir_state_future = client.scatter(vars_util.agents_seir_state) # broadcast=True, direct=True
+            else:
+                agents_seir_state_future = client.submit(load_data_future, vars_util.agents_seir_state)
+
+            if len(vars_util.agents_infection_type) > 0:
+                if dask_scatter:
+                    agents_infection_type_future = client.scatter(vars_util.agents_infection_type) # broadcast=True, direct=True
+                else:
+                    agents_infection_type_future = client.submit(load_data_future, vars_util.agents_infection_type)
+
+            else:
+                agents_infection_type_future = vars_util.agents_infection_type
+
+            if len(vars_util.agents_infection_severity) > 0:
+                if dask_scatter:
+                    agents_infection_severity_future = client.scatter(vars_util.agents_infection_severity) # broadcast=True, direct=True
+                else:
+                    agents_infection_severity_future = client.submit(load_data_future, vars_util.agents_infection_severity)
+            else:
+                agents_infection_severity_future = vars_util.agents_infection_severity
+
+            if dask_scatter:
+                dyn_params_future = client.scatter(dyn_params) # broadcast=True, direct=True
+            else:
+                dyn_params_future = client.submit(load_data_future, dyn_params)
+
+            scatter_time_taken = time.time() - scatter_start_time
+            print("scatter/upload time_taken: " + str(scatter_time_taken))
+
+        start = time.time()
+        for hh_inst in hh_insts:
+            if not dask_scatter and not dask_submit:
+                agents_dynamic_partial = {}
+                vars_util_partial = vars.Vars()
+
+                if not dask_full_array_mapping:
+                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                else:
+                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                
+                vars_util_partial.cells_agents_timesteps = {}
+
+                agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=dask_full_array_mapping)                  
+                
+                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_partial, vars_util_partial, dyn_params, False, dask_full_array_mapping, log_file_name  
+            else:
+                params = day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state_future, agents_infection_type_future, agents_infection_severity_future, dyn_params_future, True, dask_full_array_mapping, log_file_name
+
+            dask_params.append(params)
+            
+            # time_taken = time.time() - start
+            # print("delayed_results generation: " + str(time_taken))
+        time_taken = time.time()
+        print("generating dask_params, time_taken: " + str(time_taken))
+
+        start = time.time()
+
+        futures = client.map(localitinerary_worker_res, dask_params, batch_size=dask_batch_size)
+
+        time_taken = time.time() - start
+        print("mapping with batch size: " + str(dask_batch_size) + ", time_taken: " + str(time_taken))
+
+        start = time.time()
+        # time.sleep(600)
+        if dask_map_batched_results:
+            agents_dynamic, vars_util = daskutil.handle_futures_batches(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+        else:
+            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+
+        time_taken = time.time() - start
+        print("sync results: " + str(time_taken))
+
+        if not keep_workers_open:
+            start = time.time()
+            client.shutdown()
+            time_taken = time.time() - start
+            print("client shutdown time taken " + str(time_taken))         
+    except:
+        with open(stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
+
+def localitinerary_distributed(client,
+                            day,
+                            weekday,
+                            weekdaystr,
+                            itineraryparams,
+                            timestepmins,
+                            n_locals, 
+                            n_tourists, 
+                            locals_ratio_to_full_pop,
+                            agents_dynamic,
+                            it_agents,
+                            agents_ids_by_ages,
+                            vars_util, 
+                            cells_industries_by_indid_by_wpid, # cells related only being used for mp now
+                            cells_restaurants, 
+                            cells_hospital,
+                            cells_testinghub, 
+                            cells_vaccinationhub, 
+                            cells_entertainment_by_activityid, 
+                            cells_religious, 
+                            cells_households, 
+                            cells_breakfast_by_accomid,
+                            cells_airport, 
+                            cells_transport, 
+                            cells_institutions, 
+                            cells_accommodation, 
+                            epidemiologyparams,
+                            dynparams,
+                            hh_insts,
+                            num_processes=10,
+                            num_threads=2,
+                            proc_use_pool=0, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
+                            sync_use_threads=False,
+                            sync_use_queue=False,
+                            keep_processes_open=True,
+                            use_mp=False, # in this context use_mp means use single dask worker and mp in each node
+                            dask_numtasks=-1,
+                            dask_mode=0, # 0 client.submit, 1 dask.delayed (client.compute), 2 dask.delayed (dask.compute), 3 client.map
+                            dask_full_array_mapping=False,
+                            log_file_name="output.txt"): 
+    original_log_file_name = log_file_name
+    stack_trace_log_file_name = ""
+    task_results_stack_trace_log_file_name = ""
+    try:
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dist_stack_trace" + ".txt"
+        task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
+
+        # process_counter = manager.Value("i", num_processes)
+
+        vars_util.reset_cells_agents_timesteps()
+
+        workers = client.scheduler_info()["workers"].keys() # list()
+        # worker = client.scheduler_info()["workers"][workers[0]]
+        # print("local_directory: " + str(worker["local_directory"]))
         
-            agents_dynamic_partial_result, vars_util_partial_result = None, None
-        except:
-            with open(task_results_stack_trace_log_file_name, 'a') as f:
-                traceback.print_exc(file=f)
-        finally:
-            future.release()
+        if dask_numtasks == -1:
+            dask_numtasks = len(workers)
 
-    return agents_dynamic, vars_util
+        start = time.time()
+        mp_hh_inst_indices = util.split_residences_by_weight(hh_insts, dask_numtasks) # to do - for the time being this assumes equal split but we may have more information about the cores of the workers
+        time_taken = time.time() - start
+        print("split residences by indices (load balancing): " + str(time_taken))
+        
+        start = time.time()
+
+        dask_params = []
+        delayed_computations = []
+        futures = []
+
+        for worker_index in range(dask_numtasks):
+            # cells_partial = {}
+            hh_insts_partial = []
+
+            mp_hh_inst_ids_this_proc = mp_hh_inst_indices[worker_index]
+
+            if len(mp_hh_inst_ids_this_proc) > 0:
+                # start_partial = time.time()
+                hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc]      
+
+                agents_partial, agents_ids_by_ages_partial = {}, {}
+                vars_util_partial = vars.Vars()
+
+                if not dask_full_array_mapping:
+                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
+                else:
+                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+
+                vars_util_partial.cells_agents_timesteps = {}
+                
+                for hh_inst in hh_insts_partial:
+                    agents_partial, agents_ids_by_ages_partial, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=dask_full_array_mapping)
+
+                # if not dask_full_array_mapping:
+                #     agent_ids = sorted(list(agents_partial.keys()))
+
+                #     mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), agent_ids, invert=True)
+
+                #     vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
+
+                # agents_partial = {uid:agents[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
+                # agents_ids_by_ages_partial = {uid:agents_ids_by_ages[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
+
+                # time_taken_partial = time.time() - start_partial
+                # print("creating partial dicts. time taken: " + str(time_taken_partial))
+                # print("starting process index " + str(worker_index) + " at " + str(time.time()))
+
+                # Define parameters
+                if use_mp: # call itinerary_dist.localitinerary_dist_worker
+                    params = (day, 
+                            weekday, 
+                            weekdaystr, 
+                            hh_insts_partial, 
+                            itineraryparams, 
+                            timestepmins, 
+                            n_locals, 
+                            n_tourists, 
+                            locals_ratio_to_full_pop,
+                            agents_partial, 
+                            agents_ids_by_ages_partial, 
+                            deepcopy(vars_util_partial), 
+                            cells_industries_by_indid_by_wpid, 
+                            cells_restaurants, 
+                            cells_hospital,
+                            cells_testinghub, 
+                            cells_vaccinationhub, 
+                            cells_entertainment_by_activityid, 
+                            cells_religious, 
+                            cells_households, 
+                            cells_breakfast_by_accomid, 
+                            cells_airport, 
+                            cells_transport, 
+                            cells_institutions, 
+                            cells_accommodation, 
+                            epidemiologyparams, 
+                            dynparams, 
+                            proc_use_pool,
+                            num_processes,
+                            worker_index,
+                            original_log_file_name) 
+                else: # call itinerary_mp.localitinerary_worker
+                    params = (day, 
+                            weekday, 
+                            weekdaystr, 
+                            hh_insts_partial, 
+                            agents_partial,
+                            vars_util_partial, # deepcopy(vars_util_partial) - without this was causing some nasty issues with multiprocessing (maybe with Dask it is fine)
+                            dynparams, 
+                            worker_index, 
+                            log_file_name)  
+
+                if use_mp:
+                    delayed_computation = dask.delayed(localitinerary_dist_worker)(params)
+                    delayed_computations.append(delayed_computation)
+                    # delayed_computations = [dask.delayed(localitinerary_dist_worker)(dask_params[i]) for i in range(len(dask_params))]
+                else:
+                    if dask_mode == 0:
+                        future = client.submit(itinerary_mp.localitinerary_worker, params)
+                        futures.append(future)
+                    elif dask_mode == 1 or dask_mode == 2:
+                        delayed_computation = dask.delayed(itinerary_mp.localitinerary_worker)(params)
+                        delayed_computations.append(delayed_computation)
+                        # delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(len(dask_params))]
+                    elif dask_mode == 3:
+                        dask_params.append(params)
+        
+        time_taken = time.time() - start
+        print("delayed_results generation: " + str(time_taken))
+
+        start = time.time()
+
+        if use_mp or dask_mode == 1:
+            futures = client.compute(delayed_computations) # client.compute delays computation (and doesn't seem to work with the large dataset)
+        elif dask_mode == 2:
+            futures = dask.compute(delayed_computations)
+        elif dask_mode == 3:
+            futures = client.map(itinerary_mp.localitinerary_worker, dask_params)
+
+        # results = dask.compute(*delayed_computations) # dask.compute blocks (and seems to work)
+        time_taken = time.time() - start
+        print("futures generation: " + str(time_taken))
+
+        # results = client.gather(futures) # another way of collecting the results
+
+        start = time.time()
+        if use_mp:
+            for future in futures: # simple traversal of already collected results (block method)
+                # result = future.result()
+
+                worker_index, agents_partial_results_combined, vars_util_partial_results_combined = future
+                print("processing results for worker " + str(worker_index))
+
+                # for i in range(1000):
+                #     if i in agents_partial_results_combined:
+                #         if agents_partial_results_combined[i]["itinerary"] is None or len(agents_partial_results_combined[i]["itinerary"]) == 0:
+                #             print("itinerary_dist results, itinerary is empty " + str(i))
+
+                agents_dynamic, vars_util = daskutil.sync_results(worker_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results_combined, vars_util_partial_results_combined)
+        else:
+            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, True, True, dask_full_array_mapping)
+
+        time_taken = time.time() - start
+        print("sync results: " + str(time_taken))
+
+        if not keep_processes_open:
+            start = time.time()
+            client.shutdown()
+            time_taken = time.time() - start
+            print("client shutdown time taken " + str(time_taken))         
+    except:
+        with open(stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
 
 def handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
     if batch_size > len(map_params):
@@ -195,7 +651,7 @@ def handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_ut
 
             agents_dynamic_partial_result, vars_util_partial_result = result
 
-            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+            agents_dynamic, vars_util = daskutil.sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
         
             agents_dynamic_partial_result, vars_util_partial_result = None, None
         except:
@@ -226,7 +682,7 @@ def handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_u
 
             agents_dynamic_partial_result, vars_util_partial_result = result
 
-            agents_dynamic, vars_util = sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, list(agents_dynamic_partial_result.keys()))
+            agents_dynamic, vars_util = daskutil.sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
         
             agents_dynamic_partial_result, vars_util_partial_result = None, None
         except:
@@ -245,219 +701,6 @@ def handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_u
     else:
         return handle_futures_non_recurring_batches(client, temp_futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
 
-def localitinerary_distributed(client,
-                            day,
-                            weekday,
-                            weekdaystr,
-                            itineraryparams,
-                            timestepmins,
-                            n_locals, 
-                            n_tourists, 
-                            locals_ratio_to_full_pop,
-                            agents_dynamic,
-                            agents_ids_by_ages,
-                            vars_util, 
-                            cells_industries_by_indid_by_wpid, # cells related only being used for mp now
-                            cells_restaurants, 
-                            cells_hospital,
-                            cells_testinghub, 
-                            cells_vaccinationhub, 
-                            cells_entertainment_by_activityid, 
-                            cells_religious, 
-                            cells_households, 
-                            cells_breakfast_by_accomid,
-                            cells_airport, 
-                            cells_transport, 
-                            cells_institutions, 
-                            cells_accommodation, 
-                            epidemiologyparams,
-                            dynparams,
-                            hh_insts,
-                            num_processes=10,
-                            num_threads=2,
-                            proc_use_pool=0, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
-                            sync_use_threads=False,
-                            sync_use_queue=False,
-                            keep_processes_open=True,
-                            use_mp=False, # in this context use_mp means use single dask worker and mp in each node
-                            log_file_name="output.txt"): 
-    original_log_file_name = log_file_name
-    stack_trace_log_file_name = ""
-    try:
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dist_stack_trace" + ".txt"
-
-        # process_counter = manager.Value("i", num_processes)
-
-        vars_util.reset_cells_agents_timesteps()
-
-        workers = client.scheduler_info()["workers"].keys() # list()
-        # worker = client.scheduler_info()["workers"][workers[0]]
-        # print("local_directory: " + str(worker["local_directory"]))
-        
-        num_workers = len(workers)
-
-        start = time.time()
-        mp_hh_inst_indices = util.split_residences_by_weight(hh_insts, num_workers) # to do - for the time being this assumes equal split but we may have more information about the cores of the workers
-        time_taken = time.time() - start
-        print("split residences by indices (load balancing): " + str(time_taken))
-        
-        start = time.time()
-
-        dask_params = []
-
-        for worker_index in range(num_workers):
-            # cells_partial = {}
-            hh_insts_partial = []
-
-            mp_hh_inst_ids_this_proc = mp_hh_inst_indices[worker_index]
-
-            start_partial = time.time()
-            hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc]      
-
-            agents_partial, agents_ids_by_ages_partial = {}, {}
-            vars_util_partial = vars.Vars()
-            vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-            vars_util_partial.agents_vaccination_doses = vars_util.agents_vaccination_doses
-            vars_util_partial.cells_agents_timesteps = {}
-
-            for hh_inst in hh_insts_partial:
-                agents_partial, agents_ids_by_ages_partial, vars_util_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages, agents_ids_by_ages_partial, is_itinerary=True)                  
-
-            # agents_partial = {uid:agents[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
-            # agents_ids_by_ages_partial = {uid:agents_ids_by_ages[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
-
-            time_taken_partial = time.time() - start_partial
-            print("creating partial dicts. time taken: " + str(time_taken_partial))
-
-            print("starting process index " + str(worker_index) + " at " + str(time.time()))
-
-            # Define parameters
-            if use_mp: # call itinerary_dist.localitinerary_dist_worker
-                params = (day, 
-                        weekday, 
-                        weekdaystr, 
-                        hh_insts_partial, 
-                        itineraryparams, 
-                        timestepmins, 
-                        n_locals, 
-                        n_tourists, 
-                        locals_ratio_to_full_pop,
-                        agents_partial, 
-                        agents_ids_by_ages_partial, 
-                        deepcopy(vars_util_partial), 
-                        cells_industries_by_indid_by_wpid, 
-                        cells_restaurants, 
-                        cells_hospital,
-                        cells_testinghub, 
-                        cells_vaccinationhub, 
-                        cells_entertainment_by_activityid, 
-                        cells_religious, 
-                        cells_households, 
-                        cells_breakfast_by_accomid, 
-                        cells_airport, 
-                        cells_transport, 
-                        cells_institutions, 
-                        cells_accommodation, 
-                        epidemiologyparams, 
-                        dynparams, 
-                        proc_use_pool,
-                        num_processes,
-                        worker_index,
-                        original_log_file_name) 
-            else: # call itinerary_mp.localitinerary_worker
-                params = (day, 
-                        weekday, 
-                        weekdaystr, 
-                        hh_insts_partial, 
-                        agents_partial,
-                        deepcopy(vars_util_partial), 
-                        dynparams, 
-                        worker_index, 
-                        log_file_name)  
-
-            dask_params.append(params)
-
-        start = time.time()
-        if use_mp:
-            delayed_computations = [dask.delayed(localitinerary_dist_worker)(dask_params[i]) for i in range(num_workers)]
-        else:
-            delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(num_workers)]
-        
-        time_taken = time.time() - start
-        print("delayed_results generation: " + str(time_taken))
-
-        start = time.time()
-        # futures = client.compute(delayed_computations) # this delays computation (and doesn't seem to work with the large dataset)
-        results = dask.compute(*delayed_computations) # this blocks (and seems to work)
-        time_taken = time.time() - start
-        print("computed_results generation: " + str(time_taken))
-
-        time_taken = time.time() - start
-
-        print("started pool/processes. time taken: " + str(time_taken))
-
-        start = time.time()
-
-        # results = client.gather(futures) # another way of collecting the results
-
-        # # for future in as_completed(futures): # to use with futures
-        for result in results: # simple traversal of already collected results (block method)
-            # result = future.result()
-
-            if use_mp:
-                worker_index, agents_partial_results_combined, vars_util_partial_results_combined = result
-            else:
-                worker_index, agents_partial_results_combined, vars_util_partial_results_combined, _, _, _, _ = result
-
-            print("processing results for worker " + str(worker_index))
-
-            for i in range(1000):
-                if i in agents_partial_results_combined:
-                    if agents_partial_results_combined[i]["itinerary"] is None or len(agents_partial_results_combined[i]["itinerary"]) == 0:
-                        print("itinerary_dist results, itinerary is empty " + str(i))
-
-            agents_dynamic, vars_util = sync_results(worker_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results_combined, vars_util_partial_results_combined)
-
-        if not keep_processes_open:
-            start = time.time()
-            client.shutdown()
-            time_taken = time.time() - start
-            print("client shutdown time taken " + str(time_taken))         
-    except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
-
-def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
-    if agents_partial is not None and len(agents_partial) > 0:
-        mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
-
-        hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc] 
-
-        for hh_inst in hh_insts_partial:
-            agents_dynamic, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial)
-
-        vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
-
-        start_cat = time.time()
-        
-        vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
-
-        time_taken_cat = time.time() - start_cat
-        print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
-
-    return agents_dynamic, vars_util
-
-def sync_results_res(agents_dynamic, vars_util, agents_partial, vars_util_partial, res_agent_ids):
-    agents_dynamic, vars_util = util.sync_state_info_by_agentsids(res_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial, task_agent_ids=res_agent_ids)
-    vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
-
-    # start_cat = time.time()
-    vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
-    # time_taken_cat = time.time() - start_cat
-    # print("cells_agents_timesteps sync, time taken: {0}".format(str(time_taken_cat)))
-
-    return agents_dynamic, vars_util
-
 def load_json_future(jsonstr):
     return json.loads(jsonstr, object_hook=jsonutil.jsonKeys2int)
 
@@ -474,17 +717,26 @@ def localitinerary_worker_res(params):
 
     try:
         agents_dynamic, vars_util_mp = None, None
-        if len(params) == 9:
-            day, weekday, weekdaystr, hh_inst, agents_dynamic, vars_util_mp, dyn_params, dask_scatter, log_file_name = params
+        if len(params) == 10:
+            day, weekday, weekdaystr, hh_inst, agents_dynamic, vars_util_mp, dyn_params, dask_scatter, dask_full_array_mapping, log_file_name = params
         else:
-            day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state, agents_infection_type, agents_infection_severity, dyn_params, dask_scatter, log_file_name = params
+            day, weekday, weekdaystr, hh_inst, agents_dynamic_future, agents_seir_state, agents_infection_type, agents_infection_severity, dyn_params, dask_scatter, dask_full_array_mapping, log_file_name = params
             vars_util_mp_future = vars.Vars(agents_seir_state=agents_seir_state, agents_infection_type=agents_infection_type, agents_infection_severity=agents_infection_severity)
+
+        hh_insts = []
+        if isinstance(hh_inst, list):
+            hh_insts = hh_inst
+        else:
+            hh_insts.append(hh_inst)
+        
+        hh_inst = None
 
         if dask_scatter:
             agents_dynamic_partial = customdict.CustomDict()
             vars_util_partial = vars.Vars()
 
-            agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids_copy(hh_inst["resident_uids"], agents_dynamic_future, vars_util_mp_future, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_task=True)
+            for hh_inst in hh_insts:
+                agents_dynamic_partial, _, vars_util_partial = util.split_dicts_by_agentsids_copy(hh_inst["resident_uids"], agents_dynamic_future, vars_util_mp_future, agents_dynamic_partial, vars_util_partial, None, None, is_itinerary=True, is_dask_full_array_mapping=dask_full_array_mapping)
 
             agents_dynamic = agents_dynamic_partial
             vars_util_mp = vars_util_partial
@@ -546,20 +798,22 @@ def localitinerary_worker_res(params):
                                             cells_institutions, 
                                             cells_accommodation,
                                             epidemiologyparams, 
-                                            dyn_params,
-                                            task_agent_ids=list(agents_dynamic.keys()))
+                                            dyn_params)
         
         if day == 1 or weekdaystr == "Monday":
-            # start = time.time()
-            itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
-            # time_taken = time.time() - start
-            # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", proc index: " + str(process_index))
+            for hh_inst in hh_insts: # may be single
+                # start = time.time()
+                itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+                # time_taken = time.time() - start
+                # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", proc index: " + str(process_index))
 
-        # start = time.time()
-        itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
-        # time_taken = time.time() - start
-        # print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
+        for hh_inst in hh_insts: # may be single
+            # start = time.time()
+            itinerary_util.generate_local_itinerary(day, weekday, hh_inst["resident_uids"])
+            # time_taken = time.time() - start
+            # print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
         
+        # return agents_dynamic, vars_util_mp.cells_agents_timesteps, vars_util_mp.agents_seir_state, vars_util_mp.agents_infection_type, vars_util_mp.agents_infection_severity, vars_util_mp.agents_seir_state_transition_for_day, vars_util_mp.contact_tracing_agent_ids
         return agents_dynamic, vars_util_mp
     except:
         with open(stack_trace_log_file_name, 'a+') as f: # it_res_stack_trace.txt
@@ -665,9 +919,11 @@ def localitinerary_dist_worker(params):
                                                                             epidemiologyparams, 
                                                                             dyn_params,
                                                                             hh_insts,
-                                                                            num_processes, # to do - this is to be passed dynamically based on worker/s config/s,
+                                                                            num_processes, # to do - this is to be passed dynamically based on worker/s config/s,                                                                           
                                                                             proc_use_pool=proc_use_pool,
-                                                                            log_file_name=original_log_file_name)
+                                                                            use_shm=manager is not None,
+                                                                            log_file_name=original_log_file_name,
+                                                                            dask=True)
 
         # to do - somehow to return and combine results
         for i in range(1000):

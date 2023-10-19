@@ -5,7 +5,7 @@ import powerlaw
 import matplotlib.pyplot as plt
 import random
 from copy import copy, deepcopy
-import seirstateutil
+import seirstateutil, customdict
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -326,8 +326,8 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if is_dask_task:
             vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
 
-            if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
-                vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
+            # if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
+            #     vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
 
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
@@ -343,53 +343,56 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial
 
-def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False):
+def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
     for uid in agents_ids:
         agents_partial[uid] = deepcopy(agents[uid])
 
-        if is_dask_task:
-            vars_util_partial.agents_seir_state.append(copy(vars_util.agents_seir_state[uid]))
+        if is_dask_full_array_mapping:
+            vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
 
-            if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
-                vars_util_partial.agents_vaccination_doses.append(copy(vars_util.agents_vaccination_doses[uid]))
+            # if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
+            #     vars_util_partial.agents_vaccination_doses.append(copy(vars_util.agents_vaccination_doses[uid]))
 
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
         if uid in vars_util.agents_seir_state_transition_for_day:
-            vars_util_partial.agents_seir_state_transition_for_day[uid] = copy(vars_util.agents_seir_state_transition_for_day[uid])
+            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
 
         if uid in vars_util.agents_infection_type:
-            vars_util_partial.agents_infection_type[uid] = copy(vars_util.agents_infection_type[uid])
+            vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
 
         if uid in vars_util.agents_infection_severity:
-            vars_util_partial.agents_infection_severity[uid] = copy(vars_util.agents_infection_severity[uid])
+            vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
+
+    if not is_dask_full_array_mapping:
+        vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial
 
-def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False, task_agent_ids=None):
+def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False):
     # updated_count = 0
-    for uid in agents_ids:
-        curr_agent = agents_partial[uid]
+    for agentindex, agentid in enumerate(agents_ids):
+        curr_agent = agents_partial[agentid]
         if not contact_tracing:
-            agents[uid] = curr_agent
+            agents[agentid] = curr_agent
         else:
-            main_agent = agents[uid] # may also add handling to update only the updated fields rather than all fields that can be updated
+            main_agent = agents[agentid] # may also add handling to update only the updated fields rather than all fields that can be updated
             main_agent["test_day"] = curr_agent["test_day"]
             main_agent["test_result_day"] = curr_agent["test_result_day"]
             main_agent["quarantine_days"] = curr_agent["quarantine_days"]
 
-        if uid in vars_util_partial.agents_seir_state_transition_for_day:
-            vars_util.agents_seir_state_transition_for_day[uid] = vars_util_partial.agents_seir_state_transition_for_day[uid]
+        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
         if not contact_tracing:
-            vars_util.agents_seir_state[uid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, uid, task_agent_ids)
+            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
-        if uid in vars_util_partial.agents_infection_type:
-            vars_util.agents_infection_type[uid] = vars_util_partial.agents_infection_type[uid]
+        if agentid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
 
-        if uid in vars_util_partial.agents_infection_severity:
-            vars_util.agents_infection_severity[uid] = vars_util_partial.agents_infection_severity[uid]
+        if agentid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
 
         # updated_count += 1  
 
@@ -423,21 +426,21 @@ def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
 
 # load balancing
 
-def split_residences_by_weight(residences, num_processes):
+def split_residences_by_weight(residences, num_partitions):
     # Sort residences based on their weights in ascending order
     sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight'])
 
     sorted_residences = [residence for _, residence in sorted_residences_with_indices]
     sorted_indices = [index for index, _ in sorted_residences_with_indices]
 
-    process_residences_indices = [[] for i in range(num_processes)]
+    process_residences_indices = [[] for i in range(num_partitions)]
     cursor = 0
     for index, _ in enumerate(sorted_residences):
         process_residences_indices[cursor].append(sorted_indices[index])
 
         cursor += 1
 
-        if cursor == num_processes:
+        if cursor == num_partitions:
             cursor = 0
 
     # process_residences_indices_lengths = [len(pri) for pri in process_residences_indices]
@@ -450,7 +453,7 @@ def split_cellsagentstimesteps_balanced(cells_agents_timesteps, num_dicts):
     sorted_keys = sorted(cells_agents_timesteps.keys(), key=lambda k: len(cells_agents_timesteps[k]))
 
     # Initialize empty dictionaries for each partition
-    partitions = [{} for _ in range(num_dicts)]
+    partitions = [customdict.CustomDict() for _ in range(num_dicts)]
 
     # Distribute keys evenly across partitions
     for i, key in enumerate(sorted_keys):
@@ -486,6 +489,10 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
 
     return indices  # Empty list if no matches found
 
+def yield_chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i: i + n]
+        
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
 # def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
 #     agents_partial = {}

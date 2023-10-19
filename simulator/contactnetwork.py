@@ -47,10 +47,15 @@ class ContactNetwork:
         # self.sync_queue = sync_queue
 
         self.population_per_timestep = [0 for i in range(144)]
+
+        self.agents_seir_indices = None
+        # self.agents_seir_indices = {agentid:idx for idx, agentid in enumerate(self.agents_dynamic.keys())}
+
+        # print("agents_seir_indices values: " + str(self.agents_seir_indices.keys()))
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):        

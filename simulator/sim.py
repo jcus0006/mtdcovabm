@@ -12,15 +12,15 @@ import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, itinerary_dask, contactnetwork_mp, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
+import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, Worker, LocalCluster, SSHCluster
+from dask.distributed import Client, Worker, SSHCluster
 # from dask.distributed import WorkerPlugin
-import dask.dataframe as df
 from functools import partial
 import gc
 from memory_profiler import profile
+# import dask.dataframe as df
 
 params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
@@ -38,26 +38,40 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 2, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
-            "numthreads": 1,
+            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used
-            "use_mp_rawarray": False, # this is applicable for any case of mp (if not using mp, set to False)
-            "dask_use_mp": False, # if this is true, dask is used, and multiprocessing is used in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_use_fg": True,
-            "dask_fg_mode": 3, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute) 3 client.map
-            "dask_scatter": True, # scattering of data into distributed memory (works with dask_fg_mode 0, not sure with rest)
-            "dask_nodes": ["localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
-            "dask_batch_size": -1, # (last tried with 2 workers and batches of  2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, set to False)
+            "dask_use_mp": False, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
+            "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
+            "dask_numtasks": -1, # only works with dask_use_fg = False and dask_use_chunking = False. the number of tasks to split all computation into
+            "dask_use_chunking": False, # only works with dask_use_fg = False, refer to dask_chunk_size below for more info
+            "dask_chunk_size": 10240, # defines the chunk size to send to the scheduler at one go (to avoid overload), set as 1 to send everything in 1 go
+            "dask_single_item_per_task": False, # if set as True, will send "dask_chunk_size" tasks at one go, if set as False, will send "dask_chunk_size" items in each task and num_tasks / dask_chunk_size tasks
+            "dask_map_batching": False, # if set as True, will use client.map with batch_size. set dask_batch_size, requires dask_use_fg = False, does not consider dask_mode
+            "dask_map_batched_results": True, # if set as True, will get batched results (works with dask_map_matching only)
+            "dask_full_array_mapping": False, # if True, agents_seir_state, mapped to partial dicts (this has been optimized, as was previously using index method with o(n) time complexity)
+            "dask_scatter": False, # scattering of data into distributed memory (works with dask_mode 0, not sure with rest)
+            "dask_submit": False, # submit data into distributed memory, potential alternative to scatter (set dask_scatter = False)
+            "dask_collections": False, # NOT USED: dask.bag and dask.array, where applicable.
+            "dask_partition_size": 128, # NOT USED
+            "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
+            "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
+            # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost", 
+            #                "192.168.1.18", "192.168.1.18", "192.168.1.18", "192.168.1.18", 
+            #                "192.168.1.19", "192.168.1.19", "192.168.1.19", "192.168.1.19"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
             "dask_batch_recurring": False, # if recurring send batch size recurringly, else, send batch size the first time, then 1 task per "as_completed" future 
-            "dask_autoclose_cluster": True,
+            "dask_autoclose_cluster": False, # to be able to view the dashboard post run, set this as False, to clean immediately, set as True
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
             "logsubfoldername": "logs",
-            "logfilename": "test_500k_3_2_scatter_customdict.txt" # output_dask_500k_fg_3_2_scatter.txt
+            "logfilename": "dask_500kpop_4w_1n_complete_fullseir(nocopy).txt" # to test with dask_500kpop_12w_3n_truedist_map_86_batches.txt
         }
 
 # Load configuration
@@ -80,6 +94,7 @@ def read_only_data(dask_worker: Worker, agents_ids_by_ages, timestepmins, n_loca
     dask_worker.data["locals_ratio_to_full_pop"] = locals_ratio_to_full_pop
 
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "itinerary.json"), "itineraryparams")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "contactnetwork.json"), "contactnetworkparams")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "epidemiology.json"), "epidemiologyparams")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_households_updated.json"), "cells_households")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_institutions_updated.json"), "cells_institutions")
@@ -94,6 +109,7 @@ def read_only_data(dask_worker: Worker, agents_ids_by_ages, timestepmins, n_loca
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_airport_updated.json"), "cells_airport")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_accommodation_updated.json"), "cells_accommodation")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_religious_updated.json"), "cells_religious")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_updated.json"), "cells")
 
     agentsupdatedfilepath = os.path.join(dask_worker.local_directory, "agents_updated.json")
     with open(agentsupdatedfilepath, "r") as read_file: 
@@ -165,7 +181,9 @@ def main():
     age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
     age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
 
-    contactnetworkfile = open(os.path.join(current_directory, "data", "contactnetwork.json"))
+    contactnetworkjsonpath = os.path.join(current_directory, "data", "contactnetwork.json")
+    json_paths_to_upload.append(contactnetworkjsonpath)
+    contactnetworkfile = open(contactnetworkjsonpath)
     contactnetworkparams = json.load(contactnetworkfile)
 
     sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
@@ -425,10 +443,11 @@ def main():
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
+    json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_updated.json", cells_util.cells))
     json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
 
     agents_static = static.Static()
-    agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_mp_rawarray"]) # for now trying without multiprocessing.RawArray
+    agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_shm"]) # for now trying without multiprocessing.RawArray
 
     agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents, agents_dynamic)
 
@@ -441,9 +460,9 @@ def main():
 
     tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
-    
+
     gc.collect()
-    
+
     client = None
     try:
         if params["use_mp"]:
@@ -459,9 +478,13 @@ def main():
             else:
                 num_workers = params["numprocesses"]
 
+            num_threads = None
+            if params["numthreads"] > 0:
+                num_threads = params["numthreads"]
+
             cluster = SSHCluster(params["dask_nodes"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
-                            worker_options={"n_workers": num_workers, "local_directory": config["worker_working_directory"], }, # "memory_limit": "3GB" (in worker_options)
+                            worker_options={"n_workers": num_workers, "nthreads": num_threads, "local_directory": config["worker_working_directory"], }, # "memory_limit": "3GB" (in worker_options)
                             scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
                             # worker_class="distributed.Worker", 
                             # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
@@ -494,6 +517,7 @@ def main():
             client.upload_file('simulator/static.py')
             client.upload_file('simulator/seirstateutil.py')
             client.upload_file('simulator/util.py')
+            client.upload_file('simulator/daskutil.py')
             client.upload_file('simulator/epidemiology.py')
             client.upload_file('simulator/dynamicparams.py')
             client.upload_file('simulator/seirstateutil.py')
@@ -502,6 +526,8 @@ def main():
             # client.upload_file('simulator/itinerary_dask.py')
             client.upload_file('simulator/itinerary_mp.py')
             client.upload_file('simulator/itinerary_dist.py')
+            client.upload_file('simulator/contactnetwork.py')
+            client.upload_file('simulator/contactnetwork_dist.py')
 
             for dynamicjsonpath in json_paths_to_upload:
                 client.upload_file(dynamicjsonpath)
@@ -512,7 +538,7 @@ def main():
                             n_locals=n_locals, 
                             n_tourists=n_tourists, 
                             locals_ratio_to_full_pop=locals_ratio_to_full_pop,
-                            use_shm=params["use_mp_rawarray"])
+                            use_shm=params["use_shm"])
             
             client.register_worker_callbacks(callback)
 
@@ -523,6 +549,9 @@ def main():
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
         
+        it_keys = ["working_schedule", "state_transition_by_day", "non_daily_activity_recurring", "prevday_non_daily_activity_recurring", "itinerary", "itinerary_next_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days"]
+        cn_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days"]
+
         for day in range(1, params["simulationdays"] + 1): # 365 + 1 / 1 + 1
             day_start = time.time()
 
@@ -584,15 +613,27 @@ def main():
                     dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
 
             # partialising agents for multiprocessing
-            start = time.time()
-            it_agents = agentsutil.initialize_agents_dict_it(agents_dynamic)
-            time_taken = time.time() - start
-            print("initialize_agents_dict_it, time_taken: " + str(time_taken))
+            it_agents = customdict.CustomDict({
+                key: {
+                    inner_key: value[inner_key] for inner_key in it_keys if inner_key in value
+                } for key, value in agents_dynamic.items()
+            })
 
-            start = time.time()
-            cn_agents = agentsutil.initialize_agents_dict_cn(agents_dynamic)
-            time_taken = time.time() - start
-            print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
+            cn_agents = customdict.CustomDict({
+                key: {
+                    inner_key: value[inner_key] for inner_key in cn_keys if inner_key in value
+                } for key, value in agents_dynamic.items()
+            })
+
+            # start = time.time()
+            # it_agents = agentsutil.initialize_agents_dict_it(agents_dynamic)
+            # time_taken = time.time() - start
+            # print("initialize_agents_dict_it, time_taken: " + str(time_taken))
+
+            # start = time.time()
+            # cn_agents = agentsutil.initialize_agents_dict_cn(agents_dynamic)
+            # time_taken = time.time() - start
+            # print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
 
             # start = time.time()
             # ct_agents = agentsutil.initialize_agents_dict_ct(agents_dynamic)
@@ -635,63 +676,102 @@ def main():
                                                         params["numprocesses"],
                                                         params["numthreads"],
                                                         params["proc_usepool"],
+                                                        params["use_shm"],
                                                         params["sync_usethreads"],
                                                         params["sync_usequeue"],
                                                         params["keep_processes_open"],
-                                                        log_file_name)
+                                                        log_file_name,
+                                                        False,
+                                                        agents_static)
                 else:
                     if params["dask_use_fg"]:
-                        itinerary_dist.localitinerary_finegrained_distributed(client,
+                        itinerary_dist.localitinerary_distributed_finegrained(client,
                                                                             hh_insts,
                                                                             day,
                                                                             weekday,
                                                                             weekdaystr,
-                                                                            agents_dynamic,
+                                                                            agents_dynamic, # it_agents ?!
                                                                             vars_util,
                                                                             dyn_params,
-                                                                            True,
-                                                                            params["dask_fg_mode"],
+                                                                            params["keep_processes_open"],
+                                                                            params["dask_mode"],
                                                                             params["dask_scatter"],
                                                                             params["dask_batch_size"],
                                                                             params["dask_batch_recurring"],
                                                                             log_file_name)
                     else:
-                        itinerary_dist.localitinerary_distributed(client,
-                                                            day, 
-                                                            weekday, 
-                                                            weekdaystr, 
-                                                            itineraryparams, 
-                                                            params["timestepmins"], 
-                                                            n_locals, 
-                                                            n_tourists, 
-                                                            locals_ratio_to_full_pop, 
-                                                            it_agents,
-                                                            agents_ids_by_ages,
-                                                            vars_util,
-                                                            cells_industries_by_indid_by_wpid,
-                                                            cells_restaurants, 
-                                                            cells_hospital,
-                                                            cells_testinghub, 
-                                                            cells_vaccinationhub, 
-                                                            cells_entertainment_by_activityid, 
-                                                            cells_religious, 
-                                                            cells_households, 
-                                                            cells_breakfast_by_accomid,
-                                                            cells_airport, 
-                                                            cells_transport, 
-                                                            cells_institutions, 
-                                                            cells_accommodation, 
-                                                            epidemiologyparams, 
-                                                            dyn_params, 
-                                                            hh_insts, 
-                                                            params["numprocesses"], # to cleanup from here onwards, possibly to pass info about workers rather than these params
-                                                            params["numthreads"],
-                                                            params["proc_usepool"],                                                   
-                                                            params["sync_usethreads"],
-                                                            params["sync_usequeue"],
-                                                            params["keep_processes_open"],
-                                                            params["dask_use_mp"],
-                                                            log_file_name)
+                        if params["dask_use_chunking"]:
+                            itinerary_dist.localitinerary_distributed_finegrained_chunks(client,
+                                                                                        hh_insts,
+                                                                                        day,
+                                                                                        weekday,
+                                                                                        weekdaystr,
+                                                                                        agents_dynamic, # it_agents ?!
+                                                                                        vars_util,
+                                                                                        dyn_params,
+                                                                                        params["keep_processes_open"],
+                                                                                        params["dask_mode"],
+                                                                                        params["dask_chunk_size"],
+                                                                                        params["dask_single_item_per_task"],
+                                                                                        params["dask_full_array_mapping"],
+                                                                                        log_file_name)    
+                        elif params["dask_map_batching"]:
+                            itinerary_dist.localitinerary_distributed_map_batched(client,
+                                                                                hh_insts,
+                                                                                day,
+                                                                                weekday,
+                                                                                weekdaystr,
+                                                                                agents_dynamic, # it_agents ?!
+                                                                                vars_util,
+                                                                                dyn_params,
+                                                                                params["keep_processes_open"],
+                                                                                params["dask_batch_size"],
+                                                                                params["dask_full_array_mapping"],
+                                                                                params["dask_scatter"],
+                                                                                params["dask_submit"],
+                                                                                params["dask_map_batched_results"],
+                                                                                log_file_name)
+                        else:
+                            itinerary_dist.localitinerary_distributed(client,
+                                                                day, 
+                                                                weekday, 
+                                                                weekdaystr, 
+                                                                itineraryparams, 
+                                                                params["timestepmins"], 
+                                                                n_locals, 
+                                                                n_tourists, 
+                                                                locals_ratio_to_full_pop, 
+                                                                agents_dynamic,
+                                                                it_agents,
+                                                                agents_ids_by_ages,
+                                                                vars_util,
+                                                                cells_industries_by_indid_by_wpid,
+                                                                cells_restaurants, 
+                                                                cells_hospital,
+                                                                cells_testinghub, 
+                                                                cells_vaccinationhub, 
+                                                                cells_entertainment_by_activityid, 
+                                                                cells_religious, 
+                                                                cells_households, 
+                                                                cells_breakfast_by_accomid,
+                                                                cells_airport, 
+                                                                cells_transport, 
+                                                                cells_institutions, 
+                                                                cells_accommodation, 
+                                                                epidemiologyparams, 
+                                                                dyn_params, 
+                                                                hh_insts, 
+                                                                params["numprocesses"], # to cleanup from here onwards, possibly to pass info about workers rather than these params
+                                                                params["numthreads"],
+                                                                params["proc_usepool"],                                                   
+                                                                params["sync_usethreads"],
+                                                                params["sync_usequeue"],
+                                                                params["keep_processes_open"],
+                                                                params["dask_use_mp"],
+                                                                params["dask_numtasks"],
+                                                                params["dask_mode"],
+                                                                params["dask_full_array_mapping"],
+                                                                log_file_name)
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -702,27 +782,41 @@ def main():
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
                     start = time.time()       
 
-                    contactnetwork_mp.contactnetwork_parallel(manager,
-                                                            pool,
-                                                            day, 
-                                                            weekday, 
-                                                            n_locals, 
-                                                            n_tourists, 
-                                                            locals_ratio_to_full_pop, 
-                                                            cn_agents, 
-                                                            vars_util,
-                                                            cells, 
-                                                            cells_households, 
-                                                            cells_institutions,
-                                                            cells_accommodation,
-                                                            contactnetworkparams, 
-                                                            epidemiologyparams, 
-                                                            dyn_params, 
-                                                            contactnetwork_sum_time_taken, 
-                                                            params["numprocesses"],
-                                                            params["numthreads"],
-                                                            params["keep_processes_open"],
-                                                            log_file_name)
+                    if params["use_mp"]:
+                        contactnetwork_mp.contactnetwork_parallel(manager,
+                                                                pool,
+                                                                day, 
+                                                                weekday, 
+                                                                n_locals, 
+                                                                n_tourists, 
+                                                                locals_ratio_to_full_pop, 
+                                                                cn_agents, 
+                                                                vars_util,
+                                                                cells, 
+                                                                cells_households, 
+                                                                cells_institutions,
+                                                                cells_accommodation,
+                                                                contactnetworkparams, 
+                                                                epidemiologyparams, 
+                                                                dyn_params, 
+                                                                contactnetwork_sum_time_taken, 
+                                                                params["numprocesses"],
+                                                                params["numthreads"],
+                                                                params["keep_processes_open"],
+                                                                log_file_name)
+                    else:
+                        contactnetwork_dist.contactnetwork_distributed(client,
+                                                                day,
+                                                                weekday,
+                                                                agents_dynamic,
+                                                                cn_agents,
+                                                                vars_util,
+                                                                dyn_params,
+                                                                params["dask_mode"],
+                                                                params["dask_numtasks"],
+                                                                params["dask_full_array_mapping"],
+                                                                params["keep_processes_open"],
+                                                                log_file_name)
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -797,8 +891,8 @@ def main():
         sys.stdout = original_stdout
         f.close()
 
-        if params["dask_autoclose_cluster"] and client is not None:
-            client.shutdown()
+        # if params["dask_autoclose_cluster"]:
+        #     client.shutdown()
 
 if __name__ == '__main__':
     main()
