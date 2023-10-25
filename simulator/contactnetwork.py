@@ -15,7 +15,8 @@ class ContactNetwork:
                 agents_static,
                 agents_dynamic, 
                 vars_util, 
-                cells, 
+                cells_type, 
+                indids_by_cellid,
                 cells_households, 
                 cells_institutions, 
                 cells_accommodation, 
@@ -29,7 +30,8 @@ class ContactNetwork:
         self.agents_static = agents_static
         self.agents_dynamic = agents_dynamic
 
-        self.cells = cells
+        self.cells_type = cells_type
+        self.indids_by_cellid = indids_by_cellid
 
         # self.mp_cells_keys = []
 
@@ -69,12 +71,12 @@ class ContactNetwork:
         print("generate contact network for " + str(len(self.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
         start = time.time()
         for cellindex, cellid in enumerate(self.cells_agents_timesteps.keys()):
-            cell_updated_agents_ids, cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+            cell_updated_agents_ids, cell_agents_directcontacts, cell_type = self.simulate_contact_network_by_cellid(cellid, day)
 
             updated_agents_ids.extend(cell_updated_agents_ids)
 
             if len(cell_agents_directcontacts) > 0:
-                cell_type = cell["type"]
+                # cell_type = cell["type"]
 
                 sim_cell_type = util.convert_celltype_to_simcelltype(cellid, celltype=cell_type)
 
@@ -106,11 +108,11 @@ class ContactNetwork:
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
-        agents_directcontacts, cell = self.generate_contact_network(cellid)
+        agents_directcontacts, cell_type = self.generate_contact_network(cellid)
 
-        updated_agents_ids = self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
+        updated_agents_ids = self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell_type, day)
 
-        return updated_agents_ids, agents_directcontacts, cell
+        return updated_agents_ids, agents_directcontacts, cell_type
 
     def generate_contact_network(self, cellid):
         # print("generating contact network for cell " + str(cellid))
@@ -124,17 +126,17 @@ class ContactNetwork:
 
         # cell = None
         # if cellid in self.cells_agents_timesteps:
-        cell = self.cells[cellid]
+        cell_type = self.cells_type[cellid]
 
         cell_agents_timesteps = self.cells_agents_timesteps[cellid]
 
         indid = None
 
-        if cell["type"] == "workplace":
-            if "indid" in cell["place"]:
-                indid = cell["place"]["indid"]
+        if cell_type == "workplace":
+            if cellid in self.indids_by_cellid: # "indid" in cell["place"]
+                indid = self.indids_by_cellid[cellid]
 
-        ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"], indid)
+        ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell_type, indid)
         
         agents_timesteps_sum = 0
 
@@ -283,12 +285,12 @@ class ContactNetwork:
 
             # print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
 
-        return agents_directcontacts, cell
+        return agents_directcontacts, cell_type
 
     def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid, celltype=None, indid=None):
         if celltype is None:
-            cell = self.cells[cellid]
-            celltype = cell["type"]
+            celltype = self.cells_type[cellid]
+            # celltype = cell["type"]
 
         if indid == 9 and celltype != "accom":
             return 5

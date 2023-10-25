@@ -86,7 +86,7 @@ class Epidemiology:
 
         self.process_index = process_index
 
-    def simulate_direct_contacts(self, agents_directcontacts, cellid, cell, day):
+    def simulate_direct_contacts(self, agents_directcontacts, cellid, cell_type, day):
         updated_agents_ids = []
         for pairid, timesteps in agents_directcontacts.items():
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
@@ -186,7 +186,7 @@ class Epidemiology:
 
                     susceptibility_multiplier = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SusceptibilityMultiplier][agent_epi_age_bracket_index]
                     
-                    infection_probability = self.convert_celltype_to_base_infection_prob(cellid, self.agents_static.get(exposed_agent_id, "res_cellid"), cell["type"])
+                    infection_probability = self.convert_celltype_to_base_infection_prob(cellid, self.agents_static.get(exposed_agent_id, "res_cellid"), cell_type)
 
                     infection_multiplier = max(1, math.log(contact_duration)) # to check how this affects covasim base probs
 
@@ -804,10 +804,6 @@ class Epidemiology:
         return contact_tracing_success_prob
 
     def convert_celltype_to_base_infection_prob(self, cellid, rescellid, celltype=None):
-        if celltype is None:
-            cell = self.cells[cellid]
-            celltype = cell["type"]
-
         simcelltype = util.convert_celltype_to_simcelltype(cellid, celltype=celltype)
 
         match simcelltype:

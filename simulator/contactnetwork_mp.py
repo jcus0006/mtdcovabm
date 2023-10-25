@@ -16,7 +16,8 @@ def contactnetwork_parallel(manager,
                             locals_ratio_to_full_pop, 
                             agents_dynamic,
                             vars_util,
-                            cells,
+                            cells_type,
+                            indids_by_cellid,
                             cells_households, 
                             cells_institutions, 
                             cells_accommodation, 
@@ -82,7 +83,8 @@ def contactnetwork_parallel(manager,
                       locals_ratio_to_full_pop, 
                       agents_partial, 
                       vars_util_partial, 
-                      cells, 
+                      cells_type, 
+                      indids_by_cellid,
                       cells_households, 
                       cells_institutions, 
                       cells_accommodation, 
@@ -162,7 +164,7 @@ def contactnetwork_parallel(manager,
             time_taken = time.time() - start
             print("pool join time taken " + str(time_taken))
     else:
-        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name
+        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name
 
         contactnetwork_worker(params)
 
@@ -185,7 +187,7 @@ def contactnetwork_worker(params):
         start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
+        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
 
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(process_index) + ".txt"
@@ -201,7 +203,8 @@ def contactnetwork_worker(params):
                                                             agents_static,
                                                             agents_dynamic,
                                                             vars_util,
-                                                            cells, 
+                                                            cells_type, 
+                                                            indids_by_cellid,
                                                             cells_households, 
                                                             cells_institutions, 
                                                             cells_accommodation, 

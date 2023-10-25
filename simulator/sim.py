@@ -15,14 +15,14 @@ from cells import Cells
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, Worker, SSHCluster
+from dask.distributed import Client, Worker, SSHCluster, performance_report
 # from dask.distributed import WorkerPlugin
 from functools import partial
 import gc
 from memory_profiler import profile
 # import dask.dataframe as df
 
-params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
             "simulationdays": 1, # 365
             "loadagents": True,
@@ -62,6 +62,8 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
             # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost", 
+            #                "192.168.1.22", "192.168.1.22", "192.168.1.22", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost", 
             #                "192.168.1.18", "192.168.1.18", "192.168.1.18", "192.168.1.18", 
             #                "192.168.1.19", "192.168.1.19", "192.168.1.19", "192.168.1.19"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
@@ -71,7 +73,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
             "logsubfoldername": "logs",
-            "logfilename": "dask_500kpop_4w_1n_complete_fullseir(nocopy).txt" # to test with dask_500kpop_12w_3n_truedist_map_86_batches.txt
+            "logfilename": "dask_1kpop_8w_2n_mac_complete_seirmasking.txt" # to test with dask_500kpop_12w_3n_truedist_map_86_batches.txt
         }
 
 # Load configuration
@@ -109,7 +111,8 @@ def read_only_data(dask_worker: Worker, agents_ids_by_ages, timestepmins, n_loca
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_airport_updated.json"), "cells_airport")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_accommodation_updated.json"), "cells_accommodation")
     load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_religious_updated.json"), "cells_religious")
-    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_updated.json"), "cells")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "cells_type_updated.json"), "cells_type")
+    load_dask_worker_data(dask_worker, os.path.join(dask_worker.local_directory, "indids_by_cellid_updated.json"), "indids_by_cellid")
 
     agentsupdatedfilepath = os.path.join(dask_worker.local_directory, "agents_updated.json")
     with open(agentsupdatedfilepath, "r") as read_file: 
@@ -401,7 +404,7 @@ def main():
                     rooms_accom_by_id[roomid] = {}
 
         # handle cell splitting (on workplaces & accommodations)
-        cells_industries_by_indid_by_wpid, _, cells_restaurants, cells_accommodation, _, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
+        cells_industries_by_indid_by_wpid, _, cells_restaurants, cells_accommodation, _, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport, indids_by_cellid = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
 
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_industries_by_indid_by_wpid_updated.json", cells_industries_by_indid_by_wpid))
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_restaurants_updated.json", cells_restaurants))
@@ -443,7 +446,10 @@ def main():
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
-    json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_updated.json", cells_util.cells))
+    cells_type = {cellid: props["type"] for cellid, props in cells_util.cells.items()}
+
+    json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_type_updated.json", cells_type))
+    json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "indids_by_cellid_updated.json", indids_by_cellid))
     json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
 
     agents_static = static.Static()
@@ -484,10 +490,10 @@ def main():
 
             cluster = SSHCluster(params["dask_nodes"], # LAPTOP-FDQJ136P / localhost
                             connect_options={"known_hosts": None},
-                            worker_options={"n_workers": num_workers, "nthreads": num_threads, "local_directory": config["worker_working_directory"], }, # "memory_limit": "3GB" (in worker_options)
-                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"],},) # local_directory in scheduler_options has no effect
+                            worker_options={"n_workers": num_workers, "nthreads": num_threads, }, # "memory_limit": "3GB" (in worker_options)
+                            scheduler_options={"port": 0, "dashboard_address": ":8797", }, # local_directory in scheduler_options has no effect
                             # worker_class="distributed.Worker", 
-                            # remote_python="~/AppsPy/mtdcovabm/bin/python3.11")
+                            remote_python=config["worker_remote_python"])
             
             time_taken = time.time() - start
             print("cluster generation: " + str(time_taken))
@@ -507,43 +513,46 @@ def main():
 
             # versions = client.get_versions(check=True)
             # print("versions: " + str(versions))
-
-            start = time.time()
-            client.upload_file('simulator/customdict.py')
-            client.upload_file('simulator/npencoder.py')
-            client.upload_file('simulator/jsonutil.py')
-            client.upload_file('simulator/epidemiologyclasses.py')
-            client.upload_file('simulator/shared_mp.py')
-            client.upload_file('simulator/static.py')
-            client.upload_file('simulator/seirstateutil.py')
-            client.upload_file('simulator/util.py')
-            client.upload_file('simulator/daskutil.py')
-            client.upload_file('simulator/epidemiology.py')
-            client.upload_file('simulator/dynamicparams.py')
-            client.upload_file('simulator/seirstateutil.py')
-            client.upload_file('simulator/vars.py')
-            client.upload_file('simulator/itinerary.py')
-            # client.upload_file('simulator/itinerary_dask.py')
-            client.upload_file('simulator/itinerary_mp.py')
-            client.upload_file('simulator/itinerary_dist.py')
-            client.upload_file('simulator/contactnetwork.py')
-            client.upload_file('simulator/contactnetwork_dist.py')
-
-            for dynamicjsonpath in json_paths_to_upload:
-                client.upload_file(dynamicjsonpath)
             
-            callback = partial(read_only_data, 
-                            agents_ids_by_ages=agents_ids_by_ages, 
-                            timestepmins=params["timestepmins"], 
-                            n_locals=n_locals, 
-                            n_tourists=n_tourists, 
-                            locals_ratio_to_full_pop=locals_ratio_to_full_pop,
-                            use_shm=params["use_shm"])
-            
-            client.register_worker_callbacks(callback)
+            dask_init_file_name = os.path.join(subfolder_path, "dask_init.html")
 
-            time_taken = time.time() - start
-            print("upload modules remotely: " + str(time_taken))
+            with performance_report(filename=dask_init_file_name):
+                start = time.time()
+                client.upload_file('simulator/customdict.py')
+                client.upload_file('simulator/npencoder.py')
+                client.upload_file('simulator/jsonutil.py')
+                client.upload_file('simulator/epidemiologyclasses.py')
+                client.upload_file('simulator/shared_mp.py')
+                client.upload_file('simulator/static.py')
+                client.upload_file('simulator/seirstateutil.py')
+                client.upload_file('simulator/util.py')
+                client.upload_file('simulator/daskutil.py')
+                client.upload_file('simulator/epidemiology.py')
+                client.upload_file('simulator/dynamicparams.py')
+                client.upload_file('simulator/seirstateutil.py')
+                client.upload_file('simulator/vars.py')
+                client.upload_file('simulator/itinerary.py')
+                # client.upload_file('simulator/itinerary_dask.py')
+                client.upload_file('simulator/itinerary_mp.py')
+                client.upload_file('simulator/itinerary_dist.py')
+                client.upload_file('simulator/contactnetwork.py')
+                client.upload_file('simulator/contactnetwork_dist.py')
+
+                for dynamicjsonpath in json_paths_to_upload:
+                    client.upload_file(dynamicjsonpath)
+                
+                callback = partial(read_only_data, 
+                                agents_ids_by_ages=agents_ids_by_ages, 
+                                timestepmins=params["timestepmins"], 
+                                n_locals=n_locals, 
+                                n_tourists=n_tourists, 
+                                locals_ratio_to_full_pop=locals_ratio_to_full_pop,
+                                use_shm=params["use_shm"])
+                
+                client.register_worker_callbacks(callback)
+
+                time_taken = time.time() - start
+                print("upload modules remotely: " + str(time_taken))
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -792,7 +801,8 @@ def main():
                                                                 locals_ratio_to_full_pop, 
                                                                 cn_agents, 
                                                                 vars_util,
-                                                                cells, 
+                                                                cells_type, 
+                                                                indids_by_cellid,
                                                                 cells_households, 
                                                                 cells_institutions,
                                                                 cells_accommodation,

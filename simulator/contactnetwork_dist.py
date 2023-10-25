@@ -69,10 +69,10 @@ def contactnetwork_distributed(client,
 
             agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, cn_agents, vars_util, agents_partial, vars_util_partial, is_dask_task=dask_full_array_mapping)
 
-            # if not dask_full_array_mapping:
-            #     mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)
+            if not dask_full_array_mapping:
+                mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)
                 
-            #     vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
+                vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
 
             # print("worker index: " + str(worker_index) + ", agents_seir_state count: " + str(len(vars_util_partial.agents_seir_state)) + ", vals: " + str(vars_util_partial.agents_seir_state))
             
@@ -125,20 +125,30 @@ def contactnetwork_distributed(client,
             traceback.print_exc(file=f)
 
 def contactnetwork_worker(params):
+    import os
+    import shutil
+
     original_stdout = None
     f = None
     stack_trace_log_file_name = ""
 
     try:
-        start = time.time()
-
         day, weekday, agents_dynamic, vars_util, dyn_params, process_index, log_file_name = params
 
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(process_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(process_index) + ".txt"
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        # log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(process_index) + ".txt"
+
+        # subfolder_path = os.path.dirname(log_file_name)
+
+        # if not os.path.exists(subfolder_path):
+        #     os.makedirs(subfolder_path)
+        # else:
+        #     shutil.rmtree(subfolder_path)
+        #     os.makedirs(subfolder_path)
+
+        # f = open(log_file_name, "w")
+        # sys.stdout = f
 
         worker = get_worker()
 
@@ -148,13 +158,14 @@ def contactnetwork_worker(params):
 
         contactnetworkparams = worker.data["contactnetworkparams"]
         epidemiologyparams = worker.data["epidemiologyparams"]
-        cells = worker.data["cells"]
+        cells_type = worker.data["cells_type"]
+        indids_by_cellid = worker.data["indids_by_cellid"]
         cells_households = worker.data["cells_households"] 
         cells_institutions = worker.data["cells_institutions"] 
         cells_accommodation = worker.data["cells_accommodation"] 
         agents_static = worker.data["agents_static"]
 
-        print("process " + str(process_index) + " started at " + str(start))
+        # print("process " + str(process_index) + " started at " + str(start))
 
         contact_network_util = contactnetwork.ContactNetwork(n_locals, 
                                                             n_tourists, 
@@ -162,7 +173,8 @@ def contactnetwork_worker(params):
                                                             agents_static,
                                                             agents_dynamic,
                                                             vars_util,
-                                                            cells,
+                                                            cells_type,
+                                                            indids_by_cellid,
                                                             cells_households, 
                                                             cells_institutions, 
                                                             cells_accommodation, 
@@ -173,11 +185,11 @@ def contactnetwork_worker(params):
 
         _, _, agents_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
         
-        print("process " + str(process_index) + " ended at " + str(time.time()))
+        # print("process " + str(process_index) + " ended at " + str(time.time()))
 
         return agents_partial, vars_util
     except:
-        with open(stack_trace_log_file_name, 'a+') as f: # cn_mp_stack_trace.txt
+        with open(stack_trace_log_file_name, 'w') as f: # a+ -> cn_mp_stack_trace.txt
             traceback.print_exc(file=f)
     finally:
         if original_stdout is not None:

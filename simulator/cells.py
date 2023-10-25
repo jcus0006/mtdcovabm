@@ -97,6 +97,7 @@ class Cells:
         breakfastcells_by_accomid = {}
         entertainmentcells = {}
         airportcells = {}
+        indids_by_cellid = {}
 
         airport_industries = [7, 8, 9, 19]
         airport_ensure_workplace_per_industry = [False, False, False, False] # [7, 8, 9, 19]
@@ -239,6 +240,8 @@ class Cells:
                     if not is_accom and not is_hospital and not is_entertainment and not is_airport:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
+                        indids_by_cellid[self.cellindex] = indid
+
                         self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
                         if is_restaurant:
@@ -289,6 +292,8 @@ class Cells:
 
                         cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid, "activityid": sampled_activity, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
+                        indids_by_cellid[self.cellindex] = indid
+
                         self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
                         if sampled_activity not in entertainmentcells:
@@ -308,6 +313,8 @@ class Cells:
                     
                     if is_airport:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+                        
+                        indids_by_cellid[self.cellindex] = indid
 
                         self.cells[self.cellindex] = { "type": "airport", "place": cells_by_cellid[self.cellindex]}
 
@@ -350,6 +357,8 @@ class Cells:
 
                         if not is_accom and not is_hospital and not is_entertainment and not is_airport: # normal workplace
                             cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+
+                            indids_by_cellid[self.cellindex] = indid
 
                             self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
 
@@ -404,6 +413,8 @@ class Cells:
 
                             cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "activityid": sampled_activity, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
+                            indids_by_cellid[self.cellindex] = indid
+
                             self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
 
                             if sampled_activity not in entertainmentcells:
@@ -423,6 +434,8 @@ class Cells:
 
                         if is_airport:
                             cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+                            
+                            indids_by_cellid[self.cellindex] = indid
 
                             self.cells[self.cellindex] = { "type": "airport", "place": cells_by_cellid[self.cellindex]}
 
@@ -459,7 +472,7 @@ class Cells:
                 else:
                     industries_by_indid[indid] = workplaces_by_wpid
 
-        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, testinghubcells, vaccinationhubcells, entertainmentcells, airportcells
+        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, testinghubcells, vaccinationhubcells, entertainmentcells, airportcells, indids_by_cellid
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)
