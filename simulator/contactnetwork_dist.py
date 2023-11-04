@@ -1,4 +1,5 @@
 import sys
+import os
 import multiprocessing as mp
 import multiprocessing.shared_memory as shm
 import threading
@@ -8,14 +9,13 @@ import traceback
 import contactnetwork, util, vars, customdict, daskutil
 import time
 import dask
-from dask.distributed import get_worker
+from dask.distributed import Client, get_worker
 from copy import copy
 
-def contactnetwork_distributed(client,
+def contactnetwork_distributed(client: Client,
                             day, 
                             weekday, 
-                            agents_dynamic,
-                            cn_agents,
+                            agents_epi,
                             vars_util,
                             dynparams,              
                             dask_mode=0,
@@ -29,8 +29,18 @@ def contactnetwork_distributed(client,
     task_results_stack_trace_log_file_name = ""
 
     try:
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_dist_stack_trace" + ".txt"
-        task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_res_task_results_stack_trace" + ".txt"
+        folder_name = ""
+        if log_file_name != "output.txt":
+            folder_name = os.path.dirname(log_file_name)
+        else:
+            folder_name = os.getcwd()
+
+        dask_perf_log_file_name = os.path.join(folder_name, "dask_cn_perf_log_" + str(day) + ".html")
+        stack_trace_log_file_name = os.path.join(folder_name, "cn_main_dist_stack_trace_" + str(day) + ".txt")
+        task_results_stack_trace_log_file_name = os.path.join(folder_name, "cn_main_res_task_results_stack_trace_" + str(day) + ".txt")
+
+        # stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_dist_stack_trace" + ".txt"
+        # task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_res_task_results_stack_trace" + ".txt"
 
         workers = client.scheduler_info()["workers"].keys()
 
@@ -67,7 +77,7 @@ def contactnetwork_distributed(client,
 
             unique_agent_ids = sorted(list(unique_agent_ids))
 
-            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, cn_agents, vars_util, agents_partial, vars_util_partial, is_dask_task=dask_full_array_mapping)
+            agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_epi, vars_util, agents_partial, vars_util_partial, is_dask_task=dask_full_array_mapping)
 
             if not dask_full_array_mapping:
                 mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)
@@ -108,9 +118,9 @@ def contactnetwork_distributed(client,
         print("futures generation: " + str(time_taken))
 
         start = time.time()
-        agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
+        _, agents_epi, vars_util = daskutil.handle_futures(futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
 
-        vars_util.cells_agents_timesteps = {}
+        vars_util.cells_agents_timesteps = customdict.CustomDict()
         
         time_taken = time.time() - start
         print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -133,10 +143,12 @@ def contactnetwork_worker(params):
     stack_trace_log_file_name = ""
 
     try:
-        day, weekday, agents_dynamic, vars_util, dyn_params, process_index, log_file_name = params
+        main_start = time.time()
+
+        day, weekday, agents_epi, vars_util, dyn_params, process_index, log_file_name = params
 
         original_stdout = sys.stdout
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(process_index) + ".txt"
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
         # log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(process_index) + ".txt"
 
         # subfolder_path = os.path.dirname(log_file_name)
@@ -171,7 +183,7 @@ def contactnetwork_worker(params):
                                                             n_tourists, 
                                                             locals_ratio_to_full_pop, 
                                                             agents_static,
-                                                            agents_dynamic,
+                                                            agents_epi,
                                                             vars_util,
                                                             cells_type,
                                                             indids_by_cellid,
@@ -183,18 +195,21 @@ def contactnetwork_worker(params):
                                                             dyn_params, 
                                                             process_index=process_index)
 
-        _, _, agents_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
+        _, _, agents_epi_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
         
+        vars_util.cells_agents_timesteps = customdict.CustomDict()
+        
+        main_time_taken = time.time() - main_start
         # print("process " + str(process_index) + " ended at " + str(time.time()))
 
-        return agents_partial, vars_util
-    except:
-        with open(stack_trace_log_file_name, 'w') as f: # a+ -> cn_mp_stack_trace.txt
-            traceback.print_exc(file=f)
-    finally:
-        if original_stdout is not None:
-            sys.stdout = original_stdout
+        return process_index, agents_epi_partial, vars_util, main_time_taken
+    except Exception as e:
+        traceback_str = traceback.format_exc()
 
-        if f is not None:
-            # Close the file
-            f.close()
+        exception_info = {"processindex": process_index, 
+                          "logfilename": stack_trace_log_file_name, 
+                          "type": type(e).__name__, 
+                          "message": str(e), 
+                          "traceback": traceback_str}
+        
+        return exception_info

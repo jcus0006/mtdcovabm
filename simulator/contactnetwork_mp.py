@@ -70,7 +70,7 @@ def contactnetwork_parallel(manager,
 
             unique_agent_ids = list(unique_agent_ids)
 
-            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
+            agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
 
             vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 

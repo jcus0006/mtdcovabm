@@ -24,7 +24,7 @@ from memory_profiler import profile
 
 params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
-            "simulationdays": 1, # 365
+            "simulationdays": 365, # 365
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -60,12 +60,17 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "dask_collections": False, # NOT USED: dask.bag and dask.array, where applicable.
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
-            "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
+            # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
+            # "dask_nodes": ["localhost", "192.168.1.22", "192.168.1.22", "192.168.1.22", "192.168.1.22"],
             # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost", 
             #                "192.168.1.22", "192.168.1.22", "192.168.1.22", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost", 
-            #                "192.168.1.18", "192.168.1.18", "192.168.1.18", "192.168.1.18", 
-            #                "192.168.1.19", "192.168.1.19", "192.168.1.19", "192.168.1.19"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes": ["localhost"],
+            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.20", "192.168.1.21", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_scheduler_node": "localhost",
+            # "dask_nodes_n_workers": [4],
+            "dask_nodes_n_workers": [4, 4, 4, 4, 4, 3], # num of workers on each node
+            "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
+            "dask_nodes_time_taken": None, # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
             "dask_batch_recurring": False, # if recurring send batch size recurringly, else, send batch size the first time, then 1 task per "as_completed" future 
             "dask_autoclose_cluster": False, # to be able to view the dashboard post run, set this as False, to clean immediately, set as True
@@ -73,7 +78,7 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
             "logsubfoldername": "logs",
-            "logfilename": "dask_1kpop_8w_2n_mac_complete_seirmasking.txt" # to test with dask_500kpop_12w_3n_truedist_map_86_batches.txt
+            "logfilename": "dask_1kpop_23w_6n_refined_365days_4.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
         }
 
 # Load configuration
@@ -134,8 +139,8 @@ def load_dask_worker_data(dask_worker, filepath, propname):
 #     # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 #     return manager, pool
 
-# fp = open("memory_profiler.log", "w+")
-# @profile(stream=fp)
+fp = open("memory_profiler.log", "w+")
+@profile(stream=fp)
 def main():
     original_stdout = sys.stdout
 
@@ -200,7 +205,6 @@ def main():
     epidemiologyparams = json.load(epidemiologyfile)
 
     initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
-    tourist_entry_infection_probability = epidemiologyparams["tourist_entry_infection_probability"]
 
     tourismfile = open(os.path.join(current_directory, "data", "tourism.json"))
     tourismparams = json.load(tourismfile)
@@ -464,12 +468,12 @@ def main():
     vars_util = vars.Vars()
     vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
 
-    tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
 
     gc.collect()
 
     client = None
+    dask_combined_scores_nworkers = None
     try:
         if params["use_mp"]:
             manager = mp.Manager()
@@ -488,10 +492,28 @@ def main():
             if params["numthreads"] > 0:
                 num_threads = params["numthreads"]
 
-            cluster = SSHCluster(params["dask_nodes"], # LAPTOP-FDQJ136P / localhost
+            dask_nodes = []
+
+            if num_workers == 1 and not params["dask_use_mp"]:
+                dask_nodes.append(params["dask_scheduler_node"])
+
+                for index, node in enumerate(params["dask_nodes"]):
+                    num_workers_this_node = params["dask_nodes_n_workers"][index]
+
+                    for i in range(num_workers_this_node):
+                        dask_nodes.append(node)
+            else:
+                dask_nodes = params["dask_nodes"]
+
+            if params["dask_nodes_cpu_scores"] is not None:
+                dask_nodes_cpu_scores = np.array(params["dask_nodes_cpu_scores"])
+                dask_nodes_n_workers = np.array(params["dask_nodes_n_workers"])
+                dask_combined_scores_nworkers = dask_nodes_cpu_scores * dask_nodes_n_workers
+
+            cluster = SSHCluster(dask_nodes, 
                             connect_options={"known_hosts": None},
-                            worker_options={"n_workers": num_workers, "nthreads": num_threads, }, # "memory_limit": "3GB" (in worker_options)
-                            scheduler_options={"port": 0, "dashboard_address": ":8797", }, # local_directory in scheduler_options has no effect
+                            worker_options={"n_workers": num_workers, "nthreads": num_threads, "local_directory": config["worker_working_directory"] }, # "memory_limit": "3GB" (in worker_options)
+                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"] }, # local_directory in scheduler_options has no effect
                             # worker_class="distributed.Worker", 
                             remote_python=config["worker_remote_python"])
             
@@ -558,9 +580,24 @@ def main():
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
         
-        it_keys = ["working_schedule", "state_transition_by_day", "non_daily_activity_recurring", "prevday_non_daily_activity_recurring", "itinerary", "itinerary_next_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days"]
-        cn_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days"]
+        epi_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days", "vaccination_days"]
+        it_keys = ["working_schedule", "non_daily_activity_recurring", "prevday_non_daily_activity_recurring", "itinerary", "itinerary_next_day"]
+        
+        # new - partialising agents for multiprocessing
+        agents_epi = customdict.CustomDict({
+            key: {
+                inner_key: value[inner_key] for inner_key in epi_keys if inner_key in value
+            } for key, value in agents_dynamic.items()
+        })
+                
+        it_agents = customdict.CustomDict({
+            key: {
+                inner_key: value[inner_key] for inner_key in it_keys if inner_key in value
+            } for key, value in agents_dynamic.items()
+        })
 
+        tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
+        
         for day in range(1, params["simulationdays"] + 1): # 365 + 1 / 1 + 1
             day_start = time.time()
 
@@ -584,6 +621,7 @@ def main():
                                                     locals_ratio_to_full_pop,
                                                     agents_static,
                                                     agents_dynamic,
+                                                    agents_dynamic, # agents_epi ?
                                                     agents_ids_by_ages,
                                                     vars_util,
                                                     cells_industries_by_indid_by_wpid,
@@ -601,8 +639,7 @@ def main():
                                                     cells_accommodation, 
                                                     epidemiologyparams,
                                                     dyn_params,
-                                                    tourists,
-                                                    tourist_entry_infection_probability)
+                                                    tourists)
                 
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
@@ -619,21 +656,9 @@ def main():
 
             if not params["quickitineraryrun"]:
                 if day == 1: # from day 2 onwards always calculated at eod
-                    dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids) # TO REVIEW
+                    dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids)
 
-            # partialising agents for multiprocessing
-            it_agents = customdict.CustomDict({
-                key: {
-                    inner_key: value[inner_key] for inner_key in it_keys if inner_key in value
-                } for key, value in agents_dynamic.items()
-            })
-
-            cn_agents = customdict.CustomDict({
-                key: {
-                    inner_key: value[inner_key] for inner_key in cn_keys if inner_key in value
-                } for key, value in agents_dynamic.items()
-            })
-
+            # old
             # start = time.time()
             # it_agents = agentsutil.initialize_agents_dict_it(agents_dynamic)
             # time_taken = time.time() - start
@@ -663,7 +688,7 @@ def main():
                                                         n_locals,
                                                         n_tourists,
                                                         locals_ratio_to_full_pop,
-                                                        it_agents,
+                                                        agents_dynamic,
                                                         agents_ids_by_ages,
                                                         vars_util,
                                                         cells_industries_by_indid_by_wpid,
@@ -750,8 +775,8 @@ def main():
                                                                 n_locals, 
                                                                 n_tourists, 
                                                                 locals_ratio_to_full_pop, 
-                                                                agents_dynamic,
                                                                 it_agents,
+                                                                agents_epi,
                                                                 agents_ids_by_ages,
                                                                 vars_util,
                                                                 cells_industries_by_indid_by_wpid,
@@ -780,6 +805,9 @@ def main():
                                                                 params["dask_numtasks"],
                                                                 params["dask_mode"],
                                                                 params["dask_full_array_mapping"],
+                                                                params["dask_nodes_n_workers"],
+                                                                dask_combined_scores_nworkers,
+                                                                params["dask_nodes_time_taken"],
                                                                 log_file_name)
                 
                 time_taken = time.time() - start
@@ -799,7 +827,7 @@ def main():
                                                                 n_locals, 
                                                                 n_tourists, 
                                                                 locals_ratio_to_full_pop, 
-                                                                cn_agents, 
+                                                                agents_dynamic, 
                                                                 vars_util,
                                                                 cells_type, 
                                                                 indids_by_cellid,
@@ -818,8 +846,7 @@ def main():
                         contactnetwork_dist.contactnetwork_distributed(client,
                                                                 day,
                                                                 weekday,
-                                                                agents_dynamic,
-                                                                cn_agents,
+                                                                agents_epi,
                                                                 vars_util,
                                                                 dyn_params,
                                                                 params["dask_mode"],
@@ -845,14 +872,14 @@ def main():
                                                     n_tourists, 
                                                     locals_ratio_to_full_pop,
                                                     agents_static,
-                                                    agents_dynamic, 
+                                                    agents_epi, 
                                                     vars_util, 
                                                     cells_households, 
                                                     cells_institutions, 
                                                     cells_accommodation, 
                                                     dyn_params)
                 
-                process_index, updated_agent_ids, agents_dynamic, vars_util = epi_util.contact_tracing(day)
+                process_index, updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day)
 
                 # contacttracing_mp.contacttracing_parallel(manager, 
                 #                                         pool, 
@@ -879,7 +906,6 @@ def main():
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
 
-                # epi_util = epidemiology.Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params)
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))

@@ -13,7 +13,7 @@ class ContactNetwork:
                 n_tourists, 
                 locals_ratio_to_full_pop, 
                 agents_static,
-                agents_dynamic, 
+                agents_epi, 
                 vars_util, 
                 cells_type, 
                 indids_by_cellid,
@@ -28,7 +28,7 @@ class ContactNetwork:
                 maintain_directcontacts_count=False, 
                 process_index=-1):
         self.agents_static = agents_static
-        self.agents_dynamic = agents_dynamic
+        self.agents_epi = agents_epi
 
         self.cells_type = cells_type
         self.indids_by_cellid = indids_by_cellid
@@ -57,7 +57,7 @@ class ContactNetwork:
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):        
@@ -101,7 +101,7 @@ class ContactNetwork:
         avg_time_taken = self.contactnetwork_sum_time_taken / day
         print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
 
-        agents_partial = {agentid:self.agents_dynamic[agentid] for agentid in updated_agents_ids}
+        agents_partial = {agentid:self.agents_epi[agentid] for agentid in updated_agents_ids}
         self.epi_util.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
 
         return self.process_index, updated_agents_ids, agents_partial, self.epi_util.vars_util
@@ -209,7 +209,7 @@ class ContactNetwork:
                 agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
 
                 if agent_potentialcontacts_count > 0:
-                    agent = self.agents_dynamic[agentid]
+                    # agent = self.agents_dynamic[agentid]
 
                     agent_timestep_count = agents_total_timesteps[agentid]
 

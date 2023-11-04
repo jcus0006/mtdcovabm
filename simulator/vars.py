@@ -5,16 +5,46 @@ import customdict
 
 class Vars:
     def __init__(self, 
-                cells_agents_timesteps={}, 
-                directcontacts_by_simcelltype_by_day=[], 
-                dc_by_sct_by_day_agent1_index=[],
-                dc_by_sct_by_day_agent2_index=[],
-                contact_tracing_agent_ids=set(),
-                agents_seir_state=[],
-                agents_seir_state_transition_for_day=customdict.CustomDict(),
-                agents_infection_type=customdict.CustomDict(),
-                agents_infection_severity=customdict.CustomDict(),
-                agents_vaccination_doses=[]) -> None:
+                cells_agents_timesteps=None, 
+                directcontacts_by_simcelltype_by_day=None, 
+                dc_by_sct_by_day_agent1_index=None,
+                dc_by_sct_by_day_agent2_index=None,
+                contact_tracing_agent_ids=None,
+                agents_seir_state=None,
+                agents_seir_state_transition_for_day=None,
+                agents_infection_type=None,
+                agents_infection_severity=None,
+                agents_vaccination_doses=None) -> None:
+        if cells_agents_timesteps is None:
+            cells_agents_timesteps = customdict.CustomDict()
+
+        if directcontacts_by_simcelltype_by_day is None:
+            directcontacts_by_simcelltype_by_day = []
+
+        if dc_by_sct_by_day_agent1_index is None:
+            dc_by_sct_by_day_agent1_index = []
+
+        if dc_by_sct_by_day_agent2_index is None:
+            dc_by_sct_by_day_agent2_index = []
+
+        if contact_tracing_agent_ids is None:
+            contact_tracing_agent_ids = set()
+
+        if agents_seir_state is None:
+            agents_seir_state = []
+
+        if agents_seir_state_transition_for_day is None:
+            agents_seir_state_transition_for_day = customdict.CustomDict()
+
+        if agents_infection_type is None:
+            agents_infection_type = customdict.CustomDict()
+
+        if agents_infection_severity is None:
+            agents_infection_severity = customdict.CustomDict()
+
+        if agents_vaccination_doses is None:
+            agents_vaccination_doses = []
+        
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [[agentid, starttimestep, endtimestep]]} - IT
         self.directcontacts_by_simcelltype_by_day = directcontacts_by_simcelltype_by_day # [[day, simcelltype, agent1_id, agent2_id, start_ts, end_ts]] - CN for Contact tracing (was set)
         self.dc_by_sct_by_day_agent1_index = dc_by_sct_by_day_agent1_index # [[agent1id, index_in_directcontacts_by_simcelltype_by_day]]
@@ -39,7 +69,7 @@ class Vars:
         self.agents_vaccination_doses = ag_vaccination_doses
 
     def reset_cells_agents_timesteps(self):
-        self.cells_agents_timesteps = {}
+        self.cells_agents_timesteps = customdict.CustomDict()
 
     # def convert_to_dask_collections(self, partition_size):
     #     # self.cells_agents_timesteps = db.from_sequence(self.cells_agents_timesteps.items(), partition_size=128)

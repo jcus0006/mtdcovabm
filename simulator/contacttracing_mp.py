@@ -76,7 +76,7 @@ def contacttracing_parallel(manager,
 
                 # unique_agent_ids = list(unique_agent_ids)
 
-                # agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, agents, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
+                # agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
 
                 print("starting process index " + str(process_index) + " at " + str(time.time()))
 

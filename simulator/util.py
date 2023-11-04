@@ -1,6 +1,6 @@
 import datetime
 import numpy as np
-import scipy.stats as stats
+# import scipy.stats as stats
 import powerlaw
 import matplotlib.pyplot as plt
 import random
@@ -43,19 +43,24 @@ def sample_gamma(gamma_shape, min, max, k = 1, returnInt = False):
     return sample
 
 def sample_gamma_reject_out_of_range(gamma_shape, min, max, k = 1, returnInt = False, useNp = False):
-    if useNp:
-        sample = min - 1
+    # if useNp:
+    #     sample = min - 1
 
-        while sample < min or sample > max:
-            sample = sample_gamma(gamma_shape, min, max, k, returnInt)
-    else:
-        scale = (max - min) / (gamma_shape * k)
+    #     while sample < min or sample > max:
+    #         sample = sample_gamma(gamma_shape, min, max, k, returnInt)
+    # else:
+    #     scale = (max - min) / (gamma_shape * k)
 
-        trunc_gamma = stats.truncnorm((min - scale) / np.sqrt(gamma_shape),
-                              (max - scale) / np.sqrt(gamma_shape),
-                              loc=scale, scale=np.sqrt(gamma_shape))
+    #     trunc_gamma = stats.truncnorm((min - scale) / np.sqrt(gamma_shape),
+    #                           (max - scale) / np.sqrt(gamma_shape),
+    #                           loc=scale, scale=np.sqrt(gamma_shape))
         
-        sample = trunc_gamma.rvs()
+    #     sample = trunc_gamma.rvs()
+
+    sample = min - 1
+
+    while sample < min or sample > max:
+        sample = sample_gamma(gamma_shape, min, max, k, returnInt)
 
     return sample
 
@@ -319,9 +324,12 @@ def get_sus_mort_prog_age_bracket_index(age):
         else:
             return 9
         
-def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False):
+def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False, agents_epi=None, agents_epi_partial=None):
     for uid in agents_ids:
         agents_partial[uid] = agents[uid]
+
+        if agents_epi is not None:
+            agents_epi_partial[uid] = agents_epi[uid]
 
         if is_dask_task:
             vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
@@ -341,7 +349,7 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if uid in vars_util.agents_infection_severity:
             vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
 
-    return agents_partial, agents_ids_by_ages_partial, vars_util_partial
+    return agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial
 
 def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
     for uid in agents_ids:
@@ -370,17 +378,20 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial,
 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial
 
-def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False):
+def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, contact_tracing=False):
     # updated_count = 0
     for agentindex, agentid in enumerate(agents_ids):
         curr_agent = agents_partial[agentid]
+        curr_agent_epi = agents_epi_partial[agentid]
+        
         if not contact_tracing:
             agents[agentid] = curr_agent
+            agents_epi[agentid] = curr_agent_epi
         else:
-            main_agent = agents[agentid] # may also add handling to update only the updated fields rather than all fields that can be updated
-            main_agent["test_day"] = curr_agent["test_day"]
-            main_agent["test_result_day"] = curr_agent["test_result_day"]
-            main_agent["quarantine_days"] = curr_agent["quarantine_days"]
+            main_agent = agents_epi[agentid] # may also add handling to update only the updated fields rather than all fields that can be updated
+            main_agent["test_day"] = curr_agent_epi["test_day"]
+            main_agent["test_result_day"] = curr_agent_epi["test_result_day"]
+            main_agent["quarantine_days"] = curr_agent_epi["quarantine_days"]
 
         if agentid in vars_util_partial.agents_seir_state_transition_for_day:
             vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
@@ -398,7 +409,31 @@ def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, 
 
     # print("synced " + str(updated_count) + " agents")
     
-    return agents, vars_util
+    return agents, agents_epi, vars_util
+
+def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+    # updated_count = 0
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+
+        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+
+        vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+
+        if agentid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
+
+        if agentid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
+
+        # updated_count += 1  
+
+    # print("synced " + str(updated_count) + " agents")
+    
+    return agents_epi, vars_util
 
 def sync_state_info_sets(vars_util, vars_util_partial):
     if len(vars_util_partial.contact_tracing_agent_ids) > 0:
@@ -447,6 +482,40 @@ def split_residences_by_weight(residences, num_partitions):
     # print(process_residences_indices_lengths)
 
     return process_residences_indices
+
+def itinerary_load_balancing(residences, num_workers, nodes_n_workers, weights):
+    total = np.sum(weights)
+
+    tasks_per_node = np.round((weights / total) * len(residences)).astype(int)
+
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight'])
+
+    sorted_indices = [index for index, _ in sorted_residences_with_indices]
+
+    process_residences_indices = [[] for i in range(num_workers)]
+
+    cursor = 0
+    worker_index = 0
+    for ni, num_workers in enumerate(nodes_n_workers):
+        num_tasks_this_node = tasks_per_node[ni]
+        num_tasks_per_worker = split_balanced_partitions(num_tasks_this_node, num_workers)
+
+        for _, num_tasks_this_worker in enumerate(num_tasks_per_worker): 
+            process_residences_indices[worker_index].extend(sorted_indices[cursor: cursor + num_tasks_this_worker]) # use extend, as already an array
+            worker_index += 1
+            cursor += num_tasks_this_worker
+
+    return process_residences_indices
+
+def split_balanced_partitions(x, n):
+    base_value = x // n
+    remainder = x % n
+    partitions = [base_value] * n
+
+    for i in range(remainder):
+        partitions[i] += 1
+
+    return partitions
 
 def split_cellsagentstimesteps_balanced(cells_agents_timesteps, num_dicts):
     # Sort the keys based on the length of the array in the value in ascending order
