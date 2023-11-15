@@ -57,7 +57,7 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
         if new_infection_severity != current_infection_severity: # to be logged
             agents_infection_severity[agentid] = new_infection_severity
             
-        del agent["state_transition_by_day"][day]
+        del agent["state_transition_by_day"][day] # clean up
 
         return new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
 

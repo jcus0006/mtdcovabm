@@ -4,6 +4,7 @@ import time
 from copy import copy
 from copy import deepcopy
 import util
+from cellsclasses import CellType, SimCellType
 from epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
@@ -93,7 +94,7 @@ class ContactNetwork:
 
                     agent1_id, agent2_id = key[0], key[1]
                         
-                    agents_directcontacts_by_simcelltype_by_day.append([day, sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts])
+                    agents_directcontacts_by_simcelltype_by_day.append([sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts])
                     # agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
 
         time_taken = time.time() - start
@@ -132,7 +133,7 @@ class ContactNetwork:
 
         indid = None
 
-        if cell_type == "workplace":
+        if cell_type == CellType.Workplace:
             if cellid in self.indids_by_cellid: # "indid" in cell["place"]
                 indid = self.indids_by_cellid[cellid]
 
@@ -292,29 +293,29 @@ class ContactNetwork:
             celltype = self.cells_type[cellid]
             # celltype = cell["type"]
 
-        if indid == 9 and celltype != "accom":
+        if indid == 9 and celltype != CellType.Accommodation:
             return 5
 
         match celltype:
-            case "household":
+            case CellType.Household:
                 return 1
-            case "workplace":
+            case CellType.Workplace:
                 return 3
-            case "accom":
+            case CellType.Accommodation:
                 return 1
-            case "hospital":
+            case CellType.Hospital:
                 return 5
-            case "entertainment":
+            case CellType.Entertainment:
                 return 5
-            case "school":
+            case CellType.School:
                 return 2
-            case "institution":
+            case CellType.Institution:
                 return 1
-            case "transport":
+            case CellType.Transport:
                 return 4
-            case "religion":
+            case CellType.Religion:
                 return 5
-            case "airport":
+            case CellType.Airport:
                 return 5
             case _:
                 return 0 # total

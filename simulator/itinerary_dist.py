@@ -139,17 +139,17 @@ def localitinerary_distributed_finegrained(client: Client,
             futures = client.map(localitinerary_worker_res, map_params)
         
         if (dask_mode == 0 and dask_batch_size == -1) or dask_mode == 1 or dask_mode == 3:
-            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name)
+            agents_dynamic, vars_util = daskutil.handle_futures(day, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name)
         elif dask_mode == 0 and not dask_batch_recurring:
-            agents_dynamic, vars_util = handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
+            agents_dynamic, vars_util = handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
         elif dask_mode == 0 and dask_batch_recurring:
             for i in range(num_recursive_calls_required):
-                agents_dynamic, vars_util = handle_futures_recurring_batches(client, dask_batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
+                agents_dynamic, vars_util = handle_futures_recurring_batches(day, client, dask_batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
         else:
             for result in results:
                 agents_dynamic_partial_result, vars_util_partial_result = result
 
-                agents_dynamic, vars_util = daskutil.sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
+                agents_dynamic, vars_util = daskutil.sync_results_res(day, agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
         
         if not keep_workers_open:
             start = time.time()
@@ -234,7 +234,7 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                 print("computed_results generation: " + str(time_taken))
 
                 start = time.time()
-                agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+                agents_dynamic, vars_util = daskutil.handle_futures(day, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
 
                 time_taken = time.time() - start
                 print("sync results: " + str(time_taken))
@@ -289,7 +289,7 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
             print("computed_results: " + str(time_taken))
 
             start = time.time()
-            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            agents_dynamic, vars_util = daskutil.handle_futures(day, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
 
@@ -403,9 +403,9 @@ def localitinerary_distributed_map_batched(client: Client,
         start = time.time()
         # time.sleep(600)
         if dask_map_batched_results:
-            agents_dynamic, vars_util = daskutil.handle_futures_batches(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            agents_dynamic, vars_util = daskutil.handle_futures_batches(day, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
         else:
-            agents_dynamic, vars_util = daskutil.handle_futures(futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            agents_dynamic, vars_util = daskutil.handle_futures(day, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
 
         time_taken = time.time() - start
         print("sync results: " + str(time_taken))
@@ -648,9 +648,9 @@ def localitinerary_distributed(client: Client,
                     #         if agents_partial_results_combined[i]["itinerary"] is None or len(agents_partial_results_combined[i]["itinerary"]) == 0:
                     #             print("itinerary_dist results, itinerary is empty " + str(i))
 
-                    it_agents, agents_epi, vars_util = daskutil.sync_results(worker_index, mp_hh_inst_indices, hh_insts, it_agents, agents_epi, vars_util, agents_partial_results_combined, agents_epi_partial_results_combined, vars_util_partial_results_combined)
+                    it_agents, agents_epi, vars_util = daskutil.sync_results(day, worker_index, mp_hh_inst_indices, hh_insts, it_agents, agents_epi, vars_util, agents_partial_results_combined, agents_epi_partial_results_combined, vars_util_partial_results_combined)
             else:
-                it_agents, agents_epi, vars_util = daskutil.handle_futures(futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, dask_full_array_mapping)
+                it_agents, agents_epi, vars_util = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, dask_full_array_mapping)
 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
@@ -664,7 +664,7 @@ def localitinerary_distributed(client: Client,
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
 
-def handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
+def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
     if batch_size > len(map_params):
         batch_size = len(map_params)
 
@@ -683,7 +683,7 @@ def handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_ut
 
             agents_dynamic_partial_result, vars_util_partial_result = result
 
-            agents_dynamic, vars_util = daskutil.sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
+            agents_dynamic, vars_util = daskutil.sync_results_res(day, agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
         
             agents_dynamic_partial_result, vars_util_partial_result = None, None
         except:
@@ -696,9 +696,9 @@ def handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_ut
         return agents_dynamic, vars_util
     else:
         recursion_count += 1
-        return handle_futures_recurring_batches(client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count)
+        return handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count)
 
-def handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params):
+def handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params):
     temp_futures = []
 
     if len(futures) == 0 and len(map_params) > 0: # take care of all remaining with this batch
@@ -714,7 +714,7 @@ def handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_u
 
             agents_dynamic_partial_result, vars_util_partial_result = result
 
-            agents_dynamic, vars_util = daskutil.sync_results_res(agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
+            agents_dynamic, vars_util = daskutil.sync_results_res(day, agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
         
             agents_dynamic_partial_result, vars_util_partial_result = None, None
         except:
@@ -731,7 +731,7 @@ def handle_futures_non_recurring_batches(client, futures, agents_dynamic, vars_u
     if len(temp_futures) == 0 and len(map_params) == 0:
         return agents_dynamic, vars_util
     else:
-        return handle_futures_non_recurring_batches(client, temp_futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
+        return handle_futures_non_recurring_batches(day, client, temp_futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
 
 def load_json_future(jsonstr):
     return json.loads(jsonstr, object_hook=jsonutil.jsonKeys2int)

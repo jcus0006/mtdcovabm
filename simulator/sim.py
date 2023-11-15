@@ -12,7 +12,7 @@ import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
-import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
+import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from dynamicparams import DynamicParams
 import multiprocessing as mp
 from dask.distributed import Client, Worker, SSHCluster, performance_report
@@ -22,9 +22,9 @@ import gc
 from memory_profiler import profile
 # import dask.dataframe as df
 
-params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
-            "simulationdays": 365, # 365
+            "simulationdays": 20, # 365
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -60,15 +60,11 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "dask_collections": False, # NOT USED: dask.bag and dask.array, where applicable.
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
-            # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost"], # [scheduler, worker1, worker2, ...] 192.168.1.18
-            # "dask_nodes": ["localhost", "192.168.1.22", "192.168.1.22", "192.168.1.22", "192.168.1.22"],
-            # "dask_nodes": ["localhost", "localhost", "localhost", "localhost", "localhost", 
-            #                "192.168.1.22", "192.168.1.22", "192.168.1.22", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            # "dask_nodes": ["localhost"],
-            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.20", "192.168.1.21", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
             "dask_scheduler_node": "localhost",
+            # "dask_nodes": ["localhost"],
             # "dask_nodes_n_workers": [4],
-            "dask_nodes_n_workers": [4, 4, 4, 4, 4, 3], # num of workers on each node
+            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.20", "192.168.1.21", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_nodes_n_workers": [4, 4, 4, 4, 4, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_nodes_time_taken": None, # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
@@ -77,8 +73,10 @@ params = {  "popsubfolder": "1kagents2ktourists2019", # empty takes root (was 50
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
+            "contacttracing_distributed": False,
             "logsubfoldername": "logs",
-            "logfilename": "dask_1kpop_23w_6n_refined_365days_4.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
+            "datasubfoldername": "data",
+            "logfilename": "dask_500kpop_23w_6n_1daystracing1proc_20days.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
         }
 
 # Load configuration
@@ -139,8 +137,8 @@ def load_dask_worker_data(dask_worker, filepath, propname):
 #     # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 #     return manager, pool
 
-fp = open("memory_profiler.log", "w+")
-@profile(stream=fp)
+# fp = open("memory_profiler.log", "w+")
+# @profile(stream=fp)
 def main():
     original_stdout = sys.stdout
 
@@ -151,16 +149,24 @@ def main():
     subfolder_name = params["logfilename"].replace(".txt", "")
 
     # Path to the subfolder
-    subfolder_path = os.path.join(current_directory, params["logsubfoldername"], subfolder_name)
+    log_subfolder_path = os.path.join(current_directory, params["logsubfoldername"], subfolder_name)
 
     # Create the subfolder if it doesn't exist
-    if not os.path.exists(subfolder_path):
-        os.makedirs(subfolder_path)
+    if not os.path.exists(log_subfolder_path):
+        os.makedirs(log_subfolder_path)
     else:
-        shutil.rmtree(subfolder_path)
-        os.makedirs(subfolder_path)
+        shutil.rmtree(log_subfolder_path)
+        os.makedirs(log_subfolder_path)
 
-    log_file_name = os.path.join(subfolder_path, params["logfilename"])
+    data_subfolder_path = os.path.join(current_directory, params["datasubfoldername"], subfolder_name)
+
+    if not os.path.exists(data_subfolder_path):
+        os.makedirs(data_subfolder_path)
+    else:
+        shutil.rmtree(data_subfolder_path)
+        os.makedirs(data_subfolder_path)
+
+    log_file_name = os.path.join(log_subfolder_path, params["logfilename"])
 
     f = open(log_file_name, "w")
 
@@ -176,10 +182,10 @@ def main():
     cellindex = 0
     cells = {}
 
-    cellsfile = open(os.path.join(current_directory, "data", "cells.json"))
+    cellsfile = open(os.path.join(current_directory, params["datasubfoldername"], "cells.json"))
     cellsparams = json.load(cellsfile)
 
-    itineraryjson = os.path.join(current_directory, "data", "itinerary.json")
+    itineraryjson = os.path.join(current_directory, params["datasubfoldername"], "itinerary.json")
     json_paths_to_upload.append(itineraryjson)
     itineraryfile = open(itineraryjson)
     itineraryparams = json.load(itineraryfile)
@@ -189,7 +195,7 @@ def main():
     age_brackets = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in sleeping_hours_by_age_groups] # [[0, 4], [5, 9], ...]
     age_brackets_workingages = [[age_group_dist[0], age_group_dist[1]] for age_group_dist in non_daily_activities_employed_distribution] # [[15, 19], [20, 24], ...]
 
-    contactnetworkjsonpath = os.path.join(current_directory, "data", "contactnetwork.json")
+    contactnetworkjsonpath = os.path.join(current_directory, params["datasubfoldername"], "contactnetwork.json")
     json_paths_to_upload.append(contactnetworkjsonpath)
     contactnetworkfile = open(contactnetworkjsonpath)
     contactnetworkparams = json.load(contactnetworkfile)
@@ -199,14 +205,14 @@ def main():
     powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
     # sociability_rate_options = np.arange(len(sociability_rate_distribution))
 
-    epidemiologyjsonpath = os.path.join(current_directory, "data", "epidemiology.json")
+    epidemiologyjsonpath = os.path.join(current_directory, params["datasubfoldername"], "epidemiology.json")
     json_paths_to_upload.append(epidemiologyjsonpath)
     epidemiologyfile = open(epidemiologyjsonpath)
     epidemiologyparams = json.load(epidemiologyfile)
 
     initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
 
-    tourismfile = open(os.path.join(current_directory, "data", "tourism.json"))
+    tourismfile = open(os.path.join(current_directory, params["datasubfoldername"], "tourism.json"))
     tourismparams = json.load(tourismfile)
 
     population_sub_folder = ""
@@ -536,10 +542,11 @@ def main():
             # versions = client.get_versions(check=True)
             # print("versions: " + str(versions))
             
-            dask_init_file_name = os.path.join(subfolder_path, "dask_init.html")
+            dask_init_file_name = os.path.join(log_subfolder_path, "dask_init.html")
 
             with performance_report(filename=dask_init_file_name):
                 start = time.time()
+                client.upload_file('simulator/cellsclasses.py')
                 client.upload_file('simulator/customdict.py')
                 client.upload_file('simulator/npencoder.py')
                 client.upload_file('simulator/jsonutil.py')
@@ -559,6 +566,7 @@ def main():
                 client.upload_file('simulator/itinerary_dist.py')
                 client.upload_file('simulator/contactnetwork.py')
                 client.upload_file('simulator/contactnetwork_dist.py')
+                client.upload_file('simulator/contacttracing_dist.py')
 
                 for dynamicjsonpath in json_paths_to_upload:
                     client.upload_file(dynamicjsonpath)
@@ -865,7 +873,7 @@ def main():
                 start = time.time()
 
                 vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
-                vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[1],reverse=False)
+                vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[0],reverse=False)
 
                 epi_util = epidemiology.Epidemiology(epidemiologyparams, 
                                                     n_locals, 
@@ -878,8 +886,6 @@ def main():
                                                     cells_institutions, 
                                                     cells_accommodation, 
                                                     dyn_params)
-                
-                process_index, updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day)
 
                 # contacttracing_mp.contacttracing_parallel(manager, 
                 #                                         pool, 
@@ -898,6 +904,21 @@ def main():
                 #                                         params["numthreads"], 
                 #                                         params["keep_processes_open"], 
                 #                                         log_file_name)
+
+                if not params["contacttracing_distributed"]:
+                    _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day) # process_index, updated_agent_ids
+                else:
+                    contacttracing_dist.contacttracing_distributed(client, 
+                                                                day, 
+                                                                epi_util,
+                                                                agents_epi, 
+                                                                vars_util, 
+                                                                dyn_params, 
+                                                                params["dask_mode"],
+                                                                params["dask_numtasks"],
+                                                                params["dask_full_array_mapping"],
+                                                                params["keep_processes_open"],
+                                                                log_file_name)
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))

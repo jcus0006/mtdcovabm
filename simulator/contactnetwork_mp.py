@@ -145,7 +145,7 @@ def contactnetwork_parallel(manager,
 
             agents_dynamic, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
 
-            vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
+            vars_util = util.sync_state_info_sets(day, vars_util, vars_util_partial)
 
         vars_util.cells_agents_timesteps = {}
         

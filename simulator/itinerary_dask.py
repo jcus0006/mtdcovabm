@@ -170,7 +170,7 @@ def localitinerary_parallel(client,
                 for hh_inst in hh_insts_partial:
                     agents_dynamic, vars_util = util.sync_state_info_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial)
 
-                vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
+                vars_util = util.sync_state_info_sets(day, vars_util, vars_util_partial)
 
                 start_cat = time.time()
                 

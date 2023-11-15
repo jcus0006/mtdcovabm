@@ -304,7 +304,7 @@ def localitinerary_parallel(manager,
 
                             process_index, agents_partial_results, vars_util_partial_results, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
 
-                            agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
+                            agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
 
                             print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))             
                 elif proc_use_pool == 4:
@@ -317,7 +317,7 @@ def localitinerary_parallel(manager,
                             agents_partial_results_combined.extend(agents_partial_results)
                             vars_util_partial_results_combined.extend(vars_util_partial_results)
                         else:
-                            agents_dynamic, vars_util = sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
+                            agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
 
                         print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
@@ -367,7 +367,7 @@ def localitinerary_parallel(manager,
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
 
-def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
+def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
     index_start_time = time.time()
     mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
@@ -386,7 +386,7 @@ def sync_results(process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, va
     print("agentsids in process " + str(process_index) + ", time_taken: " + str(agentsids_time_taken))
 
     sets_start_time = time.time()
-    vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
+    vars_util = util.sync_state_info_sets(day, vars_util, vars_util_partial)
     sets_time_taken = time.time() - sets_start_time
 
     start_cat = time.time()

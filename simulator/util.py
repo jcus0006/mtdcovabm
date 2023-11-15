@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import random
 from copy import copy, deepcopy
 import seirstateutil, customdict
+from cellsclasses import CellType, SimCellType
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -193,30 +194,30 @@ def convert_celltype_to_simcelltype(cellid, cells=None, celltype=None):
         celltype = cell["type"]
 
     match celltype:
-        case "household":
-            return "residence"
-        case "workplace":
-            return "workplace"
-        case "accom":
-            return "residence"
-        case "hospital":
-            return "community"
-        case "entertainment":
-            return "community"
-        case "school":
-            return "school"
-        case "classroom":
-            return "school"
-        case "institution":
-            return "residence"
-        case "transport":
-            return "community"
-        case "religion":
-            return "community"
-        case "airport":
-            return "community"
+        case CellType.Household:
+            return SimCellType.Residence
+        case CellType.Workplace:
+            return SimCellType.Workplace
+        case CellType.Accommodation:
+            return SimCellType.Residence
+        case CellType.Hospital:
+            return SimCellType.Community
+        case CellType.Entertainment:
+            return SimCellType.Community
+        case CellType.School:
+            return SimCellType.School
+        case CellType.Classroom:
+            return SimCellType.School
+        case CellType.Institution:
+            return SimCellType.Residence
+        case CellType.Transport:
+            return SimCellType.Community
+        case CellType.Religion:
+            return SimCellType.Community
+        case CellType.Airport:
+            return SimCellType.Community
         case _:
-            return "community"
+            return SimCellType.Community
 
 # takes the contact structure in agents_contacts
 # can be used for both potential contacts and direct contacts (as they bear the same structure)
@@ -259,9 +260,9 @@ def filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_
     for agent, simcelltype, start_time in contact_tracing_info_arr:
         if min_ts <= start_time <= max_ts:
             if simcelltype not in contact_tracing_info_by_simcelltype:
-                contact_tracing_info_by_simcelltype[simcelltype] = []
+                contact_tracing_info_by_simcelltype[simcelltype] = set()
 
-            contact_tracing_info_by_simcelltype[simcelltype].append(agent)        
+            contact_tracing_info_by_simcelltype[simcelltype].add(agent)        
 
     return contact_tracing_info_by_simcelltype
 
@@ -421,7 +422,8 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
         if agentid in vars_util_partial.agents_seir_state_transition_for_day:
             vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
-        vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+        if len(vars_util_partial.agents_seir_state) > 0:
+            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
@@ -435,18 +437,31 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
     
     return agents_epi, vars_util
 
-def sync_state_info_sets(vars_util, vars_util_partial):
+def sync_state_info_by_agentsids_ct(agents_ids, agents_epi, agents_epi_partial):
+    # updated_count = 0
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+    
+    return agents_epi
+
+def sync_state_info_sets(day, vars_util, vars_util_partial):
     if len(vars_util_partial.contact_tracing_agent_ids) > 0:
         vars_util.contact_tracing_agent_ids.update(vars_util_partial.contact_tracing_agent_ids)
 
     if len(vars_util_partial.directcontacts_by_simcelltype_by_day) > 0:
         current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+
+        if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+            vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
+
         vars_util.directcontacts_by_simcelltype_by_day.extend(vars_util_partial.directcontacts_by_simcelltype_by_day)
 
         for index, dc in enumerate(vars_util_partial.directcontacts_by_simcelltype_by_day):
             new_index = current_index + index
-            vars_util.dc_by_sct_by_day_agent1_index.append([dc[2], new_index])
-            vars_util.dc_by_sct_by_day_agent2_index.append([dc[3], new_index])
+            vars_util.dc_by_sct_by_day_agent1_index.append([dc[1], new_index])
+            vars_util.dc_by_sct_by_day_agent2_index.append([dc[2], new_index])
 
     return vars_util
 
