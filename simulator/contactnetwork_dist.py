@@ -22,6 +22,7 @@ def contactnetwork_distributed(client: Client,
                             dask_numtasks=-1,
                             dask_full_array_mapping=False,
                             keep_processes_open=True,
+                            f=None,
                             log_file_name="output.txt"):
     # process_counter = manager.Value("i", num_processes)
     original_log_file_name = log_file_name
@@ -52,6 +53,8 @@ def contactnetwork_distributed(client: Client,
             cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, dask_numtasks)
             time_taken = time.time() - start
             print("split_cellsagentstimesteps_balanced (load balancing): " + str(time_taken))
+            if f is not None:
+                f.flush()
             
             start = time.time()
             dask_params, futures, delayed_computations = [], [], []
@@ -90,6 +93,8 @@ def contactnetwork_distributed(client: Client,
                 vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
                 print("starting process index " + str(worker_index) + " at " + str(time.time()))
+                if f is not None:
+                    f.flush()
 
                 params = (day, weekday, agents_partial, vars_util_partial, dynparams, worker_index, log_file_name)
 
@@ -105,6 +110,8 @@ def contactnetwork_distributed(client: Client,
 
             time_taken = time.time() - start
             print("delayed_results generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             start = time.time()
 
@@ -117,20 +124,26 @@ def contactnetwork_distributed(client: Client,
 
             time_taken = time.time() - start
             print("futures generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             start = time.time()
-            _, agents_epi, vars_util = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
+            _, agents_epi, vars_util = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f)
 
             vars_util.cells_agents_timesteps = customdict.CustomDict()
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
+            if f is not None:
+                f.flush()
             
             if not keep_processes_open:
                 start = time.time()
                 client.shutdown()
                 time_taken = time.time() - start
                 print("client shutdown time taken " + str(time_taken))
+                if f is not None:
+                    f.flush()
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)

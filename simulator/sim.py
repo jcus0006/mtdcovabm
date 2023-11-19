@@ -22,7 +22,7 @@ import gc
 from memory_profiler import profile
 # import dask.dataframe as df
 
-params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
             "simulationdays": 20, # 365
             "loadagents": True,
@@ -44,7 +44,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, set to False)
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, set to False)
             "dask_use_mp": False, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
@@ -63,8 +63,8 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "dask_scheduler_node": "localhost",
             # "dask_nodes": ["localhost"],
             # "dask_nodes_n_workers": [4],
-            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.20", "192.168.1.21", "192.168.1.22"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            "dask_nodes_n_workers": [4, 4, 4, 4, 4, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_nodes_time_taken": None, # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
@@ -76,7 +76,8 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "contacttracing_distributed": False,
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
-            "logfilename": "dask_500kpop_23w_6n_1daystracing1proc_20days.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
+            "logmemoryinfo": True,
+            "logfilename": "dask_500kpop_24w_6n_20days.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
         }
 
 # Load configuration
@@ -174,6 +175,7 @@ def main():
 
     print("interpreter: " + os.path.dirname(sys.executable))
     print("current working directory: " + os.getcwd())
+    f.flush()
 
     json_paths_to_upload = [] # to be uploaded to remote nodes
     
@@ -442,7 +444,8 @@ def main():
 
         print("Min classroom size: " + str(min_classroom_size) + ", Max classroom size: " + str(max_classroom_size))
         print("Min non-teaching staff size: " + str(min_nts_size) + ", Max classroom size: " + str(max_nts_size))
-
+        f.flush()
+        
         cells_util.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
 
     if params["religiouscells"]:
@@ -536,6 +539,8 @@ def main():
             time_taken = time.time() - start
             print("client generation: " + str(time_taken))
 
+            f.flush()
+
             # plugin = ReadOnlyData(agentsfilepath)
             # client.register_worker_plugin(plugin, name="read-only-data")
 
@@ -583,6 +588,8 @@ def main():
 
                 time_taken = time.time() - start
                 print("upload modules remotely: " + str(time_taken))
+
+                f.flush()
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -659,6 +666,8 @@ def main():
                 tourist_itinerary_sum_time_taken += time_taken
                 avg_time_taken = tourist_itinerary_sum_time_taken / day
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+
+                f.flush()
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
@@ -816,12 +825,14 @@ def main():
                                                                 params["dask_nodes_n_workers"],
                                                                 dask_combined_scores_nworkers,
                                                                 params["dask_nodes_time_taken"],
+                                                                f,
                                                                 log_file_name)
                 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
                 avg_time_taken = itinerary_sum_time_taken / day
-                print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken)) 
+                print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                
+                f.flush()
 
                 if not params["quickitineraryrun"]:
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
@@ -861,12 +872,14 @@ def main():
                                                                 params["dask_numtasks"],
                                                                 params["dask_full_array_mapping"],
                                                                 params["keep_processes_open"],
+                                                                f,
                                                                 log_file_name)
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
                     avg_time_taken = contactnetwork_sum_time_taken / day
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
+                    f.flush()
 
                 # contact tracing
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
@@ -906,7 +919,7 @@ def main():
                 #                                         log_file_name)
 
                 if not params["contacttracing_distributed"]:
-                    _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day) # process_index, updated_agent_ids
+                    _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
                 else:
                     contacttracing_dist.contacttracing_distributed(client, 
                                                                 day, 
@@ -918,10 +931,12 @@ def main():
                                                                 params["dask_numtasks"],
                                                                 params["dask_full_array_mapping"],
                                                                 params["keep_processes_open"],
+                                                                f,
                                                                 log_file_name)
 
                 time_taken = time.time() - start
                 print("contact_tracing time taken: " + str(time_taken))
+                f.flush()
 
                 # vaccinations
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
@@ -930,6 +945,7 @@ def main():
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
                 print("schedule_vaccinations time taken: " + str(time_taken))
+                f.flush()
 
                 print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
@@ -937,9 +953,13 @@ def main():
 
                 time_taken = time.time() - start
                 print("refresh_dynamic_parameters time taken: " + str(time_taken))
+                f.flush()
+
+            calculate_memory_info(params["logmemoryinfo"], it_agents, agents_epi, vars_util, f)
 
             day_time_taken = time.time() - day_start
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
+            f.flush()
     except:
         with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as f:
             traceback.print_exc(file=f)
@@ -950,6 +970,25 @@ def main():
 
         # if params["dask_autoclose_cluster"]:
         #     client.shutdown()
+
+def calculate_memory_info(log_memory_info, it_agents, agents_epi, vars_util, f=None):
+    if log_memory_info:
+        start = time.time()
+        it_agents_mem = sum([sys.getsizeof(d) for a in it_agents.values() for d in a.values()]) / (1024 * 1024)
+        epi_agents_mem = sum([sys.getsizeof(i) for c in agents_epi.values() for i in c.values()]) / (1024 * 1024)
+        cat_mem = sum([sys.getsizeof(i) for c in vars_util.cells_agents_timesteps.values() for i in c]) / (1024 * 1024)
+        seir_state_mem = sum([sys.getsizeof(s) for s in vars_util.agents_seir_state]) / (1024 * 1024)
+        inf_type_mem = sum([sys.getsizeof(s) for s in vars_util.agents_infection_type.values()]) / (1024 * 1024)
+        inf_sev_mem = sum([sys.getsizeof(s) for s in vars_util.agents_infection_severity.values()]) / (1024 * 1024)
+        dir_con_mem = sum([sys.getsizeof(i) for i in vars_util.directcontacts_by_simcelltype_by_day]) / (1024 * 1024)
+        dir_con_idx1_mem = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024)
+        dir_con_idx2_mem = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024)
+        time_taken = time.time() - start
+
+        print("memory footprint. it_agents: {0}, epi_agents: {1}, cat: {2}, seir_state: {3}, inf_type: {4}, inf_sev: {5}, dir_con: {6}, dir_con_idx1: {7}, dir_con_idx2: {8}, time_taken: {9}".format(str(it_agents_mem), str(epi_agents_mem), str(cat_mem), str(seir_state_mem), str(inf_type_mem), str(inf_sev_mem), str(dir_con_mem), str(dir_con_idx1_mem), str(dir_con_idx2_mem), str(time_taken)))
+
+        if f is not None:
+            f.flush()
 
 if __name__ == '__main__':
     main()

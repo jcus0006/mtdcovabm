@@ -37,6 +37,16 @@ def binary_search_2d_all_indices(arr, target):
 
     return indices  # Empty list if no matches found
 
+# memory test
+import sys
+dircon = [[i, i*i] for i in range(2000)]
+temp_sum = sum([sys.getsizeof(i) for i in dircon]) / (1024 * 1024)
+print(str(temp_sum))
+
+dircon = dircon[1001:]
+temp_sum = sum([sys.getsizeof(i) for i in dircon]) / (1024 * 1024)
+print(str(temp_sum))
+
 # temp test
 
 # tasks_still_to_assign = 149999

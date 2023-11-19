@@ -461,6 +461,7 @@ def localitinerary_distributed(client: Client,
                             dask_nodes_n_workers=None,
                             dask_combined_scores_nworkers=None, # frequency distribution based on CPU scores
                             dask_nodes_time_taken=None,
+                            f=None,
                             log_file_name="output.txt"): 
     original_log_file_name = log_file_name
     stack_trace_log_file_name = ""
@@ -512,6 +513,8 @@ def localitinerary_distributed(client: Client,
             
             time_taken = time.time() - start
             print("split residences by indices (load balancing): " + str(time_taken))
+            if f is not None:
+                f.flush()
             
             start = time.time()
 
@@ -619,6 +622,8 @@ def localitinerary_distributed(client: Client,
             
             time_taken = time.time() - start
             print("delayed_results generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             start = time.time()
 
@@ -632,6 +637,8 @@ def localitinerary_distributed(client: Client,
             # results = dask.compute(*delayed_computations) # dask.compute blocks (and seems to work)
             time_taken = time.time() - start
             print("futures generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             # results = client.gather(futures) # another way of collecting the results
 
@@ -642,6 +649,8 @@ def localitinerary_distributed(client: Client,
 
                     worker_index, agents_partial_results_combined, agents_epi_partial_results_combined, vars_util_partial_results_combined = future
                     print("processing results for worker " + str(worker_index))
+                    if f is not None:
+                        f.flush()
 
                     # for i in range(1000):
                     #     if i in agents_partial_results_combined:
@@ -650,16 +659,20 @@ def localitinerary_distributed(client: Client,
 
                     it_agents, agents_epi, vars_util = daskutil.sync_results(day, worker_index, mp_hh_inst_indices, hh_insts, it_agents, agents_epi, vars_util, agents_partial_results_combined, agents_epi_partial_results_combined, vars_util_partial_results_combined)
             else:
-                it_agents, agents_epi, vars_util = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, dask_full_array_mapping)
+                it_agents, agents_epi, vars_util = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, dask_full_array_mapping, f)
 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             if not keep_processes_open:
                 start = time.time()
                 client.shutdown()
                 time_taken = time.time() - start
-                print("client shutdown time taken " + str(time_taken))         
+                print("client shutdown time taken " + str(time_taken))  
+                if f is not None:
+                    f.flush()       
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)

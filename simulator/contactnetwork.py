@@ -36,7 +36,8 @@ class ContactNetwork:
 
         # self.mp_cells_keys = []
 
-        self.cells_agents_timesteps = vars_util.cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
+        self.vars_util = vars_util
+
         self.contactnetworkparams = contactnetworkparams
         self.ageactivitycontactmatrix = np.array(self.contactnetworkparams["ageactivitycontactmatrix"])
 
@@ -67,11 +68,11 @@ class ContactNetwork:
         # if self.process_index >= 0:
         #     sp_cells_keys = self.mp_cells_keys[self.process_index]
         # else:
-        #     sp_cells_keys = list(self.cells_agents_timesteps.keys()) # single process without multi-processing
+        #     sp_cells_keys = list(self.vars_util.cells_agents_timesteps.keys()) # single process without multi-processing
 
-        print("generate contact network for " + str(len(self.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
+        print("generate contact network for " + str(len(self.vars_util.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
         start = time.time()
-        for cellindex, cellid in enumerate(self.cells_agents_timesteps.keys()):
+        for cellindex, cellid in enumerate(self.vars_util.cells_agents_timesteps.keys()):
             cell_updated_agents_ids, cell_agents_directcontacts, cell_type = self.simulate_contact_network_by_cellid(cellid, day)
 
             updated_agents_ids.extend(cell_updated_agents_ids)
@@ -103,9 +104,9 @@ class ContactNetwork:
         print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
 
         agents_partial = {agentid:self.agents_epi[agentid] for agentid in updated_agents_ids}
-        self.epi_util.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
+        self.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
 
-        return self.process_index, updated_agents_ids, agents_partial, self.epi_util.vars_util
+        return self.process_index, updated_agents_ids, agents_partial, self.vars_util
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
@@ -126,10 +127,10 @@ class ContactNetwork:
         agents_directcontacts_count = {} # {agentid: contact_count}
 
         # cell = None
-        # if cellid in self.cells_agents_timesteps:
+        # if cellid in self.vars_util.cells_agents_timesteps:
         cell_type = self.cells_type[cellid]
 
-        cell_agents_timesteps = self.cells_agents_timesteps[cellid]
+        cell_agents_timesteps = self.vars_util.cells_agents_timesteps[cellid]
 
         indid = None
 

@@ -3,7 +3,7 @@ import traceback
 import util
 from dask.distributed import as_completed
 
-def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False):
+def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None):
     future_count = 0
     for future in as_completed(futures):
         try:
@@ -36,11 +36,11 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
                 itinerary = not contactnetwork and not contacttracing
                     
                 if itinerary: 
-                    agents, agents_epi, vars_util = sync_results_it(day, agents, agents_epi, vars_util, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken)
+                    agents, agents_epi, vars_util = sync_results_it(day, agents, agents_epi, vars_util, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
                 elif contactnetwork:
-                    agents_epi, vars_util = sync_results_cn(day, agents_epi, vars_util, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken)
+                    agents_epi, vars_util = sync_results_cn(day, agents_epi, vars_util, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
                 else:
-                    agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken)
+                    agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken, f)
 
                 agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
             else:
@@ -118,7 +118,7 @@ def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents, agent
 
     return agents, agents_epi, vars_util
 
-def sync_results_it(day, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, worker_process_index=-1, remote_time_taken=None):
+def sync_results_it(day, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, worker_process_index=-1, remote_time_taken=None, f=None):
     agentsids_start = time.time()
     agents, agents_epi, vars_util = util.sync_state_info_by_agentsids(list(agents_epi_partial.keys()), agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial)
     agentsids_time_taken = time.time() - agentsids_start
@@ -137,10 +137,13 @@ def sync_results_it(day, agents, agents_epi, vars_util, agents_partial, agents_e
 
     if worker_process_index != -1:
         print("worker {0}: remote time_taken {1}, agents sync {2}, sets sync {3}, cat sync {4}".format(str(worker_process_index), rtt_str, str(agentsids_time_taken), str(sets_time_taken), str(cat_time_taken)))
-    
+
+        if f is not None:
+            f.flush()
+
     return agents, agents_epi, vars_util
 
-def sync_results_cn(day, agents_epi, vars_util, agents_epi_partial, vars_util_partial, worker_process_index=-1, remote_time_taken=None):
+def sync_results_cn(day, agents_epi, vars_util, agents_epi_partial, vars_util_partial, worker_process_index=-1, remote_time_taken=None, f=None):
     agentsids_start = time.time()
     agents_epi, vars_util = util.sync_state_info_by_agentsids_cn(list(agents_epi_partial.keys()), agents_epi, vars_util, agents_epi_partial, vars_util_partial)
     agentsids_time_taken = time.time() - agentsids_start
@@ -159,10 +162,13 @@ def sync_results_cn(day, agents_epi, vars_util, agents_epi_partial, vars_util_pa
 
     if worker_process_index != -1:
         print("worker {0}: remote time_taken {1}, agents sync {2}, sets sync {3}, cat sync {4}".format(str(worker_process_index), rtt_str, str(agentsids_time_taken), str(sets_time_taken), str(cat_time_taken)))
+        
+        if f is not None:
+            f.flush()
 
     return agents_epi, vars_util
 
-def sync_results_ct(day, agents_epi, agents_epi_partial, worker_process_index=-1, remote_time_taken=None):
+def sync_results_ct(day, agents_epi, agents_epi_partial, worker_process_index=-1, remote_time_taken=None, f=None):
     agentsids_start = time.time()
     agents_epi = util.sync_state_info_by_agentsids_ct(list(agents_epi_partial.keys()), agents_epi, agents_epi_partial)
     agentsids_time_taken = time.time() - agentsids_start
@@ -174,5 +180,8 @@ def sync_results_ct(day, agents_epi, agents_epi_partial, worker_process_index=-1
     if worker_process_index != -1:
         # print("worker {0}: remote time_taken {1}, agents sync {2}, sets sync {3}, cat sync {4}".format(str(worker_process_index), rtt_str, str(agentsids_time_taken), str(sets_time_taken), str(cat_time_taken)))
         print("worker {0}, day {1}: remote time_taken {2}, agents sync {3}".format(str(worker_process_index), str(day), rtt_str, str(agentsids_time_taken)))
+        
+        if f is not None:
+            f.flush()
 
     return agents_epi

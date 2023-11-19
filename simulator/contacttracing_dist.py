@@ -23,6 +23,7 @@ def contacttracing_distributed(client: Client,
                             dask_numtasks=-1,
                             dask_full_array_mapping=False,
                             keep_processes_open=True,
+                            f=None,
                             log_file_name="output.txt"):
     stack_trace_log_file_name = ""
     task_results_stack_trace_log_file_name = ""
@@ -55,6 +56,8 @@ def contacttracing_distributed(client: Client,
             agent2_index_size = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024)
 
             print("day: {0}, contact_tracing_agent_ids_len: {1}, directcontacts len: {2}, directcontacts size: {3}, agent1 index size: {4}, agent2 index size: {5}".format(str(day), str(len(vars_util.contact_tracing_agent_ids)), str(len(vars_util.directcontacts_by_simcelltype_by_day)), str(directcontacts_size), str(agent1_index_size), str(agent2_index_size)))
+            if f is not None:
+                f.flush()
 
             start = time.time()
             contact_tracing_agent_ids_list = list(vars_util.contact_tracing_agent_ids)
@@ -63,6 +66,8 @@ def contacttracing_distributed(client: Client,
             mp_contacttracingagentids_indices = np.array_split(contacttracingagentids_indices, dask_numtasks)
             time_taken = time.time() - start
             print("splitting contact_tracing_agent_ids, time_taken: " + str(time_taken))
+            if f is not None:
+                f.flush()
             
             start = time.time()
             dask_params, futures, delayed_computations = [], [], []
@@ -76,6 +81,8 @@ def contacttracing_distributed(client: Client,
                 vars_util_partial.contact_tracing_agent_ids = set([contact_tracing_agent_ids_list[index] for index in worker_contacttracingagentids_indices]) # simply to retain type
                 time_taken = time.time() - start
                 print("partialising contact_tracing_agent_ids, process: " + str(worker_index) + ", time taken: " + str(time_taken))
+                if f is not None:
+                    f.flush()
 
                 if len(vars_util_partial.contact_tracing_agent_ids) > 0:
                     start = time.time()
@@ -88,6 +95,8 @@ def contacttracing_distributed(client: Client,
                     print("partialising directcontacts_by_simcelltype_by_day, process: " + str(worker_index) + ", time taken: " + str(time_taken))
 
                     print("starting process index " + str(worker_index) + " at " + str(time.time()))
+                    if f is not None:
+                        f.flush()
 
                     params = (day, agents_epi, vars_util_partial, dynparams, worker_index, log_file_name)
 
@@ -103,6 +112,8 @@ def contacttracing_distributed(client: Client,
 
             time_taken = time.time() - start
             print("delayed_results generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             start = time.time()
 
@@ -115,12 +126,16 @@ def contacttracing_distributed(client: Client,
 
             time_taken = time.time() - start
             print("futures generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             start = time.time()
             _, agents_epi, vars_util = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
+            if f is not None:
+                f.flush()
 
             epidemiologyutil.contact_tracing_clean_up(day)
             
@@ -129,6 +144,8 @@ def contacttracing_distributed(client: Client,
                 client.shutdown()
                 time_taken = time.time() - start
                 print("client shutdown time taken " + str(time_taken))
+                if f is not None:
+                    f.flush()
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)

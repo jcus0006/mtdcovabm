@@ -7,6 +7,8 @@ import util
 import seirstateutil
 from epidemiologyclasses import SEIRState, SEIRStateTransition, InfectionType, Severity, EpidemiologyProbabilities, QuarantineType
 from cellsclasses import CellType, SimCellType
+import gc
+from memory_profiler import profile
 
 class Epidemiology:
     def __init__(self, 
@@ -70,17 +72,6 @@ class Epidemiology:
         self.agents_epi = agents_epi
         self.agents_seir_indices = agents_seir_indices
         self.vars_util = vars_util
-        self.agents_seir_state = vars_util.agents_seir_state
-        self.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day
-        self.agents_infection_type = vars_util.agents_infection_type
-        self.agents_infection_severity = vars_util.agents_infection_severity
-        self.agents_vaccination_doses = vars_util.agents_vaccination_doses
-        self.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day # will be initialised as empty set
-        self.directcontacts_by_simcelltype_by_day_start_marker = vars_util.directcontacts_by_simcelltype_by_day_start_marker
-        self.dc_by_sct_by_day_agent1_index = vars_util.dc_by_sct_by_day_agent1_index
-        self.dc_by_sct_by_day_agent2_index = vars_util.dc_by_sct_by_day_agent2_index
-        # self.tourists_active_ids = tourists_active_ids
-        self.contact_tracing_agent_ids = vars_util.contact_tracing_agent_ids # will be initialised as empty set
 
         self.cells_households = cells_households
         self.cells_institutions = cells_institutions
@@ -95,16 +86,16 @@ class Epidemiology:
         for pairid, timesteps in agents_directcontacts.items():
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
 
-            primary_agent_state, secondary_agent_state = seirstateutil.agents_seir_state_get(self.agents_seir_state, primary_agent_id, self.agents_seir_indices), seirstateutil.agents_seir_state_get(self.agents_seir_state, secondary_agent_id, self.agents_seir_indices)
+            primary_agent_state, secondary_agent_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, primary_agent_id, self.agents_seir_indices), seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, secondary_agent_id, self.agents_seir_indices)
 
             primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = None, None, None
-            if primary_agent_id in self.agents_seir_state_transition_for_day:
-                primary_agent_state_transition_for_day = self.agents_seir_state_transition_for_day[primary_agent_id]
+            if primary_agent_id in self.vars_util.agents_seir_state_transition_for_day:
+                primary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[primary_agent_id]
                 primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = primary_agent_state_transition_for_day[0], primary_agent_state_transition_for_day[1], primary_agent_state_transition_for_day[5]
 
             secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = None, None, None
-            if secondary_agent_id in self.agents_seir_state_transition_for_day:
-                secondary_agent_state_transition_for_day = self.agents_seir_state_transition_for_day[secondary_agent_id]
+            if secondary_agent_id in self.vars_util.agents_seir_state_transition_for_day:
+                secondary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[secondary_agent_id]
                 secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = secondary_agent_state_transition_for_day[0], secondary_agent_state_transition_for_day[1], secondary_agent_state_transition_for_day[5]
 
             if (((primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible) or
@@ -212,11 +203,11 @@ class Epidemiology:
 
                         if agent_infection_type != InfectionType.Undefined:
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
-                            self.agents_seir_state = seirstateutil.agents_seir_state_update(self.agents_seir_state, agent_seir_state, exposed_agent_id, self.agents_seir_indices)
+                            self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, exposed_agent_id, self.agents_seir_indices)
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
-                            self.agents_infection_type[exposed_agent_id] = agent_infection_type
+                            self.vars_util.agents_infection_type[exposed_agent_id] = agent_infection_type
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
-                            self.agents_infection_severity[exposed_agent_id] = agent_infection_severity
+                            self.vars_util.agents_infection_severity[exposed_agent_id] = agent_infection_severity
 
         return updated_agents_ids
     
@@ -427,7 +418,7 @@ class Epidemiology:
                     # if quarantine_type == QuarantineType.Positive:
                     #     # to perform contact tracing (as received positive test result)
                     #     # contact tracing is handled globally at the end of every day, and contact tracing delays are represented in quarantine/testing scheduling
-                    #     self.contact_tracing_agent_ids.add((agent_id, start_timestep)) 
+                    #     self.vars_util.contact_tracing_agent_ids.add((agent_id, start_timestep)) 
                     
                     test_scheduled = True
 
@@ -526,14 +517,20 @@ class Epidemiology:
     # a percentage of these contacts, based on "simcelltype" successful tracing probability, will be successfully traced
     # a percentage of the secondary contacts (people that share the same residence), based on the simcelltype "residence" probability will also be traced
     # quarantine and tests will be scheduled accordingly according to the relevant percentages in the "contact_tracing_parameters"
-    def contact_tracing(self, day, distributed=False):
+
+    # fp = open("memory_profiler_10k_ct.log", "w+")
+    # @profile(stream=fp)
+    def contact_tracing(self, day, distributed=False, f=None):
         updated_agent_ids = set()
 
-        if self.dyn_params.contact_tracing_enabled:
+        if self.dyn_params.contact_tracing_enabled and len(self.vars_util.contact_tracing_agent_ids) > 0:
             quarantine_scheduled_ids = []
             test_scheduled_ids = []
 
-            print("contact tracing days back: {0}, directcontacts_by_simcelltype_by_day len: {1}, agent1 index len: {2}, agent2 index len: {3}".format(str(self.contact_tracing_days_back), str(len(self.directcontacts_by_simcelltype_by_day)), str(len(self.dc_by_sct_by_day_agent1_index)), str(len(self.dc_by_sct_by_day_agent2_index))))
+            print("contact tracing days back: {0}, directcontacts_by_simcelltype_by_day len: {1}, agent1 index len: {2}, agent2 index len: {3}".format(str(self.contact_tracing_days_back), str(len(self.vars_util.directcontacts_by_simcelltype_by_day)), str(len(self.vars_util.dc_by_sct_by_day_agent1_index)), str(len(self.vars_util.dc_by_sct_by_day_agent2_index))))
+
+            if f is not None:
+                f.flush()
 
             # self.contact_tracing_days_back = 0 # set to 0 to make sure the work is done once only, for now
             for daybackindex in range(self.contact_tracing_days_back + 1): # assume minimum is 1 + 1, i.e. 2 iterations, i.e. 24 hours
@@ -552,48 +549,54 @@ class Epidemiology:
                     trace_back_min_ts = None
 
                 day_start_index = 0
-                day_end_index = len(self.directcontacts_by_simcelltype_by_day) # default index is the last unless there is a "next day"
+                day_end_index = len(self.vars_util.directcontacts_by_simcelltype_by_day) # default index is the last unless there is a "next day"
 
-                print("daybackindex: {0}, day_end_index: {1}, directcontacts_by_simcelltype_by_day_start_marker len: {2}".format(str(daybackindex), str(day_end_index), str(len(self.directcontacts_by_simcelltype_by_day_start_marker))))
-                
-                if contact_tracing_day in self.directcontacts_by_simcelltype_by_day_start_marker:
-                    day_start_index = self.directcontacts_by_simcelltype_by_day_start_marker[contact_tracing_day]
+                print("daybackindex: {0}, day_end_index: {1}, directcontacts_by_simcelltype_by_day_start_marker len: {2}".format(str(daybackindex), str(day_end_index), str(len(self.vars_util.directcontacts_by_simcelltype_by_day_start_marker))))
+                if f is not None:
+                    f.flush()
 
-                    if contact_tracing_day + 1 in self.directcontacts_by_simcelltype_by_day_start_marker: # next day case
-                        day_end_index = self.directcontacts_by_simcelltype_by_day_start_marker[contact_tracing_day + 1] - 1
+                if contact_tracing_day in self.vars_util.directcontacts_by_simcelltype_by_day_start_marker:
+                    day_start_index = self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[contact_tracing_day]
 
-                    print("contact tracing day: {0}, contact_tracing_agent_ids: {1}, index len for day: {2}".format(str(contact_tracing_day), str(len(self.contact_tracing_agent_ids)), str(day_end_index - day_start_index)))
+                    if contact_tracing_day + 1 in self.vars_util.directcontacts_by_simcelltype_by_day_start_marker: # next day case
+                        day_end_index = self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[contact_tracing_day + 1] - 1
 
-                    for agent_id, traced_timestep in self.contact_tracing_agent_ids:
+                    print("contact tracing day: {0}, contact_tracing_agent_ids: {1}, index len for day: {2}".format(str(contact_tracing_day), str(len(self.vars_util.contact_tracing_agent_ids)), str(day_end_index - day_start_index)))
+                    if f is not None:
+                        f.flush()
+                    
+                    for agent_id, traced_timestep in self.vars_util.contact_tracing_agent_ids:
                         # print("agent_id " + str(agent_id) + ", traced_timestep: " + str(traced_timestep))
 
                         # start = time.time()
-                        dc_by_sct_by_day_agent1_indices = util.binary_search_2d_all_indices(self.dc_by_sct_by_day_agent1_index[day_start_index:day_end_index], agent_id)
+                        dc_by_sct_by_day_agent1_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent1_index[day_start_index:day_end_index], agent_id)
                         # time_taken = time.time() - start
                         # print("agent1 binary search: " + str(time_taken))
 
                         # start = time.time()
-                        dc_by_sct_by_day_agent2_indices = util.binary_search_2d_all_indices(self.dc_by_sct_by_day_agent2_index[day_start_index:day_end_index], agent_id)
+                        dc_by_sct_by_day_agent2_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent2_index[day_start_index:day_end_index], agent_id)
                         # time_taken = time.time() - start
                         # print("agent2 binary search: " + str(time_taken))
 
                         # start = time.time()
-                        agent1_indices = [self.dc_by_sct_by_day_agent1_index[idx][1] for idx in dc_by_sct_by_day_agent1_indices]
-                        agent2_indices = [self.dc_by_sct_by_day_agent2_index[idx][1] for idx in dc_by_sct_by_day_agent2_indices]
+                        agent1_indices = [self.vars_util.dc_by_sct_by_day_agent1_index[idx][1] for idx in dc_by_sct_by_day_agent1_indices]
+                        agent2_indices = [self.vars_util.dc_by_sct_by_day_agent2_index[idx][1] for idx in dc_by_sct_by_day_agent2_indices]
                         # time_taken = time.time() - start
                         # print("building indices: " + str(time_taken))
                         
                         print("dc_by_sct_by_day_agent1_indices len: {0}, dc_by_sct_by_day_agent2_indices len: {1}, agent1_indices len: {2}, agent2_indices len: {3}".format(str(len(dc_by_sct_by_day_agent1_indices)), str(len(dc_by_sct_by_day_agent2_indices)), str(len(agent1_indices)), str(len(agent2_indices))))
+                        if f is not None:
+                            f.flush()
                         
                         # start = time.time()
                         contact_tracing_info_arr = []
                         for idx in agent1_indices:
-                            params = self.directcontacts_by_simcelltype_by_day[idx]
+                            params = self.vars_util.directcontacts_by_simcelltype_by_day[idx]
 
                             contact_tracing_info_arr.append([params[2], params[0], params[3]]) # agent2, simcelltype, starttimestep
 
                         for idx in agent2_indices:
-                            params = self.directcontacts_by_simcelltype_by_day[idx]
+                            params = self.vars_util.directcontacts_by_simcelltype_by_day[idx]
 
                             contact_tracing_info_arr.append([params[1], params[0], params[3]]) # agent1, simcelltype, starttimestep
 
@@ -606,6 +609,9 @@ class Epidemiology:
                         # print("filter_contacttracing_agents_by_startts_groupby_simcelltype: " + str(time_taken))
 
                         print("contact_ids_by_simcelltype len: {0}".format(str(len(contact_ids_by_simcelltype))))
+                        if f is not None:
+                            f.flush()   
+                        
                         # start = time.time()
                         for simcelltype, contact_ids in contact_ids_by_simcelltype.items():
                             contact_tracing_success_prob = self.convert_simcelltype_to_contact_tracing_success_prob(simcelltype)
@@ -615,6 +621,8 @@ class Epidemiology:
                             num_of_successfully_traced = round(len(contact_ids) * contact_tracing_success_prob)
                                 
                             sampled_traced_contact_ids = np.random.choice(np.array(contact_ids), size=num_of_successfully_traced, replace=False)
+
+                            print("num contacts {0} successfully traced {1} contact tracing success probability {3}".format(str(len(contact_ids)), str(num_of_successfully_traced), str(contact_tracing_success_prob)))
 
                             sampled_traced_contact_indices = np.arange(len(sampled_traced_contact_ids))
 
@@ -756,49 +764,64 @@ class Epidemiology:
                                                         test_scheduled_ids.append(sec_contact_id)
 
                                                         updated_agent_ids.add(sec_contact_id)
-                    
+
+            print("quarantine scheduled from contact tracing {0}, tests scheduled from contact tracing {0}".format(str(len(quarantine_scheduled_ids)), str(len(test_scheduled_ids))))        
                     # time_taken = time.time() - start
                     # print("contact tracing applied: " + str(time_taken))
+        else:
+            if self.dyn_params.contact_tracing_enabled:
+                print("contract tracing skipped because there are no agents to contact trace")
+            else:
+                print("contact tracing skipped between contact tracing is disabled")
+
+            if f is not None:
+                f.flush()
 
         if not distributed:
-            self.contact_tracing_clean_up(day)
+            self.contact_tracing_clean_up(day, f)
                 
         return self.process_index, updated_agent_ids, self.agents_epi, self.vars_util
     
-    def contact_tracing_clean_up(self, day):
+    # fp = open("memory_profiler_10k_ct_cleanup.log", "w+")
+    # @profile(stream=fp)
+    def contact_tracing_clean_up(self, day, f=None):
         # every day, clean up an "old" day. e.g. after the second day, delete the first day; because on the third day, second and third day will be used
         day_end_idx = 0
 
         day_to_clean = day - self.contact_tracing_days_back
 
-        if day_to_clean + 1 in self.directcontacts_by_simcelltype_by_day_start_marker:
-            day_end_idx = self.directcontacts_by_simcelltype_by_day_start_marker[day_to_clean + 1] - 1 # 1 less from the next index
+        if day_to_clean + 1 in self.vars_util.directcontacts_by_simcelltype_by_day_start_marker:
+            day_end_idx = self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[day_to_clean + 1] - 1 # 1 less from the next index
 
         if day_end_idx > 0:
             start = time.time()
             # sort by index of the main list again, to re-establish 1 to 1 mapping between order of index and order of main list 
-            self.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[1],reverse=False)
-            self.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[1],reverse=False) 
+            self.vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[1],reverse=False)
+            self.vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[1],reverse=False) 
 
             # retain indices from day_end_idx + 1 until the end
-            self.directcontacts_by_simcelltype_by_day = self.directcontacts_by_simcelltype_by_day[day_end_idx+1:] # np.delete(self.directcontacts_by_simcelltype_by_day, np.s_[:day_end_idx])
-            self.dc_by_sct_by_day_agent1_index = self.dc_by_sct_by_day_agent1_index[day_end_idx+1:] # np.delete(self.dc_by_sct_by_day_agent1_index, np.s_[:day_end_idx])
-            self.dc_by_sct_by_day_agent2_index = self.dc_by_sct_by_day_agent2_index[day_end_idx+1:] # np.delete(self.dc_by_sct_by_day_agent2_index, np.s_[:day_end_idx])
+            self.vars_util.directcontacts_by_simcelltype_by_day = self.vars_util.directcontacts_by_simcelltype_by_day[day_end_idx+1:] # np.delete(self.vars_util.directcontacts_by_simcelltype_by_day, np.s_[:day_end_idx])
+            self.vars_util.dc_by_sct_by_day_agent1_index = self.vars_util.dc_by_sct_by_day_agent1_index[day_end_idx+1:] # np.delete(self.vars_util.dc_by_sct_by_day_agent1_index, np.s_[:day_end_idx])
+            self.vars_util.dc_by_sct_by_day_agent2_index = self.vars_util.dc_by_sct_by_day_agent2_index[day_end_idx+1:] # np.delete(self.vars_util.dc_by_sct_by_day_agent2_index, np.s_[:day_end_idx])
             
             # delete the day_to_clean entry from day-start marker index
-            del self.directcontacts_by_simcelltype_by_day_start_marker[day_to_clean]
+            del self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[day_to_clean]
             
             # re-compute the index
             start_index_recompute = time.time()
-            self.dc_by_sct_by_day_agent1_index = [[aid, idx - (day_end_idx+1)] for aid, idx in self.dc_by_sct_by_day_agent1_index]
-            self.dc_by_sct_by_day_agent2_index = [[aid, idx - (day_end_idx+1)] for aid, idx in self.dc_by_sct_by_day_agent2_index]
+            day_end_idx_plus_one = day_end_idx + 1
+            self.vars_util.dc_by_sct_by_day_agent1_index = [[aid, idx - day_end_idx_plus_one] for aid, idx in self.vars_util.dc_by_sct_by_day_agent1_index]
+            self.vars_util.dc_by_sct_by_day_agent2_index = [[aid, idx - day_end_idx_plus_one] for aid, idx in self.vars_util.dc_by_sct_by_day_agent2_index]
             end_index_recompute = time.time() - start_index_recompute
             print("day " + str(day) + ": contact-tracing index re-compute: " + str(end_index_recompute))
+
+            if f is not None:
+                f.flush()
 
             temp_dc_by_sct_by_day_start_marker = {}
 
             # extract the keys and num of keys
-            dc_sct_keys = list(self.directcontacts_by_simcelltype_by_day_start_marker.keys())
+            dc_sct_keys = list(self.vars_util.directcontacts_by_simcelltype_by_day_start_marker.keys())
             dc_sct_len = len(dc_sct_keys)
 
             # re-compute the day-start marker index
@@ -812,17 +835,28 @@ class Epidemiology:
                 if prev_key is None:
                     temp_dc_by_sct_by_day_start_marker[curr_key] = 0
                 else:
-                    temp_dc_by_sct_by_day_start_marker[curr_key] = self.directcontacts_by_simcelltype_by_day_start_marker[curr_key] - self.directcontacts_by_simcelltype_by_day_start_marker[prev_key]
+                    temp_dc_by_sct_by_day_start_marker[curr_key] = self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[curr_key] - self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[prev_key]
 
-            self.directcontacts_by_simcelltype_by_day_start_marker = temp_dc_by_sct_by_day_start_marker
+            self.vars_util.directcontacts_by_simcelltype_by_day_start_marker = temp_dc_by_sct_by_day_start_marker
+
+            gc.collect()
+
+            stats = gc.get_stats()
+
+            for stat in stats:
+                print(stat)
 
             time_taken = time.time() - start
+
             print("day " + str(day) + ": contact-tracing clean-up and re-indexing: " + str(time_taken))
+
+            if f is not None:
+                f.flush()
 
     # currently handling not vaccinated / vaccinated, but can also handle first/second dose in a similar manner
     def schedule_vaccinations(self, day):
         if self.dyn_params.vaccination_propensity > 0:
-            not_vaccinated_indices = np.where(self.agents_vaccination_doses == 0)[0]
+            not_vaccinated_indices = np.where(self.vars_util.agents_vaccination_doses == 0)[0]
 
             num_already_vaccinated = self.n_locals - len(not_vaccinated_indices)
 
@@ -862,7 +896,7 @@ class Epidemiology:
                 for agentid in sampled_to_vaccinate_indices:
                     agent = self.agents_epi[agentid]
                     agent_vaccination_days = agent["vaccination_days"]
-                    agent_vaccination_doses = self.agents_vaccination_doses[agentid]
+                    agent_vaccination_doses = self.vars_util.agents_vaccination_doses[agentid]
 
                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
 
@@ -871,7 +905,7 @@ class Epidemiology:
                     agent_vaccination_doses += 1
 
                     agent["vaccination_days"] = agent_vaccination_days
-                    self.agents_vaccination_doses[agentid] = agent_vaccination_doses
+                    self.vars_util.agents_vaccination_doses[agentid] = agent_vaccination_doses
 
     def convert_simcelltype_to_contact_tracing_success_prob(self, simcelltype):
         contact_tracing_success_prob = 0
