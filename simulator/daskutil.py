@@ -3,11 +3,20 @@ import traceback
 import util
 from dask.distributed import as_completed
 
-def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None):
+def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, multiprocessing=False):
     future_count = 0
-    for future in as_completed(futures):
+
+    if not multiprocessing:
+        results = as_completed(futures)
+    else:
+        results = futures
+
+    for future in results:
         try:
-            result = future.result()
+            if not multiprocessing:
+                result = future.result()
+            else:
+                result = future
 
             remote_worker_index = -1
             remote_time_taken = None
@@ -54,7 +63,9 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
             with open(task_results_stack_trace_log_file_name, 'a') as f:
                 traceback.print_exc(file=f)
         finally:
-            future.release()
+            if not multiprocessing:
+                future.release()
+            
             future_count += 1
 
     return agents, agents_epi, vars_util

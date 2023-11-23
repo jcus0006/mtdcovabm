@@ -21,6 +21,7 @@ from functools import partial
 import gc
 from memory_profiler import profile
 # import dask.dataframe as df
+import pandas as pd
 
 params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
@@ -38,13 +39,13 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 8, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, set to False)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, set to False)
             "dask_use_mp": False, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
@@ -61,10 +62,10 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            # "dask_nodes": ["localhost"],
-            # "dask_nodes_n_workers": [4],
-            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_nodes": ["localhost"],
+            "dask_nodes_n_workers": [4],
+            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_nodes_time_taken": None, # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
@@ -77,7 +78,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "logmemoryinfo": True,
-            "logfilename": "dask_500kpop_24w_6n_20days.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
+            "logfilename": "mp_500k_8processes.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
         }
 
 # Load configuration
@@ -141,7 +142,40 @@ def load_dask_worker_data(dask_worker, filepath, propname):
 # fp = open("memory_profiler.log", "w+")
 # @profile(stream=fp)
 def main():
-    original_stdout = sys.stdout
+    data_load_start_time = time.time()
+
+    simdays_range = range(1, params["simulationdays"] + 1)
+    perf_timings_df = pd.DataFrame(index=simdays_range, columns=["tourismitinerary_day", 
+                                                              "localitinerary_day", 
+                                                              "contactnetwork_day", 
+                                                              "contacttracing_day", 
+                                                              "vaccination_day", 
+                                                              "refreshdynamicparams_day",
+                                                              "tourismitinerary_avg", 
+                                                              "localitinerary_avg", 
+                                                              "contactnetwork_avg", 
+                                                              "contacttracing_avg", 
+                                                              "vaccination_avg", 
+                                                              "refreshdynamicparams_avg"])
+    
+    mem_logs_df = pd.DataFrame(index=simdays_range, columns=["it_agents_day",
+                                                          "epi_agents_day",
+                                                          "cells_agents_timesteps_day",
+                                                          "seir_state_day",
+                                                          "infection_type_day",
+                                                          "infection_severity_day",
+                                                          "direct_contacts_day",
+                                                          "direct_contacts_index1_day",
+                                                          "direct_contacts_index2_day",
+                                                          "it_agents_avg",
+                                                          "epi_agents_avg",
+                                                          "cells_agents_timesteps_avg",
+                                                          "seir_state_avg",
+                                                          "infection_type_avg",
+                                                          "infection_severity_avg",
+                                                          "direct_contacts_avg",
+                                                          "direct_contacts_index1_avg",
+                                                          "direct_contacts_index2_avg"])
 
     subfolder_name = params["logsubfoldername"]
 
@@ -168,9 +202,11 @@ def main():
         os.makedirs(data_subfolder_path)
 
     log_file_name = os.path.join(log_subfolder_path, params["logfilename"])
+    perf_timings_file_name = os.path.join(log_subfolder_path, params["logfilename"].replace(".txt", "_perf_timings.csv"))
+    mem_logs_file_name = os.path.join(log_subfolder_path, params["logfilename"].replace(".txt", "_mem_logs.csv"))
 
     f = open(log_file_name, "w")
-
+    original_stdout = sys.stdout
     sys.stdout = f
 
     print("interpreter: " + os.path.dirname(sys.executable))
@@ -217,6 +253,12 @@ def main():
     tourismfile = open(os.path.join(current_directory, params["datasubfoldername"], "tourism.json"))
     tourismparams = json.load(tourismfile)
 
+    data_load_time_taken = time.time() - data_load_start_time
+
+    print("loading params, time taken: " + str(data_load_time_taken))
+
+    cells_generation_time_taken = 0
+
     population_sub_folder = ""
 
     if params["quickdebug"]:
@@ -246,6 +288,8 @@ def main():
     n_tourists = 0
 
     if params["loadtourism"]:
+        tourists_start = time.time()
+
         touristsfile = open(os.path.join(current_directory, "population", population_sub_folder, "tourists.json")) # 
         tourists = json.load(touristsfile)
         tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
@@ -260,36 +304,56 @@ def main():
         touristsgroupsdays = json.load(touristsgroupsdaysfile)
         touristsgroupsdays = {day["dayid"]:day["member_uids"] for day in touristsgroupsdays}
 
+        tourists_time_taken = time.time() - tourists_start
+        print("loading tourists, time_taken: " + str(tourists_time_taken))
+        data_load_time_taken += tourists_time_taken
+
     if params["loadagents"]:
+        agents_start = time.time()
         agents = None
         agentsfilepath = os.path.join(current_directory, "population", population_sub_folder, "agents.json")
         with open(agentsfilepath, "r") as read_file:
             agents = json.load(read_file)
 
+        agents_time_taken = time.time() - agents_start
+        print("loading tourists, time_taken: " + str(agents_time_taken))
+        data_load_time_taken += agents_time_taken
         # agentsfile = open(os.path.join(current_directory, "population", population_sub_folder, "agents.json"))
         # agents = json.load(agentsfile)
 
         n_locals = len(agents)
 
+        agents_initialize_start = time.time()
         agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agentsutil.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
+        agents_initialize_time_taken = time.time() - agents_initialize_start
+        print("agents dict initialize, time taken: " + str(agents_initialize_time_taken))
 
     cells_util = Cells(agents, cells, cellindex)
 
     if params["loadhouseholds"]:
+        hh_start = time.time()
         householdsfile = open(os.path.join(current_directory, "population", population_sub_folder, "households.json"))
         households_original = json.load(householdsfile)
+        hh_time_taken = time.time() - hh_start
+        data_load_time_taken += hh_time_taken
 
         workplaces = []
         workplaces_cells_params = []
 
         if params["loadworkplaces"]:
+            wp_start = time.time()
             workplacesfile = open(os.path.join(current_directory, "population", population_sub_folder, "workplaces.json"))
             workplaces = json.load(workplacesfile)
+            wp_time_taken = time.time() - wp_start 
+            data_load_time_taken += wp_time_taken
 
             workplaces_cells_params = cellsparams["workplaces"]
 
+        hh_cells_start = time.time()
         households, cells_households, _, _ = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
-        
+        hh_cells_time_taken = hh_cells_start - time.time()
+        cells_generation_time_taken += hh_cells_time_taken
+
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_households_updated.json", cells_households))
 
         # contactnetwork_util.epi_util.cells_households = cells_households
@@ -297,15 +361,23 @@ def main():
     if params["loadinstitutions"]:
         # institutiontypesfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutiontypes.json"))
         # institutiontypes_original = json.load(institutiontypesfile)
-
+        inst_start = time.time()
         institutionsfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutions.json"))
         institutions = json.load(institutionsfile)
+        inst_time_taken = time.time() - inst_start 
+        data_load_time_taken += inst_time_taken
 
         institutions_cells_params = cellsparams["institutions"]
-
+        
+        inst_cells_start = time.time()
         _, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
+        inst_cells_time_taken = time.time() - inst_cells_start
+        cells_generation_time_taken += inst_cells_time_taken
+
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_institutions_updated.json", cells_institutions))
         # contactnetwork_util.epi_util.cells_institutions = cells_institutions  
+
+    guardian_assignment_start = time.time()
 
     hh_insts = []
     if params["loadhouseholds"]:
@@ -360,11 +432,18 @@ def main():
 
             hh_inst["lb_weight"] = lb_weight
 
+    guardian_assignment_time_taken = time.time() - guardian_assignment_start
+    print("guardian & load balancing weight assignment time_taken: " + str(guardian_assignment_time_taken))
+
     if params["loadworkplaces"]:
         if len(workplaces) == 0:
+            wp_start = time.time()
             workplacesfile = open(os.path.join(current_directory, "population", population_sub_folder, "workplaces.json"))
             workplaces = json.load(workplacesfile)
+            wp_time_taken = time.time() - wp_start
+            data_load_time_taken += wp_time_taken
 
+        wp_cells_start = time.time()
         if len(workplaces_cells_params) == 0:
             workplaces_cells_params = cellsparams["workplaces"]
 
@@ -388,8 +467,11 @@ def main():
         accomgroups = None
 
         if params["loadtourism"]:
+            acc_start = time.time()
             accommodationsfile = open(os.path.join(current_directory, "population", population_sub_folder, "accommodations.json"))
             accommodations = json.load(accommodationsfile)
+            acc_time_taken = time.time() - acc_start
+            data_load_time_taken += acc_time_taken
 
             for accom in accommodations:
                 if accom["accomtypeid"] not in roomsizes_by_accomid_by_accomtype:
@@ -417,6 +499,8 @@ def main():
 
         # handle cell splitting (on workplaces & accommodations)
         cells_industries_by_indid_by_wpid, _, cells_restaurants, cells_accommodation, _, cells_breakfast_by_accomid, rooms_by_accomid_by_accomtype, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_airport, indids_by_cellid = cells_util.split_workplaces_by_cellsize(workplaces, roomsizes_by_accomid_by_accomtype, rooms_by_accomid_by_accomtype, workplaces_cells_params, hospital_cells_params, testing_hubs_cells_params, vaccinations_hubs_cells_params, airport_cells_params, accom_cells_params, transport, entertainment_acitvity_dist, itineraryparams)
+        wp_cells_time_taken = time.time() - wp_cells_start
+        cells_generation_time_taken += wp_cells_time_taken
 
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_industries_by_indid_by_wpid_updated.json", cells_industries_by_indid_by_wpid))
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_restaurants_updated.json", cells_restaurants))
@@ -435,50 +519,72 @@ def main():
         # cellindex += 1
 
     if params["loadschools"]:
+        schools_start = time.time()
         schoolsfile = open(os.path.join(current_directory, "population", population_sub_folder, "schools.json"))
         schools = json.load(schoolsfile)
+        schools_time_taken = time.time() - schools_start
+        data_load_time_taken += schools_time_taken
 
         schools_cells_params = cellsparams["schools"]
 
-        min_nts_size, max_nts_size, min_classroom_size, max_classroom_size = cells_util.get_min_max_school_sizes(schools)
+        # min_nts_size, max_nts_size, min_classroom_size, max_classroom_size = cells_util.get_min_max_school_sizes(schools)
 
-        print("Min classroom size: " + str(min_classroom_size) + ", Max classroom size: " + str(max_classroom_size))
-        print("Min non-teaching staff size: " + str(min_nts_size) + ", Max classroom size: " + str(max_nts_size))
-        f.flush()
+        # print("Min classroom size: " + str(min_classroom_size) + ", Max classroom size: " + str(max_classroom_size))
+        # print("Min non-teaching staff size: " + str(min_nts_size) + ", Max classroom size: " + str(max_nts_size))
+        # f.flush()
         
+        schools_cells_start = time.time()
         cells_util.split_schools_by_cellsize(schools, schools_cells_params[0], schools_cells_params[1])
+        schools_cells_time_taken = time.time() - schools_cells_start
+        cells_generation_time_taken += schools_cells_time_taken
 
     if params["religiouscells"]:
+        religious_cells_start = time.time()
         religious_cells_params = cellsparams["religious"]
 
         _, cells_religious = cells_util.create_religious_cells(religious_cells_params[2], religious_cells_params[0], religious_cells_params[1], religious_cells_params[3], religious_cells_params[4])
 
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_religious_updated.json", cells_religious))
+        religious_cells_time_taken = time.time() - religious_cells_start
+        cells_generation_time_taken += religious_cells_time_taken
 
     # this might cause problems when referring to related agents, by household, workplaces etc
     # if params["quickdebug"]:
     #     agents = {i:agents[i] for i in range(10_000)}
 
+    cells_type_start = time.time()
     cells_type = {cellid: props["type"] for cellid, props in cells_util.cells.items()}
+    cells_type_time_taken = time.time() - cells_type_start
+    cells_generation_time_taken += cells_type_time_taken
 
     json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "cells_type_updated.json", cells_type))
     json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "indids_by_cellid_updated.json", indids_by_cellid))
     json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
 
+    agents_static_start = time.time()
     agents_static = static.Static()
     agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_shm"]) # for now trying without multiprocessing.RawArray
+    agents_static_time_taken = time.time() - agents_static_start
 
+    agents_dynamic_start = time.time()
     agents_dynamic = agentsutil.initialize_agents_dict_dynamic(agents, agents_dynamic)
+    agents_dynamic_time_taken = time.time() - agents_dynamic_start
 
     # jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_dynamic_updated.json", agents_dynamic)
 
     del agents
 
+    vars_util_start = time.time()
     vars_util = vars.Vars()
     vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
+    vars_util_time_taken = time.time() - vars_util_start
 
     dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
 
+    init_time_taken = time.time() - data_load_start_time
+
+    print("data_load {0}, cells_generation {1}, init_total {2}, agents_static populate {3}, agents_dynamic initialize {4}, vars_util populate {5}".format(str(data_load_time_taken), str(cells_generation_time_taken), str(init_time_taken), str(agents_static_time_taken), str(agents_dynamic_time_taken), str(vars_util_time_taken)))
+    
     gc.collect()
 
     client = None
@@ -594,7 +700,23 @@ def main():
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
         contactnetwork_sum_time_taken = 0
-        
+        contactracing_sum_time_taken = 0
+        vaccination_sum_time_taken = 0
+        refresh_dyn_params_sum_time_taken = 0
+        simdays_sum_time_taken = 0
+
+        it_agents_sum_mem = 0
+        epi_agents_sum_mem = 0
+        cat_agents_sum_mem = 0
+        seir_state_sum_mem = 0
+        inf_type_sum_mem = 0
+        inf_sev_sum_mem = 0
+        dir_con_sum_mem = 0
+        dir_con_idx1_sum_mem = 0
+        dir_con_idx2_sum_mem = 0
+
+        memory_sums = it_agents_sum_mem, epi_agents_sum_mem, cat_agents_sum_mem, seir_state_sum_mem, inf_type_sum_mem, inf_sev_sum_mem, dir_con_sum_mem, dir_con_idx1_sum_mem, dir_con_idx2_sum_mem
+
         epi_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days", "vaccination_days"]
         it_keys = ["working_schedule", "non_daily_activity_recurring", "prevday_non_daily_activity_recurring", "itinerary", "itinerary_next_day"]
         
@@ -613,7 +735,7 @@ def main():
 
         tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
         
-        for day in range(1, params["simulationdays"] + 1): # 365 + 1 / 1 + 1
+        for day in simdays_range: # 365 + 1 / 1 + 1
             day_start = time.time()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
@@ -665,6 +787,9 @@ def main():
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
                 avg_time_taken = tourist_itinerary_sum_time_taken / day
+                perf_timings_df.loc[day, "tourismitinerary_day"] = round(time_taken, 2)
+                perf_timings_df.loc[day, "tourismitinerary_avg"] = round(avg_time_taken, 2)
+
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
 
                 f.flush()
@@ -831,7 +956,9 @@ def main():
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
                 avg_time_taken = itinerary_sum_time_taken / day
-                print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                
+                perf_timings_df.loc[day, "localitinerary_day"] = round(time_taken, 2)
+                perf_timings_df.loc[day, "localitinerary_avg"] = round(avg_time_taken, 2)
+                print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
                 f.flush()
 
                 if not params["quickitineraryrun"]:
@@ -860,7 +987,8 @@ def main():
                                                                 params["numprocesses"],
                                                                 params["numthreads"],
                                                                 params["keep_processes_open"],
-                                                                log_file_name)
+                                                                log_file_name,
+                                                                agents_static)
                     else:
                         contactnetwork_dist.contactnetwork_distributed(client,
                                                                 day,
@@ -878,6 +1006,8 @@ def main():
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
                     avg_time_taken = contactnetwork_sum_time_taken / day
+                    perf_timings_df.loc[day, "contactnetwork_day"] = round(time_taken, 2)
+                    perf_timings_df.loc[day, "contactnetwork_avg"] = round(avg_time_taken, 2)
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
                     f.flush()
 
@@ -921,6 +1051,8 @@ def main():
                 if not params["contacttracing_distributed"]:
                     _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
                 else:
+                    vars_util.reset_cells_agents_timesteps()
+
                     contacttracing_dist.contacttracing_distributed(client, 
                                                                 day, 
                                                                 epi_util,
@@ -935,60 +1067,128 @@ def main():
                                                                 log_file_name)
 
                 time_taken = time.time() - start
-                print("contact_tracing time taken: " + str(time_taken))
+                contactracing_sum_time_taken += time_taken
+                avg_time_taken = contactnetwork_sum_time_taken / day
+                perf_timings_df.loc[day, "contacttracing_day"] = round(time_taken, 2)
+                perf_timings_df.loc[day, "contacttracing_avg"] = round(avg_time_taken, 2)
+                print("contact_tracing time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
                 f.flush()
 
                 # vaccinations
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
-
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
-                print("schedule_vaccinations time taken: " + str(time_taken))
+                vaccination_sum_time_taken += time_taken
+                avg_time_taken = vaccination_sum_time_taken / day
+                perf_timings_df.loc[day, "vaccination_day"] = round(time_taken, 2)
+                perf_timings_df.loc[day, "vaccination_avg"] = round(avg_time_taken, 2)
+                print("schedule_vaccinations time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
                 f.flush()
 
                 print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
                 dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids)
-
                 time_taken = time.time() - start
-                print("refresh_dynamic_parameters time taken: " + str(time_taken))
+                refresh_dyn_params_sum_time_taken += time_taken
+                avg_time_taken = refresh_dyn_params_sum_time_taken / day
+                perf_timings_df.loc[day, "refreshdynamicparams_day"] = round(time_taken, 2)
+                perf_timings_df.loc[day, "refreshdynamicparams_avg"] = round(avg_time_taken, 2)
+                print("refresh_dynamic_parameters time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
                 f.flush()
 
-            calculate_memory_info(params["logmemoryinfo"], it_agents, agents_epi, vars_util, f)
+            memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
 
             day_time_taken = time.time() - day_start
-            print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken))
+            simdays_sum_time_taken += day_time_taken
+            simdays_avg_time_taken = simdays_sum_time_taken / day
+
+            vars_util.reset_cells_agents_timesteps() # re initialize for next day
+
+            print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
             f.flush()
+
+        perf_timings_df.to_csv(perf_timings_file_name, index_label="day")
+        mem_logs_df.to_csv(mem_logs_file_name, index_label="day")
     except:
-        with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as f:
-            traceback.print_exc(file=f)
+        with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as ef:
+            traceback.print_exc(file=ef)
     finally:
-        # print(len(agents))
         sys.stdout = original_stdout
         f.close()
 
         # if params["dask_autoclose_cluster"]:
         #     client.shutdown()
 
-def calculate_memory_info(log_memory_info, it_agents, agents_epi, vars_util, f=None):
+def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util, sums=None, f=None, df=None):
     if log_memory_info:
         start = time.time()
-        it_agents_mem = sum([sys.getsizeof(d) for a in it_agents.values() for d in a.values()]) / (1024 * 1024)
-        epi_agents_mem = sum([sys.getsizeof(i) for c in agents_epi.values() for i in c.values()]) / (1024 * 1024)
-        cat_mem = sum([sys.getsizeof(i) for c in vars_util.cells_agents_timesteps.values() for i in c]) / (1024 * 1024)
-        seir_state_mem = sum([sys.getsizeof(s) for s in vars_util.agents_seir_state]) / (1024 * 1024)
-        inf_type_mem = sum([sys.getsizeof(s) for s in vars_util.agents_infection_type.values()]) / (1024 * 1024)
-        inf_sev_mem = sum([sys.getsizeof(s) for s in vars_util.agents_infection_severity.values()]) / (1024 * 1024)
-        dir_con_mem = sum([sys.getsizeof(i) for i in vars_util.directcontacts_by_simcelltype_by_day]) / (1024 * 1024)
-        dir_con_idx1_mem = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024)
-        dir_con_idx2_mem = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024)
+        it_agents_mem = round(sum([sys.getsizeof(d) for a in it_agents.values() for d in a.values()]) / (1024 * 1024), 2)
+        epi_agents_mem = round(sum([sys.getsizeof(i) for c in agents_epi.values() for i in c.values()]) / (1024 * 1024), 2)
+        cat_mem = round(sum([sys.getsizeof(i) for c in vars_util.cells_agents_timesteps.values() for i in c]) / (1024 * 1024), 2)
+        seir_state_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_seir_state]) / (1024 * 1024), 2)
+        inf_type_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_infection_type.values()]) / (1024 * 1024), 2)
+        inf_sev_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_infection_severity.values()]) / (1024 * 1024), 2)
+        dir_con_mem = round(sum([sys.getsizeof(i) for i in vars_util.directcontacts_by_simcelltype_by_day]) / (1024 * 1024), 2)
+        dir_con_idx1_mem = round(sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024), 2)
+        dir_con_idx2_mem = round(sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024), 2)
         time_taken = time.time() - start
 
         print("memory footprint. it_agents: {0}, epi_agents: {1}, cat: {2}, seir_state: {3}, inf_type: {4}, inf_sev: {5}, dir_con: {6}, dir_con_idx1: {7}, dir_con_idx2: {8}, time_taken: {9}".format(str(it_agents_mem), str(epi_agents_mem), str(cat_mem), str(seir_state_mem), str(inf_type_mem), str(inf_sev_mem), str(dir_con_mem), str(dir_con_idx1_mem), str(dir_con_idx2_mem), str(time_taken)))
 
+        if sums is not None:
+            it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, inf_type_sum, inf_sev_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum = sums
+            it_agents_sum += it_agents_mem
+            epi_agents_sum += epi_agents_mem
+            cat_sum += cat_mem
+            seir_state_sum += seir_state_mem
+            inf_type_sum += inf_type_mem
+            inf_sev_sum += inf_sev_mem
+            dir_con_sum += dir_con_mem
+            dir_con_idx1_sum += dir_con_idx1_mem
+            dir_con_idx2_sum += dir_con_idx2_mem
+
+            sums = it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, inf_type_sum, inf_sev_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum
+
         if f is not None:
             f.flush()
+
+        if df is not None:
+            start = time.time()
+            it_agents_avg = round(it_agents_sum / day, 2)
+            epi_agents_avg = round(epi_agents_sum / day, 2)
+            cat_avg = round(cat_sum / day, 2)
+            seir_state_avg = round(seir_state_sum / day, 2)
+            inf_type_avg = round(inf_type_sum / day, 2)
+            inf_sev_avg = round(inf_sev_sum / day, 2)
+            dir_con_avg = round(dir_con_sum / day, 2)
+            dir_con_idx1_avg = round(dir_con_idx1_sum / day, 2)
+            dir_con_idx2_avg = round(dir_con_idx2_sum / day, 2)
+
+            df.loc[day, "it_agents_day"] = it_agents_mem
+            df.loc[day, "it_agents_avg"] = it_agents_avg
+            df.loc[day, "epi_agents_day"] = epi_agents_mem
+            df.loc[day, "epi_agents_avg"] = epi_agents_avg
+            df.loc[day, "cells_agents_timesteps_day"] = cat_mem
+            df.loc[day, "cells_agents_timesteps_avg"] = cat_avg
+            df.loc[day, "seir_state_day"] = seir_state_mem
+            df.loc[day, "seir_state_avg"] = seir_state_avg
+            df.loc[day, "infection_type_day"] = inf_type_mem
+            df.loc[day, "infection_type_avg"] = inf_type_avg
+            df.loc[day, "infection_severity_day"] = inf_sev_mem    
+            df.loc[day, "infection_severity_avg"] = inf_sev_avg
+            df.loc[day, "direct_contacts_day"] = dir_con_mem
+            df.loc[day, "direct_contacts_avg"] = dir_con_avg
+            df.loc[day, "direct_contacts_index1_day"] = dir_con_idx1_mem
+            df.loc[day, "direct_contacts_index1_avg"] = dir_con_idx1_avg
+            df.loc[day, "direct_contacts_index2_day"] = dir_con_idx2_mem
+            df.loc[day, "direct_contacts_index2_avg"] = dir_con_idx2_avg
+
+            time_taken = time.time() - start
+
+            print("memory footprint (averages). it_agents: {0}, epi_agents: {1}, cat: {2}, seir_state: {3}, inf_type: {4}, inf_sev: {5}, dir_con: {6}, dir_con_idx1: {7}, dir_con_idx2: {8}, time_taken: {9}".format(str(it_agents_avg), str(epi_agents_avg), str(cat_avg), str(seir_state_avg), str(inf_type_avg), str(inf_sev_avg), str(dir_con_avg), str(dir_con_idx1_avg), str(dir_con_idx2_avg), str(time_taken)))
+
+    return sums, df
 
 if __name__ == '__main__':
     main()

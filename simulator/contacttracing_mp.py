@@ -130,7 +130,7 @@ def contacttracing_worker(params):
         start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, process_index, process_counter, log_file_name = params
+        day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_partial, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, process_index, process_counter, log_file_name = params
 
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_ct_mp_stack_trace_" + str(process_index) + ".txt"
@@ -145,7 +145,7 @@ def contacttracing_worker(params):
                                         n_tourists,
                                         locals_ratio_to_full_pop,
                                         agents_static,
-                                        agents,
+                                        agents_partial,
                                         vars_util,
                                         cells_households,
                                         cells_institutions,

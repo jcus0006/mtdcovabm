@@ -622,7 +622,7 @@ class Epidemiology:
                                 
                             sampled_traced_contact_ids = np.random.choice(np.array(contact_ids), size=num_of_successfully_traced, replace=False)
 
-                            print("num contacts {0} successfully traced {1} contact tracing success probability {3}".format(str(len(contact_ids)), str(num_of_successfully_traced), str(contact_tracing_success_prob)))
+                            print("num contacts {0} successfully traced {1} contact tracing success probability {2}".format(str(len(contact_ids)), str(num_of_successfully_traced), str(contact_tracing_success_prob)))
 
                             sampled_traced_contact_indices = np.arange(len(sampled_traced_contact_ids))
 
