@@ -62,8 +62,12 @@ class ContactNetwork:
         self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
 
     # full day, all cells context
-    def simulate_contact_network(self, day, weekday):        
-        agents_directcontacts_by_simcelltype_by_day  = []
+    def simulate_contact_network(self, day, weekday):
+        if self.process_index != -1:        
+            agents_directcontacts_by_simcelltype_by_day  = []
+        else:
+            agents_directcontacts_by_simcelltype_by_day = self.vars_util.directcontacts_by_simcelltype_by_day
+
         updated_agents_ids = []
         # if self.process_index >= 0:
         #     sp_cells_keys = self.mp_cells_keys[self.process_index]
@@ -88,6 +92,9 @@ class ContactNetwork:
                 # agents_directcontacts_thissimcelltype_thisday = agents_directcontacts_by_simcelltype_thisday[sim_cell_type]
 
                 # agents_directcontacts_thissimcelltype_thisday += list(cell_agents_directcontacts.keys())
+
+                current_index = len(agents_directcontacts_by_simcelltype_by_day)
+
                 for key in cell_agents_directcontacts.keys():
                     contact_pair_timesteps = cell_agents_directcontacts[key]
 
@@ -98,13 +105,21 @@ class ContactNetwork:
                     agents_directcontacts_by_simcelltype_by_day.append([sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts])
                     # agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
 
+                    current_index += 1
+
+                    if self.process_index == -1:
+                        self.vars_util.dc_by_sct_by_day_agent1_index.append([agent1_id, current_index])
+                        self.vars_util.dc_by_sct_by_day_agent2_index.append([agent2_id, current_index])
+
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
         avg_time_taken = self.contactnetwork_sum_time_taken / day
         print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
 
         agents_partial = {agentid:self.agents_epi[agentid] for agentid in updated_agents_ids}
-        self.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
+
+        if self.process_index != -1: # if -1 would already be assigned above
+            self.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
 
         return self.process_index, updated_agents_ids, agents_partial, self.vars_util
     

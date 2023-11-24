@@ -7,6 +7,7 @@ import numpy as np
 import traceback
 import contactnetwork, util, daskutil, vars
 import time
+from copy import deepcopy
 
 def contactnetwork_parallel(manager,
                             pool,
@@ -97,7 +98,7 @@ def contactnetwork_parallel(manager,
                         n_tourists, 
                         locals_ratio_to_full_pop, 
                         agents_partial, 
-                        vars_util_partial, 
+                        vars_util_partial, # deepcopy(vars_util_partial) 
                         cells_type, 
                         indids_by_cellid,
                         cells_households, 
@@ -239,12 +240,12 @@ def contactnetwork_worker(params):
     finally:
         process_counter.value -= 1
 
-        if original_stdout is not None:
-            sys.stdout = original_stdout
+        if f is not None:
+            # Close the file
+            f.close()
 
-            if f is not None:
-                # Close the file
-                f.close()
+        if original_stdout is not None:
+            sys.stdout = original_stdout   
 
 # def sync_state_info(sync_queue, process_counter):
 #     global agents_main

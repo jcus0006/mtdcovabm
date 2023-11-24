@@ -465,6 +465,22 @@ def sync_state_info_sets(day, vars_util, vars_util_partial):
 
     return vars_util
 
+# not currently being used
+# this was being used in single process scenarios (single-threaded), 
+# eventually went for a solution where the indexes are updated at the same point of inserting the contacts (for single process cases only)
+def update_direct_contact_indexes(day, vars_util):
+    current_index = len(vars_util.dc_by_sct_by_day_agent1_index)
+
+    if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+        vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
+
+    for new_index in range(current_index, len(vars_util.directcontacts_by_simcelltype_by_day)):
+        dc = vars_util.directcontacts_by_simcelltype_by_day[new_index]
+        vars_util.dc_by_sct_by_day_agent1_index.append([dc[1], new_index])
+        vars_util.dc_by_sct_by_day_agent2_index.append([dc[2], new_index])
+
+    return vars_util
+
 def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
     for cellid, agents_timesteps in vars_util_partial.cells_agents_timesteps.items():
         if cellid not in vars_util.cells_agents_timesteps:

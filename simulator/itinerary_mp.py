@@ -24,7 +24,8 @@ def localitinerary_parallel(manager,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop,
-                            agents_dynamic,
+                            it_agents,
+                            agents_epi,
                             agents_ids_by_ages,
                             vars_util, 
                             cells_industries_by_indid_by_wpid,
@@ -170,7 +171,7 @@ def localitinerary_parallel(manager,
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
                 for hh_inst in hh_insts_partial:
-                    agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages, agents_ids_by_ages_partial, is_itinerary=True)                  
+                    agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages, agents_ids_by_ages_partial, True, False, agents_epi, agents_epi_partial)                  
 
                 # agents_partial = {uid:agents[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
                 # agents_ids_by_ages_partial = {uid:agents_ids_by_ages[uid] for hh_inst in hh_insts_partial for uid in hh_inst["resident_uids"]}
@@ -191,6 +192,7 @@ def localitinerary_parallel(manager,
                         n_tourists, 
                         locals_ratio_to_full_pop,
                         agents_partial, 
+                        agents_epi_partial,
                         agents_ids_by_ages_partial, 
                         deepcopy(vars_util_partial), 
                         cells_industries_by_indid_by_wpid, 
@@ -308,7 +310,7 @@ def localitinerary_parallel(manager,
                                 agents_partial_results_combined.extend(agents_partial_results)
                                 vars_util_partial_results_combined.extend(vars_util_partial_results) # TODO - Not an array, crashes
                     else:
-                        agents_dynamic, agents_dynamic, vars_util = daskutil.handle_futures(day, imap_results, agents_dynamic, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, True)
+                        it_agents, agents_epi, vars_util = daskutil.handle_futures(day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, True)
                 elif proc_use_pool == 4:
                     for future in as_completed(futures):
                         result = future.result()
@@ -319,8 +321,8 @@ def localitinerary_parallel(manager,
                             agents_partial_results_combined.extend(agents_partial_results)
                             vars_util_partial_results_combined.extend(vars_util_partial_results)
                         else:
-                            agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results)
-
+                            agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results) # TODO - to base on it_agents and agents_epi
+                        
                         print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
                         # print(itinerary_times_by_resid_ordered)             
@@ -350,7 +352,7 @@ def localitinerary_parallel(manager,
                 print("pool/processes close/join time taken " + str(time_taken))       
         else:
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
-            params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dynparams, use_shm, -1, process_counter, log_file_name, agents_static
+            params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, it_agents, agents_epi, agents_ids_by_ages, vars_util, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dynparams, use_shm, -1, process_counter, log_file_name, agents_static
             result = localitinerary_worker(params)
 
             if not type(result) is dict:
@@ -374,7 +376,7 @@ def localitinerary_parallel(manager,
         
             return agents_partial_results_combined, vars_util_partial_results_combined
         else:
-            return agents_dynamic, vars_util
+            return it_agents, agents_epi, vars_util
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
@@ -435,12 +437,10 @@ def localitinerary_worker(params):
         if len(params) > 10:
             use_mp = True # could likely be in else of line 409
 
-            if len(params) > 31:
-                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name, agents_static = params
+            if len(params) > 32:
+                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_epi, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name, agents_static = params
             else:
-                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name = params
-
-            agents_epi = agents_dynamic
+                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_epi, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name = params
         else:
             day, weekday, weekdaystr, hh_insts, agents_dynamic, agents_epi, vars_util_mp, dyn_params, node_worker_index, log_file_name = params
 

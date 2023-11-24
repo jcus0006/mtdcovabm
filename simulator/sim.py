@@ -23,7 +23,7 @@ from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
 
-params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
             "simulationdays": 20, # 365
             "loadagents": True,
@@ -39,7 +39,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 8, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 4, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -78,7 +78,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "logmemoryinfo": True,
-            "logfilename": "mp_500k_8processes.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
+            "logfilename": "mp_10k_4processes_20days.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
         }
 
 # Load configuration
@@ -592,7 +592,7 @@ def main():
     try:
         if params["use_mp"]:
             manager = mp.Manager()
-            pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
+            pool = mp.Pool(processes=params["numprocesses"], initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
         else:
             start = time.time()
             # cluster = LocalCluster()
@@ -830,7 +830,8 @@ def main():
                                                         n_locals,
                                                         n_tourists,
                                                         locals_ratio_to_full_pop,
-                                                        agents_dynamic,
+                                                        it_agents,
+                                                        agents_epi,
                                                         agents_ids_by_ages,
                                                         vars_util,
                                                         cells_industries_by_indid_by_wpid,
@@ -1068,7 +1069,7 @@ def main():
 
                 time_taken = time.time() - start
                 contactracing_sum_time_taken += time_taken
-                avg_time_taken = contactnetwork_sum_time_taken / day
+                avg_time_taken = contactracing_sum_time_taken / day
                 perf_timings_df.loc[day, "contacttracing_day"] = round(time_taken, 2)
                 perf_timings_df.loc[day, "contacttracing_avg"] = round(avg_time_taken, 2)
                 print("contact_tracing time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
@@ -1108,8 +1109,8 @@ def main():
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
             f.flush()
 
-        perf_timings_df.to_csv(perf_timings_file_name, index_label="day")
-        mem_logs_df.to_csv(mem_logs_file_name, index_label="day")
+            perf_timings_df.to_csv(perf_timings_file_name, index_label="day")
+            mem_logs_df.to_csv(mem_logs_file_name, index_label="day")
     except:
         with open(os.path.join(current_directory, params["logsubfoldername"], subfolder_name, "stack_trace.txt"), 'w') as ef:
             traceback.print_exc(file=ef)
