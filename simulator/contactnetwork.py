@@ -230,7 +230,12 @@ class ContactNetwork:
 
                     agent_timestep_count = agents_total_timesteps[agentid]
 
-                    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[self.agents_static.get(agentid, "age_bracket_index"), 2 + ageactivitycontact_cm_activityid]
+                    age_bracket_index = self.agents_static.get(agentid, "age_bracket_index")
+
+                    if agentid >= 10000:
+                        print("agentid {0} age_bracket_index {1}".format(str(agentid), str(age_bracket_index)))
+
+                    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[age_bracket_index, 2 + ageactivitycontact_cm_activityid]
 
                     timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
 

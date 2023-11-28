@@ -352,9 +352,10 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
 
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial
 
-def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
+def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
     for uid in agents_ids:
         agents_partial[uid] = deepcopy(agents[uid])
+        agents_epi_partial[uid] = deepcopy(agents_epi[uid])
 
         if is_dask_full_array_mapping:
             vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
@@ -377,7 +378,7 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, vars_util, agents_partial,
     if not is_dask_full_array_mapping:
         vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
 
-    return agents_partial, agents_ids_by_ages_partial, vars_util_partial
+    return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
 
 def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, contact_tracing=False):
     # updated_count = 0
@@ -514,24 +515,56 @@ def split_residences_by_weight(residences, num_partitions):
 
     return process_residences_indices
 
-def itinerary_load_balancing(residences, num_workers, nodes_n_workers, weights):
-    total = np.sum(weights)
+# weights are worker based
+def itinerary_load_balancing(residences, num_workers, weights):
+    total = np.sum(weights) # get the total sum of the weights
 
-    tasks_per_node = np.round((weights / total) * len(residences)).astype(int)
+    # generate the num of tasks per worker by dividing each weight by the total and multiplying by the num of residences, converting to int and rounding to the nearest integer
+    tasks_per_worker = np.round((weights / total) * len(residences)).astype(int) 
 
-    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight'])
+    if sum(tasks_per_worker) != len(residences):
+        remaining = len(residences) - sum(tasks_per_worker)
+        
+        new_added = 0
+        while (new_added < remaining):
+            for i in range(len(tasks_per_worker)-1, -1, -1):
+                if new_added < remaining:
+                    tasks_per_worker[i] += 1
+                    new_added += 1
+                else:
+                    break
 
-    sorted_indices = [index for index, _ in sorted_residences_with_indices]
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight']) # sort the residences based on the lb_weight (lb_weight is based on the num of residents in each residence)
 
-    process_residences_indices = [[] for i in range(num_workers)]
+    sorted_indices = [index for index, _ in sorted_residences_with_indices] # reflect the indices of sorted_residences_with_indices
+
+    process_residences_indices = [[] for i in range(num_workers)] # create a multi-dim array with num_workers indices (node-agnostic) (the values of which will be added down under)
+
+    cursor = 0
+    for worker_index, num_tasks_this_worker in enumerate(tasks_per_worker): # add the indices of each residence, for every worker
+        process_residences_indices[worker_index].extend(sorted_indices[cursor: cursor + num_tasks_this_worker]) # use extend, as already an array
+        cursor += num_tasks_this_worker
+
+    return process_residences_indices
+
+def itinerary_load_balancing_by_node(residences, num_workers, nodes_n_workers, weights):
+    total = np.sum(weights) # get the total sum of the weights
+
+    tasks_per_node = np.round((weights / total) * len(residences)).astype(int) # generate the num of tasks per node by dividing each weight by the total and multiplying by the num of residences, converting to int and rounding to the nearest integer
+
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight']) # sort the residences based on the lb_weight (lb_weight is based on the num of residents in each residence)
+
+    sorted_indices = [index for index, _ in sorted_residences_with_indices] # reflect the indices of sorted_residences_with_indices
+
+    process_residences_indices = [[] for i in range(num_workers)] # create a multi-dim array with num_workers indices (node-agnostic) (the values of which will be added down under)
 
     cursor = 0
     worker_index = 0
-    for ni, num_workers in enumerate(nodes_n_workers):
-        num_tasks_this_node = tasks_per_node[ni]
-        num_tasks_per_worker = split_balanced_partitions(num_tasks_this_node, num_workers)
+    for i, (ni, num_workers) in enumerate(nodes_n_workers.items()): # i is the current index, ni is the node of the index, num_workers is the num of workers per node
+        num_tasks_this_node = tasks_per_node[i] # get the num of tasks for the current node
+        num_tasks_per_worker = split_balanced_partitions(num_tasks_this_node, num_workers) # balance the num of tasks according to the num of workers
 
-        for _, num_tasks_this_worker in enumerate(num_tasks_per_worker): 
+        for _, num_tasks_this_worker in enumerate(num_tasks_per_worker): # add the indices of each residence, for every worker
             process_residences_indices[worker_index].extend(sorted_indices[cursor: cursor + num_tasks_this_worker]) # use extend, as already an array
             worker_index += 1
             cursor += num_tasks_this_worker

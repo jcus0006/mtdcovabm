@@ -128,7 +128,7 @@ def contactnetwork_distributed(client: Client,
                 f.flush()
 
             start = time.time()
-            _, agents_epi, vars_util = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f)
+            _, agents_epi, vars_util, _ = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -150,8 +150,8 @@ def contactnetwork_worker(params):
     import os
     import shutil
 
-    # original_stdout = None
-    # f = None
+    original_stdout = None
+    f = None
     stack_trace_log_file_name = ""
 
     try:
@@ -159,9 +159,8 @@ def contactnetwork_worker(params):
 
         day, weekday, agents_epi, vars_util, dyn_params, process_index, log_file_name = params
 
-        # original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
-        # log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(process_index) + ".txt"
+        log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(day) + "_" + str(process_index) + ".txt"
 
         # subfolder_path = os.path.dirname(log_file_name)
 
@@ -171,8 +170,8 @@ def contactnetwork_worker(params):
         #     shutil.rmtree(subfolder_path)
         #     os.makedirs(subfolder_path)
 
-        # f = open(log_file_name, "w")
-        # sys.stdout = f
+        f = open(log_file_name, "w")
+        sys.stdout = f
 
         worker = get_worker()
 
@@ -231,3 +230,10 @@ def contactnetwork_worker(params):
                           "traceback": traceback_str}
         
         return exception_info
+    finally:
+        # if f is not None:
+        #     # Close the file
+        #     f.close()
+
+        if original_stdout is not None:
+            sys.stdout = original_stdout

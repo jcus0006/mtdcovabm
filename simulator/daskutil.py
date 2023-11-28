@@ -3,13 +3,16 @@ import traceback
 import util
 from dask.distributed import as_completed
 
-def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, multiprocessing=False):
+def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, multiprocessing=False, workers_remote_time_taken=None):
     future_count = 0
 
     if not multiprocessing:
         results = as_completed(futures)
     else:
         results = futures
+    
+    if workers_remote_time_taken is None:
+        workers_remote_time_taken = {}
 
     for future in results:
         try:
@@ -42,6 +45,9 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
                 if remote_worker_index == -1 and log_timings:
                     remote_worker_index = future_count
 
+                if remote_time_taken is not None:
+                    workers_remote_time_taken[remote_worker_index] = remote_time_taken
+
                 itinerary = not contactnetwork and not contacttracing
                     
                 if itinerary: 
@@ -68,9 +74,9 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
             
             future_count += 1
 
-    return agents, agents_epi, vars_util
+    return agents, agents_epi, vars_util, workers_remote_time_taken
 
-def handle_futures_batches(day, futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False):
+def handle_futures_batches(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False):
     future_count = 0
 
     main_log_file_name = task_results_stack_trace_log_file_name.replace(".txt", "_as_completed.txt")
@@ -82,18 +88,18 @@ def handle_futures_batches(day, futures, agents_dynamic, vars_util, task_results
                     vars_util_partial_result = vars.Vars()
 
                     if not extra_params:
-                        agents_dynamic_partial_result, vars_util_partial_result = result
+                        agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = result
                         # agents_dynamic_partial_result, vars_util_partial_result.cells_agents_timesteps, vars_util_partial_result.agents_seir_state, vars_util_partial_result.agents_infection_type, vars_util_partial_result.agents_infection_severity, vars_util_partial_result.agents_seir_state_transition_for_day, vars_util_partial_result.contact_tracing_agent_ids = result
                     else:
-                        _, agents_dynamic_partial_result, vars_util_partial_result, _, _, _, _ = result
+                        _, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _ = result
 
                     worker_process_index = -1
                     if log_timings:
                         worker_process_index = future_count
                         
-                    agents_dynamic, vars_util = sync_results_it(day, agents_dynamic, vars_util, agents_dynamic_partial_result, vars_util_partial_result, worker_process_index)
+                    agents, agents_epi, vars_util = sync_results_it(day, agents, agents_epi, vars_util, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, worker_process_index)
             
-                    agents_dynamic_partial_result, vars_util_partial_result = None, None
+                    agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
                 except:
                     with open(task_results_stack_trace_log_file_name, 'a') as f:
                         traceback.print_exc(file=f)
@@ -104,7 +110,7 @@ def handle_futures_batches(day, futures, agents_dynamic, vars_util, task_results
             with open(main_log_file_name, 'a') as f:
                     traceback.print_exc(file=f)
 
-    return agents_dynamic, vars_util
+    return agents, agents_epi, vars_util
     
 def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial):
     if agents_partial is not None and len(agents_partial) > 0:

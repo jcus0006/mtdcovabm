@@ -15,7 +15,7 @@ from cells import Cells
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, Worker, SSHCluster, performance_report
+from dask.distributed import Client, Worker, SSHCluster, performance_report, get_worker
 # from dask.distributed import WorkerPlugin
 from functools import partial
 import gc
@@ -25,7 +25,7 @@ import pandas as pd
 
 params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
-            "simulationdays": 20, # 365
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -39,13 +39,13 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 4, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, set to False)
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
@@ -63,11 +63,12 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
             "dask_nodes": ["localhost"],
-            "dask_nodes_n_workers": [4],
+            "dask_nodes_n_workers": [4], 
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
             # "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
-            "dask_nodes_time_taken": None, # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
+            "dask_dynamic_load_balancing": True,
+            # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
             "dask_batch_recurring": False, # if recurring send batch size recurringly, else, send batch size the first time, then 1 task per "as_completed" future 
             "dask_autoclose_cluster": False, # to be able to view the dashboard post run, set this as False, to clean immediately, set as True
@@ -78,7 +79,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "logmemoryinfo": True,
-            "logfilename": "mp_10k_4processes_20days.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
+            "logfilename": "dask_10k_lb_test.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
         }
 
 # Load configuration
@@ -133,6 +134,10 @@ def load_dask_worker_data(dask_worker, filepath, propname):
         temp = json.load(read_file, object_hook=jsonutil.jsonKeys2int)
         dask_worker.data[propname] = temp
 
+def update_tourist_data(new_tourists):
+    worker = get_worker()
+
+    worker.data["new_tourists"] = new_tourists
 # def initialize_mp(): # agents_static
 #     manager = mp.Manager()
 #     pool = mp.Pool()
@@ -142,6 +147,9 @@ def load_dask_worker_data(dask_worker, filepath, propname):
 # fp = open("memory_profiler.log", "w+")
 # @profile(stream=fp)
 def main():
+    if not params["use_mp"]:
+        params["use_shm"] = False
+
     data_load_start_time = time.time()
 
     simdays_range = range(1, params["simulationdays"] + 1)
@@ -589,6 +597,7 @@ def main():
 
     client = None
     dask_combined_scores_nworkers = None
+    dask_workers_time_taken = None
     try:
         if params["use_mp"]:
             manager = mp.Manager()
@@ -624,6 +633,19 @@ def main():
                 dask_nodes_cpu_scores = np.array(params["dask_nodes_cpu_scores"])
                 dask_nodes_n_workers = np.array(params["dask_nodes_n_workers"])
                 dask_combined_scores_nworkers = dask_nodes_cpu_scores * dask_nodes_n_workers
+
+            if params["dask_dynamic_load_balancing"]:
+                dask_workers_time_taken = {}
+
+                worker_index = 0
+                for node_index, node in enumerate(params["dask_nodes"]):
+                    # time_taken_this_node = params["dask_nodes_time_taken"][index]
+                    # num_workers_this_node = params["dask_nodes_n_workers"][index]
+                    # time_taken_each_node = time_taken_this_node / num_workers_this_node
+
+                    for worker_index in range(num_workers_this_node):
+                        dask_workers_time_taken[(node_index, worker_index)] = 1 # default to 1 second each for first day, load balancing starts from second day
+                        worker_index += 1
 
             cluster = SSHCluster(dask_nodes, 
                             connect_options={"known_hosts": None},
@@ -757,7 +779,7 @@ def main():
                                                     n_tourists,
                                                     locals_ratio_to_full_pop,
                                                     agents_static,
-                                                    agents_dynamic,
+                                                    agents_dynamic, # it_agents
                                                     agents_dynamic, # agents_epi ?
                                                     agents_ids_by_ages,
                                                     vars_util,
@@ -784,6 +806,9 @@ def main():
                 
                 itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
                 
+                for worker in cluster.workers.keys():
+                    client.submit(update_tourist_data, len(tourists_arrivals_departures_for_day), workers=worker)
+
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
                 avg_time_taken = tourist_itinerary_sum_time_taken / day
@@ -867,7 +892,8 @@ def main():
                                                                             day,
                                                                             weekday,
                                                                             weekdaystr,
-                                                                            agents_dynamic, # it_agents ?!
+                                                                            it_agents,
+                                                                            agents_epi,
                                                                             vars_util,
                                                                             dyn_params,
                                                                             params["keep_processes_open"],
@@ -883,7 +909,8 @@ def main():
                                                                                         day,
                                                                                         weekday,
                                                                                         weekdaystr,
-                                                                                        agents_dynamic, # it_agents ?!
+                                                                                        it_agents,
+                                                                                        agents_epi,
                                                                                         vars_util,
                                                                                         dyn_params,
                                                                                         params["keep_processes_open"],
@@ -898,7 +925,8 @@ def main():
                                                                                 day,
                                                                                 weekday,
                                                                                 weekdaystr,
-                                                                                agents_dynamic, # it_agents ?!
+                                                                                it_agents,
+                                                                                agents_epi,
                                                                                 vars_util,
                                                                                 dyn_params,
                                                                                 params["keep_processes_open"],
@@ -950,7 +978,7 @@ def main():
                                                                 params["dask_full_array_mapping"],
                                                                 params["dask_nodes_n_workers"],
                                                                 dask_combined_scores_nworkers,
-                                                                params["dask_nodes_time_taken"],
+                                                                dask_workers_time_taken,
                                                                 f,
                                                                 log_file_name)
                 

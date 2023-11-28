@@ -84,8 +84,6 @@ def localitinerary_parallel(manager,
         if manager is not None:
             process_counter = manager.Value("i", num_processes)
 
-        vars_util.reset_cells_agents_timesteps()
-
         # Initialize MPI
         # comm = MPI.COMM_WORLD
         # rank = comm.Get_rank()
@@ -472,6 +470,9 @@ def localitinerary_worker(params):
                 if worker.data["itineraryparams"] is None or len(worker.data["itineraryparams"]) == 0:
                     raise TypeError("Worker.data['itineraryparams'] is None or empty")
             
+            new_tourists = worker.data["new_tourists"]
+
+            print("new tourists {0}".format(str(new_tourists)))
             agents_ids_by_ages = worker.data["agents_ids_by_ages"]
             timestepmins = worker.data["timestepmins"]
             n_locals = worker.data["n_locals"]

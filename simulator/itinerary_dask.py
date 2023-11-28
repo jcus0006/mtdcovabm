@@ -9,7 +9,7 @@ import numpy as np
 import traceback
 import itinerary, vars
 import time
-import util
+import util, customdict
 from copy import copy, deepcopy
 from dask.distributed import get_worker, as_completed
 
@@ -57,8 +57,6 @@ def localitinerary_parallel(client,
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dask_stack_trace" + ".txt"
 
         # process_counter = manager.Value("i", num_processes)
-
-        vars_util.reset_cells_agents_timesteps()
         
         if num_processes > 1:
             start = time.time()
@@ -83,7 +81,7 @@ def localitinerary_parallel(client,
                 vars_util_partial = vars.Vars()
                 vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                 vars_util_partial.agents_vaccination_doses = vars_util.agents_vaccination_doses
-                vars_util_partial.cells_agents_timesteps = {}
+                vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
                 for hh_inst in hh_insts_partial:
                     agents_partial, agents_ids_by_ages_partial, vars_util_partial, _ = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial, is_itinerary=True)                  
