@@ -35,6 +35,7 @@ class Tourism:
         self.afternoon_timesteps = np.arange(72, 144)
 
         self.agents_static_to_sync = {}
+        self.departing_tourists_ids = {} # {day: []}
 
     def initialize_foreign_arrivals_departures_for_day(self, day):
         tourist_groupids_by_day = set(self.touristsgroupsdays[day])
@@ -191,7 +192,7 @@ class Tourism:
     def sync_and_clean_tourist_data(self, day, client: Client, log_file_name):
         departing_tourist_agent_ids = []
 
-        for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items(): # this represents prev day when called
+        for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
             if not grp_arr_dep_info["arrival"]:
                 tourists_group = self.touristsgroups[tour_grp_id]
 
@@ -229,16 +230,27 @@ class Tourism:
 
                 self.tourists_active_groupids.remove(tour_grp_id)
 
+        self.departing_tourists_ids[day] = departing_tourist_agent_ids
+
+        # sync new tourists with remote workers and remove tourists who have left on the previous day
         if client is not None:
             futures = []
             workers = list(client.scheduler_info()["workers"].keys()) # list()
 
+            prev_day_departing_tourists_ids = []
+            
+            if day-1 in self.departing_tourists_ids:
+                prev_day_departing_tourists_ids = self.departing_tourists_ids[day-1]
+
             for workerindex, worker in enumerate(workers):
-                future = client.submit(tourism_dist.update_tourist_data_remote, (day, self.agents_static_to_sync, departing_tourist_agent_ids, log_file_name, workerindex), workers=worker)
+                future = client.submit(tourism_dist.update_tourist_data_remote, (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, log_file_name, workerindex), workers=worker)
                 futures.append(future)
             
             for future in as_completed(futures):
                 success = future.result()
                 print("success {0}".format(str(success)))
                 future.release()
+
+            if len(prev_day_departing_tourists_ids) > 0:
+                del self.departing_tourists_ids[day-1]
 

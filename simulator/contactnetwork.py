@@ -232,9 +232,6 @@ class ContactNetwork:
 
                     age_bracket_index = self.agents_static.get(agentid, "age_bracket_index")
 
-                    if agentid >= 10000:
-                        print("agentid {0} age_bracket_index {1}".format(str(agentid), str(age_bracket_index)))
-
                     avg_contacts_by_age_activity = self.ageactivitycontactmatrix[age_bracket_index, 2 + ageactivitycontact_cm_activityid]
 
                     timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
@@ -244,7 +241,12 @@ class ContactNetwork:
                     if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
                         potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
 
-                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * self.agents_static.get(agentid, "soc_rate") * (1 - self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)
+                    soc_rate = self.agents_static.get(agentid, "soc_rate")
+
+                    if soc_rate is None:
+                        print("agentindex {0}, agentid {1}, avg_contacts_by_age_activity {2}, timestep_multiplier {3}, potential_contacts_count_multiplier {4}, soc_rate {5}, masks_hygiene_distancing_multiplier {6}".format(str(agentindex), str(agentid), str(avg_contacts_by_age_activity), str(timestep_multiplier), str(potential_contacts_count_multiplier), str(soc_rate), str(self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)))
+                    
+                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * soc_rate * (1 - self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)
 
             agents_degrees_sum = round(np.sum(agents_degrees))
             
