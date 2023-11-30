@@ -1458,7 +1458,7 @@ class Itinerary:
 
                         self.vars_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
 
-                    if len(agent["hospitalisation_days"]) > 0:
+                    if len(agent_epi["hospitalisation_days"]) > 0:
                         hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
 
                         # hosp_start_day = hosp_start_day_ts[0]

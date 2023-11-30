@@ -50,7 +50,7 @@ class DynamicParams:
 
         n_infectious = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
         n_inactive = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
-
+        
         n_infectious += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
         n_inactive += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
 

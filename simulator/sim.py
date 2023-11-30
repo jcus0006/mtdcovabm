@@ -15,7 +15,7 @@ from cells import Cells
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, Worker, SSHCluster, performance_report, get_worker
+from dask.distributed import Client, Worker, SSHCluster, performance_report
 # from dask.distributed import WorkerPlugin
 from functools import partial
 import gc
@@ -134,10 +134,8 @@ def load_dask_worker_data(dask_worker, filepath, propname):
         temp = json.load(read_file, object_hook=jsonutil.jsonKeys2int)
         dask_worker.data[propname] = temp
 
-def update_tourist_data(new_tourists):
-    worker = get_worker()
+    # worker.data["new_tourists"] = new_tourists
 
-    worker.data["new_tourists"] = new_tourists
 # def initialize_mp(): # agents_static
 #     manager = mp.Manager()
 #     pool = mp.Pool()
@@ -689,6 +687,7 @@ def main():
                 client.upload_file('simulator/seirstateutil.py')
                 client.upload_file('simulator/util.py')
                 client.upload_file('simulator/daskutil.py')
+                client.upload_file('simulator/tourism_dist.py')
                 client.upload_file('simulator/epidemiology.py')
                 client.upload_file('simulator/dynamicparams.py')
                 client.upload_file('simulator/seirstateutil.py')
@@ -755,7 +754,7 @@ def main():
             } for key, value in agents_dynamic.items()
         })
 
-        tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, agents_dynamic, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
+        tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
         
         for day in simdays_range: # 365 + 1 / 1 + 1
             day_start = time.time()
@@ -779,8 +778,8 @@ def main():
                                                     n_tourists,
                                                     locals_ratio_to_full_pop,
                                                     agents_static,
-                                                    agents_dynamic, # it_agents
-                                                    agents_dynamic, # agents_epi ?
+                                                    it_agents, # it_agents
+                                                    agents_epi, # agents_epi ?
                                                     agents_ids_by_ages,
                                                     vars_util,
                                                     cells_industries_by_indid_by_wpid,
@@ -802,12 +801,11 @@ def main():
                 
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
                 start = time.time()
-                agents_dynamic, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
+                it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
                 
                 itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
-                
-                for worker in cluster.workers.keys():
-                    client.submit(update_tourist_data, len(tourists_arrivals_departures_for_day), workers=worker)
+
+                tourist_util.sync_and_clean_tourist_data(day, client, log_file_name)
 
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
