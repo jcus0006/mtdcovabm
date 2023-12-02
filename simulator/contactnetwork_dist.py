@@ -92,7 +92,7 @@ def contactnetwork_distributed(client: Client,
                 
                 vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
-                print("starting process index " + str(worker_index) + " at " + str(time.time()))
+                print("starting process index with " + str(len(vars_util_partial.cells_agents_timesteps)) + " cells on " + str(worker_index) + " at " + str(time.time()))
                 if f is not None:
                     f.flush()
 
@@ -128,7 +128,7 @@ def contactnetwork_distributed(client: Client,
                 f.flush()
 
             start = time.time()
-            _, agents_epi, vars_util, _ = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f)
+            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -150,8 +150,8 @@ def contactnetwork_worker(params):
     import os
     import shutil
 
-    original_stdout = None
     f = None
+    original_stdout = sys.stdout
     stack_trace_log_file_name = ""
 
     try:
@@ -162,16 +162,8 @@ def contactnetwork_worker(params):
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
         log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(day) + "_" + str(process_index) + ".txt"
 
-        # subfolder_path = os.path.dirname(log_file_name)
-
-        # if not os.path.exists(subfolder_path):
-        #     os.makedirs(subfolder_path)
-        # else:
-        #     shutil.rmtree(subfolder_path)
-        #     os.makedirs(subfolder_path)
-
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        # f = open(log_file_name, "w")
+        # sys.stdout = f
 
         worker = get_worker()
 
@@ -231,9 +223,9 @@ def contactnetwork_worker(params):
         
         return exception_info
     finally:
-        # if f is not None:
-        #     # Close the file
-        #     f.close()
+        if f is not None:
+            # Close the file
+            f.close()
 
         if original_stdout is not None:
             sys.stdout = original_stdout

@@ -3,7 +3,7 @@ import traceback
 import util
 from dask.distributed import as_completed
 
-def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, multiprocessing=False, workers_remote_time_taken=None):
+def handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, multiprocessing=False, workers_remote_time_taken=None, processes_remote_time_taken=None):
     future_count = 0
 
     if not multiprocessing:
@@ -15,6 +15,7 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
         workers_remote_time_taken = {}
 
     for future in results:
+        itinerary, itinerary_daskmp, contactnetwork, contacttracing = False, False, False, False
         try:
             if not multiprocessing:
                 result = future.result()
@@ -23,41 +24,49 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
 
             remote_worker_index = -1
             remote_time_taken = None
-            
-            itinerary, contactnetwork, contacttracing = False, False, False
 
             if type(result) is not dict: # success
                 if not extra_params:
                     if len(result) == 2:
-                        agents_dynamic_partial_result, vars_util_partial_result = result
+                        it_agents_partial_result, vars_util_partial_result = result
                     elif len(result) == 3:
                         if type(result[2]) is not float:
-                            remote_worker_index, agents_dynamic_partial_result, vars_util_partial_result = result
+                            remote_worker_index, it_agents_partial_result, vars_util_partial_result = result
                         else:
                             remote_worker_index, agents_epi_partial_result, remote_time_taken = result
                             contacttracing = True  
-                    else:
+                    elif len(result) == 4:
                         remote_worker_index, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-                        contactnetwork = True             
+                        contactnetwork = True      
+                    else:
+                        remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
+                        itinerary_daskmp = True
                 else:
-                    remote_worker_index, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _, remote_time_taken = result
+                    remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _, remote_time_taken = result
 
                 if remote_worker_index == -1 and log_timings:
                     remote_worker_index = future_count
 
-                if remote_time_taken is not None:
-                    workers_remote_time_taken[remote_worker_index] = remote_time_taken
+                if remote_time_taken is not None and workers_remote_time_taken is not None:
+                    if not itinerary_daskmp:
+                        workers_remote_time_taken[remote_worker_index] = remote_time_taken
+                    else:
+                        if processes_remote_time_taken is not None:
+                            processes_remote_time_taken = remote_time_taken
 
-                itinerary = not contactnetwork and not contacttracing
+                        workers_remote_time_taken[remote_worker_index] = processes_remote_time_taken[-1]
+                        del processes_remote_time_taken[-1]
+
+                itinerary = not contactnetwork and not contacttracing and not itinerary_daskmp
                     
-                if itinerary: 
-                    agents, agents_epi, vars_util = sync_results_it(day, agents, agents_epi, vars_util, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
+                if itinerary or itinerary_daskmp: 
+                    it_agents, agents_epi, vars_util = sync_results_it(day, it_agents, agents_epi, vars_util, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
                 elif contactnetwork:
                     agents_epi, vars_util = sync_results_cn(day, agents_epi, vars_util, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
                 else:
                     agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken, f)
 
-                agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
+                it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
             else:
                 exception_info = result
 
@@ -69,12 +78,12 @@ def handle_futures(day, futures, agents, agents_epi, vars_util, task_results_sta
             with open(task_results_stack_trace_log_file_name, 'a') as f:
                 traceback.print_exc(file=f)
         finally:
-            if not multiprocessing:
+            if not multiprocessing and not itinerary_daskmp:
                 future.release()
             
             future_count += 1
 
-    return agents, agents_epi, vars_util, workers_remote_time_taken
+    return it_agents, agents_epi, vars_util, workers_remote_time_taken, processes_remote_time_taken
 
 def handle_futures_batches(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False):
     future_count = 0

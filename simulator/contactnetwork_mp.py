@@ -152,7 +152,7 @@ def contactnetwork_parallel(manager,
 
             start = time.time()
 
-            agents_dynamic, agents_dynamic, vars_util, _ = daskutil.handle_futures(day, imap_results, agents_dynamic, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, True)
+            agents_dynamic, agents_dynamic, vars_util, _, _ = daskutil.handle_futures(day, imap_results, agents_dynamic, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, True)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))

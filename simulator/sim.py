@@ -23,7 +23,7 @@ from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
 
-params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
             "simulationdays": 3, # 365/20
             "loadagents": True,
@@ -46,7 +46,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": False, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_use_mp": True, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
             "dask_numtasks": -1, # only works with dask_use_fg = False and dask_use_chunking = False. the number of tasks to split all computation into
@@ -62,16 +62,16 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            "dask_nodes": ["localhost"],
-            "dask_nodes_n_workers": [4], 
-            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            # "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            # "dask_nodes": ["localhost"],
+            # "dask_nodes_n_workers": [4], 
+            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
-            "dask_dynamic_load_balancing": True,
+            "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
             "dask_batch_recurring": False, # if recurring send batch size recurringly, else, send batch size the first time, then 1 task per "as_completed" future 
-            "dask_autoclose_cluster": False, # to be able to view the dashboard post run, set this as False, to clean immediately, set as True
+            "dask_autoclose_cluster": True,
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
             "itinerary_worker_student_weight": 1.12,
@@ -79,7 +79,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "logmemoryinfo": True,
-            "logfilename": "dask_10k_lb_test.txt" # dask_500kpop_23w_6n_dynamic_loadbalanced_seirmasking_3.txt
+            "logfilename": "daskmp_500k_3d_6n_24w.txt"
         }
 
 # Load configuration
@@ -595,7 +595,9 @@ def main():
 
     client = None
     dask_combined_scores_nworkers = None
-    dask_workers_time_taken = None
+    dask_workers_time_taken = {}
+    dask_mp_processes_time_taken = {}
+    actors = []
     try:
         if params["use_mp"]:
             manager = mp.Manager()
@@ -625,31 +627,40 @@ def main():
                     for i in range(num_workers_this_node):
                         dask_nodes.append(node)
             else:
-                dask_nodes = params["dask_nodes"]
+                dask_nodes.append(params["dask_scheduler_node"])
+
+                for dask_node in params["dask_nodes"]:
+                    dask_nodes.append(dask_node)
 
             if params["dask_nodes_cpu_scores"] is not None:
                 dask_nodes_cpu_scores = np.array(params["dask_nodes_cpu_scores"])
                 dask_nodes_n_workers = np.array(params["dask_nodes_n_workers"])
                 dask_combined_scores_nworkers = dask_nodes_cpu_scores * dask_nodes_n_workers
-
-            if params["dask_dynamic_load_balancing"]:
-                dask_workers_time_taken = {}
-
-                worker_index = 0
-                for node_index, node in enumerate(params["dask_nodes"]):
+            
+            worker_index = 0
+            for node_index, node in enumerate(params["dask_nodes"]):
+                if not params["dask_use_mp"]:
                     # time_taken_this_node = params["dask_nodes_time_taken"][index]
-                    # num_workers_this_node = params["dask_nodes_n_workers"][index]
+                    num_workers_this_node = params["dask_nodes_n_workers"][node_index]
                     # time_taken_each_node = time_taken_this_node / num_workers_this_node
 
-                    for worker_index in range(num_workers_this_node):
+                    for _ in range(num_workers_this_node):
                         dask_workers_time_taken[(node_index, worker_index)] = 1 # default to 1 second each for first day, load balancing starts from second day
                         worker_index += 1
+                else:
+                    dask_workers_time_taken[node_index] = 1
+
+            worker_class = ""
+            if not params["dask_use_mp"]:
+                worker_class = "distributed.Nanny"
+            else:
+                worker_class = "distributed.Worker"
 
             cluster = SSHCluster(dask_nodes, 
                             connect_options={"known_hosts": None},
                             worker_options={"n_workers": num_workers, "nthreads": num_threads, "local_directory": config["worker_working_directory"] }, # "memory_limit": "3GB" (in worker_options)
                             scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"] }, # local_directory in scheduler_options has no effect
-                            # worker_class="distributed.Worker", 
+                            worker_class=worker_class, 
                             remote_python=config["worker_remote_python"])
             
             time_taken = time.time() - start
@@ -694,6 +705,7 @@ def main():
                 client.upload_file('simulator/vars.py')
                 client.upload_file('simulator/itinerary.py')
                 # client.upload_file('simulator/itinerary_dask.py')
+                client.upload_file('simulator/itinerary_dmp_actor.py')
                 client.upload_file('simulator/itinerary_mp.py')
                 client.upload_file('simulator/itinerary_dist.py')
                 client.upload_file('simulator/contactnetwork.py')
@@ -936,50 +948,29 @@ def main():
                                                                                 log_file_name)
                         else:
                             itinerary_dist.localitinerary_distributed(client,
-                                                                day, 
-                                                                weekday, 
-                                                                weekdaystr, 
-                                                                itineraryparams, 
-                                                                params["timestepmins"], 
-                                                                n_locals, 
-                                                                n_tourists, 
-                                                                locals_ratio_to_full_pop, 
-                                                                it_agents,
-                                                                agents_epi,
-                                                                agents_ids_by_ages,
-                                                                vars_util,
-                                                                cells_industries_by_indid_by_wpid,
-                                                                cells_restaurants, 
-                                                                cells_hospital,
-                                                                cells_testinghub, 
-                                                                cells_vaccinationhub, 
-                                                                cells_entertainment_by_activityid, 
-                                                                cells_religious, 
-                                                                cells_households, 
-                                                                cells_breakfast_by_accomid,
-                                                                cells_airport, 
-                                                                cells_transport, 
-                                                                cells_institutions, 
-                                                                cells_accommodation, 
-                                                                epidemiologyparams, 
-                                                                dyn_params, 
-                                                                hh_insts, 
-                                                                params["numprocesses"], # to cleanup from here onwards, possibly to pass info about workers rather than these params
-                                                                params["numthreads"],
-                                                                params["proc_usepool"],                                                   
-                                                                params["sync_usethreads"],
-                                                                params["sync_usequeue"],
-                                                                params["keep_processes_open"],
-                                                                params["dask_use_mp"],
-                                                                params["dask_numtasks"],
-                                                                params["dask_mode"],
-                                                                params["dask_full_array_mapping"],
-                                                                params["dask_nodes_n_workers"],
-                                                                dask_combined_scores_nworkers,
-                                                                dask_workers_time_taken,
-                                                                f,
-                                                                log_file_name)
+                                                                    day, 
+                                                                    weekday, 
+                                                                    weekdaystr, 
+                                                                    it_agents,
+                                                                    agents_epi,
+                                                                    vars_util,
+                                                                    dyn_params, 
+                                                                    hh_insts, 
+                                                                    params["keep_processes_open"],
+                                                                    params["dask_use_mp"],
+                                                                    params["dask_numtasks"],
+                                                                    params["dask_mode"],
+                                                                    params["dask_full_array_mapping"],
+                                                                    params["dask_nodes_n_workers"],
+                                                                    dask_combined_scores_nworkers,
+                                                                    dask_workers_time_taken,
+                                                                    dask_mp_processes_time_taken,
+                                                                    f,
+                                                                    actors,
+                                                                    log_file_name)
                 
+                # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
+
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
                 avg_time_taken = itinerary_sum_time_taken / day
@@ -1144,8 +1135,8 @@ def main():
         sys.stdout = original_stdout
         f.close()
 
-        # if params["dask_autoclose_cluster"]:
-        #     client.shutdown()
+        if params["dask_autoclose_cluster"]:
+            client.shutdown()
 
 def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util, sums=None, f=None, df=None):
     if log_memory_info:

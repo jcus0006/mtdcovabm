@@ -8,7 +8,7 @@ from dask.distributed import get_worker
 def update_tourist_data_remote(params):
     f = None
     stack_trace_log_file_name = ""
-    original_stdout = sys.stdout
+    # original_stdout = sys.stdout
 
     try:
         day, agents_static_to_sync, departed_tourist_agent_ids, log_file_name, process_index = params
@@ -21,15 +21,15 @@ def update_tourist_data_remote(params):
         
         stack_trace_log_file_name = os.path.join(folder_name, "utd_dist_stack_trace_" + str(day) + "_" + str(process_index) + ".txt")
 
-        log_file_name = os.path.join(folder_name, "utd_dist_" + str(day) + "_" + str(process_index) + ".txt")
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        # log_file_name = os.path.join(folder_name, "utd_dist_" + str(day) + "_" + str(process_index) + ".txt")
+        # f = open(log_file_name, "w")
+        # sys.stdout = f
 
         dask_worker = get_worker()
         
         agents_static = dask_worker.data["agents_static"]
 
-        print("asts {0}, dep {1}".format(str(len(agents_static_to_sync)), str(len(departed_tourist_agent_ids))))
+        # print("asts {0}, dep {1}".format(str(len(agents_static_to_sync)), str(len(departed_tourist_agent_ids))))
 
         for agentid, staticinfo in agents_static_to_sync.items():
             age, res_cellid, age_bracket_index, epi_age_bracket_index, pub_transp_reg, soc_rate = staticinfo
@@ -61,4 +61,4 @@ def update_tourist_data_remote(params):
             # Close the file
             f.close()
 
-        sys.stdout = original_stdout
+        # sys.stdout = original_stdout

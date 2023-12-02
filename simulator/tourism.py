@@ -1,5 +1,6 @@
 import numpy as np
 from copy import copy
+import time
 import util, seirstateutil, tourism_dist
 from dask.distributed import Client, SSHCluster, as_completed
 
@@ -192,6 +193,7 @@ class Tourism:
     def sync_and_clean_tourist_data(self, day, client: Client, log_file_name):
         departing_tourist_agent_ids = []
 
+        start = time.time()
         for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
             if not grp_arr_dep_info["arrival"]:
                 tourists_group = self.touristsgroups[tour_grp_id]
@@ -231,9 +233,13 @@ class Tourism:
                 self.tourists_active_groupids.remove(tour_grp_id)
 
         self.departing_tourists_ids[day] = departing_tourist_agent_ids
+        time_taken = time.time() - start
+        print("sync_and_clean_tourist_data on client: " + str(time_taken))
 
         # sync new tourists with remote workers and remove tourists who have left on the previous day
         if client is not None:
+            start = time.time()
+
             futures = []
             workers = list(client.scheduler_info()["workers"].keys()) # list()
 
@@ -248,9 +254,14 @@ class Tourism:
             
             for future in as_completed(futures):
                 success = future.result()
-                print("success {0}".format(str(success)))
+                # print("success {0}".format(str(success)))
                 future.release()
 
             if len(prev_day_departing_tourists_ids) > 0:
                 del self.departing_tourists_ids[day-1]
+
+            time_taken = time.time() - start
+            print("sync_and_clean_tourist_data remotely: " + str(time_taken))
+
+        
 

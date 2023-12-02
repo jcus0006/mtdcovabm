@@ -130,7 +130,7 @@ def contacttracing_distributed(client: Client,
                 f.flush()
 
             start = time.time()
-            _, agents_epi, vars_util, _ = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
+            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
