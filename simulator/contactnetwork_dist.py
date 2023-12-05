@@ -22,7 +22,12 @@ def contactnetwork_distributed(client: Client,
                             dask_numtasks=-1,
                             dask_full_array_mapping=False,
                             keep_processes_open=True,
+                            use_mp=False,
+                            dask_nodes_n_workers=None,
+                            dask_workers_time_taken=None,
+                            dask_mp_processes_time_taken=None,
                             f=None,
+                            actors=None,
                             log_file_name="output.txt"):
     # process_counter = manager.Value("i", num_processes)
     original_log_file_name = log_file_name
@@ -44,7 +49,18 @@ def contactnetwork_distributed(client: Client,
         # task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_res_task_results_stack_trace" + ".txt"
 
         with performance_report(filename=dask_perf_log_file_name):
-            workers = client.scheduler_info()["workers"].keys()
+            workers = list(client.scheduler_info()["workers"].keys()) 
+
+            node_worker_index_by_worker_url = {}
+        
+            w_index = 0
+            for n_index, num_workers in enumerate(dask_nodes_n_workers):
+                if use_mp:
+                    node_worker_index_by_worker_url[workers[n_index]] = (n_index, n_index)
+                else:
+                    for _ in range(num_workers):
+                        node_worker_index_by_worker_url[workers[w_index]] = (n_index, w_index)
+                        w_index += 1
 
             if dask_numtasks == -1:
                 dask_numtasks = len(workers)
@@ -60,6 +76,7 @@ def contactnetwork_distributed(client: Client,
             dask_params, futures, delayed_computations = [], [], []
 
             for worker_index in range(dask_numtasks):
+                worker_url = workers[worker_index]
                 # cells_partial = {}
 
                 cells_agents_timesteps_partial = customdict.CustomDict()
@@ -96,42 +113,54 @@ def contactnetwork_distributed(client: Client,
                 if f is not None:
                     f.flush()
 
-                params = (day, weekday, agents_partial, vars_util_partial, dynparams, worker_index, log_file_name)
+                if not use_mp:
+                    params = (day, weekday, agents_partial, vars_util_partial, dynparams, worker_index, log_file_name)
+                else:
+                    params = (day, weekday, agents_partial, vars_util_partial, dynparams, log_file_name)
 
-                if dask_mode == 0:
-                    future = client.submit(contactnetwork_worker, params)
+                if not use_mp:
+                    if dask_mode == 0:
+                        future = client.submit(contactnetwork_worker, params, workers=worker_url)
+                        futures.append(future)
+                    elif dask_mode == 1 or dask_mode == 2:
+                        delayed_computation = dask.delayed(contactnetwork_worker)(params)
+                        delayed_computations.append(delayed_computation)
+                        # delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(len(dask_params))]
+                    elif dask_mode == 3:
+                        dask_params.append(params)
+                else:
+                    actor = actors[worker_index]
+                    future = actor.run_contactnetwork_parallel(params)
                     futures.append(future)
-                elif dask_mode == 1 or dask_mode == 2:
-                    delayed_computation = dask.delayed(contactnetwork_worker)(params)
-                    delayed_computations.append(delayed_computation)
-                    # delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(len(dask_params))]
+
+            time_taken = time.time() - start
+            print("futures / delayed_results generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
+
+            if not use_mp:
+                start = time.time()
+
+                if dask_mode == 1:
+                    futures = client.compute(delayed_computations)
+                elif dask_mode == 2:
+                    futures = dask.compute(delayed_computations)
                 elif dask_mode == 3:
-                    dask_params.append(params)
+                    futures = client.map(contactnetwork_worker, dask_params)
 
-            time_taken = time.time() - start
-            print("delayed_results generation: " + str(time_taken))
-            if f is not None:
-                f.flush()
-
-            start = time.time()
-
-            if dask_mode == 1:
-                futures = client.compute(delayed_computations)
-            elif dask_mode == 2:
-                futures = dask.compute(delayed_computations)
-            elif dask_mode == 3:
-                futures = client.map(contactnetwork_worker, dask_params)
-
-            time_taken = time.time() - start
-            print("futures generation: " + str(time_taken))
-            if f is not None:
-                f.flush()
+                time_taken = time.time() - start
+                print("futures generation: " + str(time_taken))
+                if f is not None:
+                    f.flush()
 
             start = time.time()
-            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f)
+           
+            _, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, False, dask_workers_time_taken, dask_mp_processes_time_taken)
+        
             
             time_taken = time.time() - start
-            print("syncing pool imap results back with main process. time taken " + str(time_taken))
+            print("sync results: " + str(time_taken))
+
             if f is not None:
                 f.flush()
             
@@ -145,6 +174,7 @@ def contactnetwork_distributed(client: Client,
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
+        raise
 
 def contactnetwork_worker(params):
     import os
@@ -170,7 +200,6 @@ def contactnetwork_worker(params):
         n_locals = worker.data["n_locals"]
         n_tourists = worker.data["n_tourists"]
         locals_ratio_to_full_pop = worker.data["locals_ratio_to_full_pop"]
-
         contactnetworkparams = worker.data["contactnetworkparams"]
         epidemiologyparams = worker.data["epidemiologyparams"]
         cells_type = worker.data["cells_type"]

@@ -378,6 +378,7 @@ def localitinerary_parallel(manager,
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
+        raise
 
 def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
     index_start_time = time.time()

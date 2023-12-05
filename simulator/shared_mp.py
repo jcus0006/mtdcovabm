@@ -33,6 +33,11 @@ def init_pool_processes_dask_mp(worker):
     global cells_accommodation
     global agents_static
 
+    global contactnetworkparams
+    global cells_type
+    global indids_by_cellid
+
+
     agents_ids_by_ages = worker.data["agents_ids_by_ages"]
     timestepmins = worker.data["timestepmins"]
     n_locals = worker.data["n_locals"]
@@ -55,3 +60,7 @@ def init_pool_processes_dask_mp(worker):
     cells_institutions = worker.data["cells_institutions"] 
     cells_accommodation = worker.data["cells_accommodation"] 
     agents_static = worker.data["agents_static"]
+
+    contactnetworkparams = worker.data["contactnetworkparams"]
+    cells_type = worker.data["cells_type"]
+    indids_by_cellid = worker.data["indids_by_cellid"]

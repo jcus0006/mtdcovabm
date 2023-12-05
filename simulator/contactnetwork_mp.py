@@ -175,6 +175,7 @@ def contactnetwork_parallel(manager,
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
+        raise
 
 def contactnetwork_worker(params):
     # still to see how to handle (whether mp.Array or local in process and then sync with main memory)

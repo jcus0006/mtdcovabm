@@ -23,7 +23,7 @@ from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
 
-params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
             "simulationdays": 3, # 365/20
             "loadagents": True,
@@ -62,10 +62,10 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            # "dask_nodes": ["localhost"],
-            # "dask_nodes_n_workers": [4], 
-            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_nodes": ["192.168.1.21"],
+            "dask_nodes_n_workers": [4], 
+            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
@@ -79,7 +79,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "logmemoryinfo": True,
-            "logfilename": "daskmp_500k_3d_6n_24w.txt"
+            "logfilename": "daskmp_10k_3d_1n_4w_mac_itcn.txt"
         }
 
 # Load configuration
@@ -145,7 +145,7 @@ def load_dask_worker_data(dask_worker, filepath, propname):
 # fp = open("memory_profiler.log", "w+")
 # @profile(stream=fp)
 def main():
-    if not params["use_mp"]:
+    if not params["use_mp"] and not params["dask_use_mp"]:
         params["use_shm"] = False
 
     data_load_start_time = time.time()
@@ -595,8 +595,8 @@ def main():
 
     client = None
     dask_combined_scores_nworkers = None
-    dask_workers_time_taken = {}
-    dask_mp_processes_time_taken = {}
+    dask_it_workers_time_taken, dask_cn_workers_time_taken = {}, {}
+    dask_mp_it_processes_time_taken, dask_mp_cn_processes_time_taken = {}, {}
     actors = []
     try:
         if params["use_mp"]:
@@ -645,10 +645,12 @@ def main():
                     # time_taken_each_node = time_taken_this_node / num_workers_this_node
 
                     for _ in range(num_workers_this_node):
-                        dask_workers_time_taken[(node_index, worker_index)] = 1 # default to 1 second each for first day, load balancing starts from second day
+                        dask_it_workers_time_taken[(node_index, worker_index)] = 1 # default to 1 second each for first day, load balancing starts from second day
+                        dask_cn_workers_time_taken[(node_index, worker_index)] = 1
                         worker_index += 1
                 else:
-                    dask_workers_time_taken[node_index] = 1
+                    dask_it_workers_time_taken[node_index] = 1
+                    dask_cn_workers_time_taken[node_index] = 1
 
             worker_class = ""
             if not params["dask_use_mp"]:
@@ -704,11 +706,11 @@ def main():
                 client.upload_file('simulator/seirstateutil.py')
                 client.upload_file('simulator/vars.py')
                 client.upload_file('simulator/itinerary.py')
+                client.upload_file('simulator/contactnetwork.py')
                 # client.upload_file('simulator/itinerary_dask.py')
                 client.upload_file('simulator/itinerary_dmp_actor.py')
                 client.upload_file('simulator/itinerary_mp.py')
-                client.upload_file('simulator/itinerary_dist.py')
-                client.upload_file('simulator/contactnetwork.py')
+                client.upload_file('simulator/itinerary_dist.py')      
                 client.upload_file('simulator/contactnetwork_dist.py')
                 client.upload_file('simulator/contacttracing_dist.py')
 
@@ -963,8 +965,8 @@ def main():
                                                                     params["dask_full_array_mapping"],
                                                                     params["dask_nodes_n_workers"],
                                                                     dask_combined_scores_nworkers,
-                                                                    dask_workers_time_taken,
-                                                                    dask_mp_processes_time_taken,
+                                                                    dask_it_workers_time_taken,
+                                                                    dask_mp_it_processes_time_taken,
                                                                     f,
                                                                     actors,
                                                                     log_file_name)
@@ -1018,7 +1020,12 @@ def main():
                                                                 params["dask_numtasks"],
                                                                 params["dask_full_array_mapping"],
                                                                 params["keep_processes_open"],
+                                                                params["dask_use_mp"],
+                                                                params["dask_nodes_n_workers"],
+                                                                dask_cn_workers_time_taken,
+                                                                dask_mp_cn_processes_time_taken,
                                                                 f,
+                                                                actors,
                                                                 log_file_name)
 
                     time_taken = time.time() - start

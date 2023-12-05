@@ -528,7 +528,7 @@ def localitinerary_distributed(client: Client,
                         vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
 
                     # Define parameters
-                    if use_mp:
+                    if not use_mp:
                         params = (day, 
                                 weekday, 
                                 weekdaystr, 
@@ -537,6 +537,7 @@ def localitinerary_distributed(client: Client,
                                 agents_epi_partial,
                                 vars_util_partial, # deepcopy(vars_util_partial) - without this was causing some nasty issues with multiprocessing (maybe with Dask it is fine)
                                 dynparams, 
+                                remote_worker_index,
                                 log_file_name)  
                     else:
                         params = (day, 
@@ -547,22 +548,13 @@ def localitinerary_distributed(client: Client,
                                 agents_epi_partial,
                                 vars_util_partial, # deepcopy(vars_util_partial) - without this was causing some nasty issues with multiprocessing (maybe with Dask it is fine)
                                 dynparams, 
-                                remote_worker_index, 
                                 log_file_name)  
 
                     print("starting process index with " + str(len(hh_insts_partial)) + " residences on " + str(remote_worker_index) + " (" + worker_url + ") at " + str(time.time()))
                     if f is not None:
                         f.flush()
 
-                    if use_mp:
-                        actor = actors[worker_index]
-                        future = actor.run_parallel(params)
-                        futures.append(future)
-                        # old impl
-                        # delayed_computation = dask.delayed(localitinerary_dist_worker)(params)
-                        # delayed_computations.append(delayed_computation)
-                        
-                    else:
+                    if not use_mp:
                         if dask_mode == 0:
                             future = client.submit(itinerary_mp.localitinerary_worker, params, workers=worker_url)
                             futures.append(future)
@@ -572,52 +564,41 @@ def localitinerary_distributed(client: Client,
                             # delayed_computations = [dask.delayed(itinerary_mp.localitinerary_worker)(dask_params[i]) for i in range(len(dask_params))]
                         elif dask_mode == 3:
                             dask_params.append(params)
-            
+                    else:
+                        actor = actors[worker_index]
+                        future = actor.run_itinerary_parallel(params)
+                        futures.append(future)
+                        # old impl
+                        # delayed_computation = dask.delayed(localitinerary_dist_worker)(params)
+                        # delayed_computations.append(delayed_computation)
+                    
             time_taken = time.time() - start
-            print("delayed_results generation: " + str(time_taken))
+            print("futures / delayed results generation: " + str(time_taken))
             if f is not None:
                 f.flush()
 
-            start = time.time()
+            if not use_mp:
+                start = time.time()
+                if dask_mode == 1: # use_mp or dask_mode == 1
+                    futures = client.compute(delayed_computations) # client.compute delays computation (and doesn't seem to work with the large dataset)
+                elif dask_mode == 2:
+                    futures = dask.compute(delayed_computations)
+                elif dask_mode == 3:
+                    futures = client.map(itinerary_mp.localitinerary_worker, dask_params)
 
-            if dask_mode == 1: # use_mp or dask_mode == 1
-                futures = client.compute(delayed_computations) # client.compute delays computation (and doesn't seem to work with the large dataset)
-            elif dask_mode == 2:
-                futures = dask.compute(delayed_computations)
-            elif dask_mode == 3:
-                futures = client.map(itinerary_mp.localitinerary_worker, dask_params)
+                time_taken = time.time() - start
 
-            # results = dask.compute(*delayed_computations) # dask.compute blocks (and seems to work)
-            time_taken = time.time() - start
-            print("futures generation: " + str(time_taken))
-            if f is not None:
-                f.flush()
-
-            # results = client.gather(futures) # another way of collecting the results
+                print("futures generation: " + str(time_taken))
+                if f is not None:
+                    f.flush()
 
             start = time.time()
 
             it_agents, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, False, dask_workers_time_taken, dask_mp_processes_time_taken)
-            # if use_mp:
-            #     for future in futures: # simple traversal of already collected results (block method)
-            #         # result = future.result()
-
-            #         worker_index, agents_partial_results_combined, agents_epi_partial_results_combined, vars_util_partial_results_combined = future
-            #         print("processing results for worker " + str(worker_index))
-            #         if f is not None:
-            #             f.flush()
-
-            #         # for i in range(1000):
-            #         #     if i in agents_partial_results_combined:
-            #         #         if agents_partial_results_combined[i]["itinerary"] is None or len(agents_partial_results_combined[i]["itinerary"]) == 0:
-            #         #             print("itinerary_dist results, itinerary is empty " + str(i))
-
-            #         it_agents, agents_epi, vars_util = daskutil.sync_results(day, worker_index, mp_hh_inst_indices, hh_insts, it_agents, agents_epi, vars_util, agents_partial_results_combined, agents_epi_partial_results_combined, vars_util_partial_results_combined)
-            # else:
-            #     it_agents, agents_epi, vars_util, dask_workers_time_taken = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, dask_full_array_mapping, f, False, dask_workers_time_taken)
 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
+
             if f is not None:
                 f.flush()
 
@@ -631,6 +612,7 @@ def localitinerary_distributed(client: Client,
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
+        raise
 
 def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
     if batch_size > len(map_params):
