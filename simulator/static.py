@@ -3,6 +3,25 @@ import multiprocessing as mp
 import sys
 import time
 
+# with this approach, agent properties are represented by indices within the different arrays
+# this class supports both multiprocessing.RawArray and Numpy arrays
+# the former is used with multiprocessing environments and the latter is used with Dask environments
+# this approach enables the concept of static shared memory in different modes
+# with multiprocessing it represents actual static shared memory that can be retrieved from multiple processes at the same time
+# with dask it represents static memory that is loaded up in each worker at the beginning of the simulation and retained for the duration of the simulation
+# since it is "mostly" static data there is no need for any additional synchronisation locking mechanisms
+# this approach offers fast access of data, and it also ensures that the majority of the data is pre-loaded wherever it is needed
+# in the case of tourism, data is passed as default values in the beginning e.g. -1, and then updated with the actual values every day as new tourists arrive
+# however, as tourists depart, the data used up to represent them cannot be released, and if set as defaults, would still be using the same size in memory
+# this limitation is due to how mp.RawArray and Numpy arrays work, in that, they utilise contiguous blocks of memory
+# in this regard, this approach is extremely wasteful in terms of memory usage
+# a better approach would be to use something like mp.manager.dict for multiprocessing environments and normal dict for dask environments
+# however, mp.manager.dict includes fine-grained locking both for reads and writes and hence was not initially opted for
+# a hybrid approach may be considered, whereby the local agents are maintained as static data, while the tourist information is maintained as mp.manager.dict
+# this would introduce a small overhead in that for every read/write we would have to decide whether the agent is a tourist or local
+# however, this will take virtually 0 seconds, due to us knowing outright how many locals are present in the simulation e.g. if agentid > 500k = tourist
+# by using this approach we would be able to to reduce the memory size considerably (indeed there are more tourists than locals over the duration of the simulation)
+# while maintaining the fast direct access and static nature of the data (apart from the overhead incurred by the fine-grained read/write locks of mp.manager.dict)
 class Static:
     def __init__(self) -> None:
         self.n_total = None

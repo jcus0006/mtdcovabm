@@ -7,6 +7,7 @@ import random
 from copy import copy, deepcopy
 import seirstateutil, customdict
 from cellsclasses import CellType, SimCellType
+from enum import IntEnum
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -683,3 +684,14 @@ def yield_chunks(lst, n):
 #                         agents_partial[sec_agent_id] = agents[sec_agent_id]
 
 #     return agents_partial, dc_by_simcelltype_by_day_partial
+
+# itinerary, itinerary_daskmp, contactnetwork, contactnetwork_daskmp, contacttracing = False, False, False, False, False
+class MethodType(IntEnum):
+    ItineraryMP = 0
+    ItineraryDist = 1
+    ItineraryDistMP = 2
+    ContactNetworkMP = 3
+    ContactNetworkDist = 4
+    ContactNetworkDistMP = 5
+    ContactTracing = 6
+    ContactTracingDist = 7

@@ -10,12 +10,13 @@ import math
 import numpy as np
 import numpy.ma as ma
 import traceback
-import itinerary, itinerary_mp, itinerary_dmp_actor, vars, shared_mp, jsonutil, customdict, daskutil, util
+import itinerary, itinerary_mp, actor_dist_mp, vars, shared_mp, jsonutil, customdict, daskutil, util
 import time
 from copy import copy, deepcopy
 from dask.distributed import Client, get_worker, as_completed, Variable, performance_report
 import multiprocessing as mp
 from memory_profiler import profile
+from util import MethodType
 
 # fp = open("memory_profiler_dist.log", "w+")
 # @profile(stream=fp)
@@ -115,12 +116,12 @@ def localitinerary_distributed_finegrained(client: Client,
             futures = client.map(localitinerary_worker_res, map_params)
         
         if (dask_mode == 0 and dask_batch_size == -1) or dask_mode == 1 or dask_mode == 3:
-            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name)
+            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name)
         elif dask_mode == 0 and not dask_batch_recurring:
-            it_agents, agents_epi, vars_util = handle_futures_non_recurring_batches(day, client, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params)
+            it_agents, agents_epi, vars_util = handle_futures_non_recurring_batches(MethodType.ItineraryDist, day, client, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params)
         elif dask_mode == 0 and dask_batch_recurring:
             for i in range(num_recursive_calls_required):
-                it_agents, agents_epi, vars_util = handle_futures_recurring_batches(day, client, dask_batch_size, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
+                it_agents, agents_epi, vars_util = handle_futures_recurring_batches(MethodType.ItineraryDist, day, client, dask_batch_size, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
         else:
             for result in results:
                 agents_partial_result, agents_epi_partial_result, vars_util_partial_result = result
@@ -210,7 +211,7 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                 print("computed_results generation: " + str(time_taken))
 
                 start = time.time()
-                it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+                it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
 
                 time_taken = time.time() - start
                 print("sync results: " + str(time_taken))
@@ -265,7 +266,7 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
             print("computed_results: " + str(time_taken))
 
             start = time.time()
-            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
 
@@ -385,7 +386,7 @@ def localitinerary_distributed_map_batched(client: Client,
         if dask_map_batched_results:
             it_agents, agents_epi, vars_util = daskutil.handle_futures_batches(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
         else:
-            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
 
         time_taken = time.time() - start
         print("sync results: " + str(time_taken))
@@ -484,16 +485,9 @@ def localitinerary_distributed(client: Client,
             delayed_computations = []
             futures = []
 
-            if use_mp and day == 1:
-                for worker_index in range(dask_numtasks):
-                    num_processes = dask_nodes_n_workers[worker_index]
-                    dmp_params = (num_processes, worker_index)
-                    actor_future = client.submit(itinerary_dmp_actor.ItineraryDMPActor, dmp_params, actor=True)
-                    
-                    actor = actor_future.result()
-                    actors.append(actor)
-
             for worker_index in range(dask_numtasks):
+                worker_start = time.time()
+
                 # cells_partial = {}
                 hh_insts_partial = []
 
@@ -550,9 +544,9 @@ def localitinerary_distributed(client: Client,
                                 dynparams, 
                                 log_file_name)  
 
-                    print("starting process index with " + str(len(hh_insts_partial)) + " residences on " + str(remote_worker_index) + " (" + worker_url + ") at " + str(time.time()))
-                    if f is not None:
-                        f.flush()
+                    # print("starting process index with " + str(len(hh_insts_partial)) + " residences on " + str(remote_worker_index) + " (" + worker_url + ") at " + str(time.time()))
+                    # if f is not None:
+                    #     f.flush()
 
                     if not use_mp:
                         if dask_mode == 0:
@@ -571,7 +565,14 @@ def localitinerary_distributed(client: Client,
                         # old impl
                         # delayed_computation = dask.delayed(localitinerary_dist_worker)(params)
                         # delayed_computations.append(delayed_computation)
-                    
+
+                worker_time_taken = time.time() - worker_start
+                
+                if not use_mp:
+                    dask_workers_time_taken[remote_worker_index] = [worker_time_taken, None]
+                else:
+                    dask_workers_time_taken[remote_worker_index[0]] = [worker_time_taken, None]
+
             time_taken = time.time() - start
             print("futures / delayed results generation: " + str(time_taken))
             if f is not None:
@@ -594,7 +595,12 @@ def localitinerary_distributed(client: Client,
 
             start = time.time()
 
-            it_agents, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, False, dask_workers_time_taken, dask_mp_processes_time_taken)
+            if not use_mp:
+                method_type = MethodType.ItineraryDist
+            else:
+                method_type = MethodType.ItineraryDistMP
+
+            it_agents, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken)
 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))

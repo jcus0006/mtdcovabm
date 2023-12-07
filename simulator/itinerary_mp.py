@@ -10,6 +10,7 @@ import traceback
 import itinerary, vars, static, customdict
 import time
 import util, daskutil
+from util import MethodType
 from copy import copy, deepcopy
 from dask import compute, delayed
 from dask.distributed import as_completed, get_worker
@@ -308,7 +309,7 @@ def localitinerary_parallel(manager,
                                 agents_partial_results_combined.extend(agents_partial_results)
                                 vars_util_partial_results_combined.extend(vars_util_partial_results) # TODO - Not an array, crashes
                     else:
-                        it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, True)
+                        it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None)
                 elif proc_use_pool == 4:
                     for future in as_completed(futures):
                         result = future.result()

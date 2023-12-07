@@ -174,6 +174,7 @@ class Tourism:
                     new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
 
                     for agentid, prop in new_soc_rates.items():
+                        self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
                         self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
 
                     agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
@@ -190,7 +191,7 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, log_file_name):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, log_file_name):
         departing_tourist_agent_ids = []
 
         start = time.time()
@@ -218,11 +219,11 @@ class Tourism:
 
                         departing_tourist_agent_ids.append(agentid)
 
-                        self.agents_static.set(agentid, "age", None)
-                        self.agents_static.set(agentid, "res_cellid", None)
-                        self.agents_static.set(agentid, "age_bracket_index", None)
-                        self.agents_static.set(agentid, "epi_age_bracket_index", None)
-                        self.agents_static.set(agentid, "pub_transp_reg", None)
+                        # self.agents_static.set(agentid, "age", None)
+                        # self.agents_static.set(agentid, "res_cellid", None)
+                        # self.agents_static.set(agentid, "age_bracket_index", None)
+                        # self.agents_static.set(agentid, "epi_age_bracket_index", None)
+                        # self.agents_static.set(agentid, "pub_transp_reg", None)
 
                     # self.tourists_active_ids.extend(room_members)
 
@@ -248,20 +249,28 @@ class Tourism:
             if day-1 in self.departing_tourists_ids:
                 prev_day_departing_tourists_ids = self.departing_tourists_ids[day-1]
 
-            for workerindex, worker in enumerate(workers):
-                future = client.submit(tourism_dist.update_tourist_data_remote, (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, log_file_name, workerindex), workers=worker)
-                futures.append(future)
+            for worker_index, worker in enumerate(workers):
+                params = (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, log_file_name, worker_index)
+                if len(actors) == 0:
+                    future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
+                    futures.append(future)
+                else:
+                    actor = actors[worker_index]
+                    future = actor.run_update_tourist_data_remote(params)
+                    futures.append(future)
             
+            success = False
             for future in as_completed(futures):
                 success = future.result()
-                # print("success {0}".format(str(success)))
-                future.release()
+
+                if len(actors) == 0:
+                    future.release()
 
             if len(prev_day_departing_tourists_ids) > 0:
                 del self.departing_tourists_ids[day-1]
 
             time_taken = time.time() - start
-            print("sync_and_clean_tourist_data remotely: " + str(time_taken))
+            print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
 
         
 

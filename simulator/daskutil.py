@@ -1,12 +1,14 @@
 import time
 import traceback
-import util
+import util, customexception
 from dask.distributed import as_completed
+from copy import copy
+from util import MethodType
 
-def handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, multiprocessing=False, workers_remote_time_taken=None, processes_remote_time_taken=None):
+def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, workers_remote_time_taken=None, processes_remote_time_taken=None):       
     future_count = 0
 
-    if not multiprocessing:
+    if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP:
         results = as_completed(futures)
     else:
         results = futures
@@ -15,9 +17,8 @@ def handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_
         workers_remote_time_taken = {}
 
     for future in results:
-        itinerary, itinerary_daskmp, contactnetwork, contactnetwork_daskmp, contacttracing = False, False, False, False, False
         try:
-            if not multiprocessing:
+            if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP:
                 result = future.result()
             else:
                 result = future
@@ -37,14 +38,8 @@ def handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_
                             contacttracing = True  
                     elif len(result) == 4:
                         remote_worker_index, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-
-                        if type(remote_time_taken) is not dict:
-                            contactnetwork = True      
-                        else:
-                            contactnetwork_daskmp = True
                     else:
                         remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-                        itinerary_daskmp = True
                 else:
                     remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _, remote_time_taken = result
 
@@ -52,20 +47,19 @@ def handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_
                     remote_worker_index = future_count
 
                 if remote_time_taken is not None and workers_remote_time_taken is not None:
-                    if not itinerary_daskmp and not contactnetwork_daskmp:
-                        workers_remote_time_taken[remote_worker_index] = remote_time_taken
+                    if method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
+                        workers_remote_time_taken[remote_worker_index][1] = remote_time_taken
                     else:
                         if processes_remote_time_taken is not None:
-                            processes_remote_time_taken = remote_time_taken
+                            for k, v in remote_time_taken.items():
+                                processes_remote_time_taken[k] = v
 
                         workers_remote_time_taken[remote_worker_index] = processes_remote_time_taken[-1]
                         del processes_remote_time_taken[-1]
-
-                itinerary = not contactnetwork and not contacttracing and not itinerary_daskmp and not contactnetwork_daskmp
                     
-                if itinerary or itinerary_daskmp: 
+                if method_type == MethodType.ItineraryMP or method_type == MethodType.ItineraryDist or method_type == MethodType.ItineraryDistMP: 
                     it_agents, agents_epi, vars_util = sync_results_it(day, it_agents, agents_epi, vars_util, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
-                elif contactnetwork or contactnetwork_daskmp:
+                elif method_type == MethodType.ContactNetworkMP or method_type == MethodType.ContactNetworkDist or method_type == MethodType.ContactNetworkDistMP:
                     agents_epi, vars_util = sync_results_cn(day, agents_epi, vars_util, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
                 else:
                     agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken, f)
@@ -79,22 +73,19 @@ def handle_futures(day, futures, it_agents, agents_epi, vars_util, task_results_
                     f.write(f"Exception Message: {exception_info['message']}\n")
                     f.write(f"Traceback: {exception_info['traceback']}\n")
 
-                ex_type = type(exception_info['type'], (Exception,), {})
-                new_ex = ex_type(exception_info['message'])
-                setattr(new_ex, '__traceback__', exception_info['traceback'])
-                raise new_ex
+                raise customexception.CustomException(exception_info)
         except:
             with open(task_results_stack_trace_log_file_name, 'a') as f:
                 traceback.print_exc(file=f)
 
             raise
         finally:
-            if not multiprocessing and not itinerary_daskmp and not contactnetwork_daskmp:
+            if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP and method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
                 future.release()
             
             future_count += 1
 
-    return it_agents, agents_epi, vars_util, workers_remote_time_taken, processes_remote_time_taken, exception_info
+    return it_agents, agents_epi, vars_util, workers_remote_time_taken, processes_remote_time_taken
 
 def handle_futures_batches(day, futures, agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False):
     future_count = 0

@@ -8,6 +8,7 @@ import traceback
 import contactnetwork, util, daskutil, vars
 import time
 from copy import deepcopy
+from util import MethodType
 
 def contactnetwork_parallel(manager,
                             pool,
@@ -152,7 +153,7 @@ def contactnetwork_parallel(manager,
 
             start = time.time()
 
-            agents_dynamic, agents_dynamic, vars_util, _, _ = daskutil.handle_futures(day, imap_results, agents_dynamic, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, True)
+            agents_dynamic, agents_dynamic, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, agents_dynamic, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))

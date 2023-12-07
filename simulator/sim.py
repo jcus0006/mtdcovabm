@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
+from actor_dist_mp import ActorDistMP
 from dynamicparams import DynamicParams
 import multiprocessing as mp
 from dask.distributed import Client, Worker, SSHCluster, performance_report
@@ -45,7 +46,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": True, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
@@ -62,7 +63,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            "dask_nodes": ["192.168.1.21"],
+            "dask_nodes": ["localhost"],
             "dask_nodes_n_workers": [4], 
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
             # "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
@@ -79,7 +80,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "logmemoryinfo": True,
-            "logfilename": "daskmp_10k_3d_1n_4w_mac_itcn.txt"
+            "logfilename": "daskmp_10k_3d_1n_4w_itcn_noshm.txt"
         }
 
 # Load configuration
@@ -690,6 +691,7 @@ def main():
 
             with performance_report(filename=dask_init_file_name):
                 start = time.time()
+                client.upload_file('simulator/customexception.py')
                 client.upload_file('simulator/cellsclasses.py')
                 client.upload_file('simulator/customdict.py')
                 client.upload_file('simulator/npencoder.py')
@@ -708,11 +710,12 @@ def main():
                 client.upload_file('simulator/itinerary.py')
                 client.upload_file('simulator/contactnetwork.py')
                 # client.upload_file('simulator/itinerary_dask.py')
-                client.upload_file('simulator/itinerary_dmp_actor.py')
+                client.upload_file('simulator/actor_dist_mp.py')
                 client.upload_file('simulator/itinerary_mp.py')
                 client.upload_file('simulator/itinerary_dist.py')      
                 client.upload_file('simulator/contactnetwork_dist.py')
                 client.upload_file('simulator/contacttracing_dist.py')
+                client.upload_file('simulator/tourism_dist.py')
 
                 for dynamicjsonpath in json_paths_to_upload:
                     client.upload_file(dynamicjsonpath)
@@ -770,6 +773,15 @@ def main():
 
         tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
         
+        if params["dask_use_mp"]:
+            for worker_index in range(len(list(client.scheduler_info()["workers"].keys()))):
+                num_processes = params["dask_nodes_n_workers"][worker_index]
+                dmp_params = (num_processes, worker_index)
+                actor_future = client.submit(ActorDistMP, dmp_params, actor=True)
+                
+                actor = actor_future.result()
+                actors.append(actor)
+
         for day in simdays_range: # 365 + 1 / 1 + 1
             day_start = time.time()
 
@@ -819,7 +831,7 @@ def main():
                 
                 itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
 
-                tourist_util.sync_and_clean_tourist_data(day, client, log_file_name)
+                tourist_util.sync_and_clean_tourist_data(day, client, actors, log_file_name)
 
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
@@ -979,6 +991,11 @@ def main():
                 perf_timings_df.loc[day, "localitinerary_day"] = round(time_taken, 2)
                 perf_timings_df.loc[day, "localitinerary_avg"] = round(avg_time_taken, 2)
                 print("localitinerary_parallel for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+                print("main workers: time results [start, time_taken]: {0}".format(str(dask_it_workers_time_taken)))
+
+                if dask_mp_it_processes_time_taken is not None and len(dask_mp_it_processes_time_taken) > 0:
+                    print("inner mp processes: time results [start, time_taken]: {0}".format(str(dask_mp_it_processes_time_taken)))
+                
                 f.flush()
 
                 if not params["quickitineraryrun"]:
@@ -1034,6 +1051,11 @@ def main():
                     perf_timings_df.loc[day, "contactnetwork_day"] = round(time_taken, 2)
                     perf_timings_df.loc[day, "contactnetwork_avg"] = round(avg_time_taken, 2)
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))                 
+                    print("main workers: time results [start, time_taken]: {0}".format(str(dask_cn_workers_time_taken)))
+
+                    if dask_mp_cn_processes_time_taken is not None and len(dask_mp_cn_processes_time_taken) > 0:
+                        print("inner mp processes: time results [start, time_taken]: {0}".format(str(dask_mp_cn_processes_time_taken)))
+
                     f.flush()
 
                 # contact tracing
