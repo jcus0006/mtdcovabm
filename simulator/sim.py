@@ -24,9 +24,9 @@ from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
 
-params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 20, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -63,10 +63,10 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            "dask_nodes": ["localhost"],
-            "dask_nodes_n_workers": [4], 
-            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            # "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            # "dask_nodes": ["localhost"],
+            # "dask_nodes_n_workers": [4], 
+            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
@@ -79,8 +79,9 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "contacttracing_distributed": False,
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
+            "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "daskmp_10k_3d_1n_4w_itcn_noshm.txt"
+            "logfilename": "daskmp_500k_20d_6n_24w_itcn_shmfix_3.txt"
         }
 
 # Load configuration
@@ -218,7 +219,8 @@ def main():
 
     print("interpreter: " + os.path.dirname(sys.executable))
     print("current working directory: " + os.getcwd())
-    f.flush()
+    if f is not None:
+        f.flush()
 
     json_paths_to_upload = [] # to be uploaded to remote nodes
     
@@ -263,6 +265,8 @@ def main():
     data_load_time_taken = time.time() - data_load_start_time
 
     print("loading params, time taken: " + str(data_load_time_taken))
+    if f is not None:
+        f.flush()
 
     cells_generation_time_taken = 0
 
@@ -313,6 +317,9 @@ def main():
 
         tourists_time_taken = time.time() - tourists_start
         print("loading tourists, time_taken: " + str(tourists_time_taken))
+        if f is not None:
+            f.flush()
+
         data_load_time_taken += tourists_time_taken
 
     if params["loadagents"]:
@@ -324,6 +331,8 @@ def main():
 
         agents_time_taken = time.time() - agents_start
         print("loading tourists, time_taken: " + str(agents_time_taken))
+        if f is not None:
+            f.flush()
         data_load_time_taken += agents_time_taken
         # agentsfile = open(os.path.join(current_directory, "population", population_sub_folder, "agents.json"))
         # agents = json.load(agentsfile)
@@ -334,6 +343,8 @@ def main():
         agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agentsutil.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
         agents_initialize_time_taken = time.time() - agents_initialize_start
         print("agents dict initialize, time taken: " + str(agents_initialize_time_taken))
+        if f is not None:
+            f.flush()
 
     cells_util = Cells(agents, cells, cellindex)
 
@@ -591,7 +602,9 @@ def main():
     init_time_taken = time.time() - data_load_start_time
 
     print("data_load {0}, cells_generation {1}, init_total {2}, agents_static populate {3}, agents_dynamic initialize {4}, vars_util populate {5}".format(str(data_load_time_taken), str(cells_generation_time_taken), str(init_time_taken), str(agents_static_time_taken), str(agents_dynamic_time_taken), str(vars_util_time_taken)))
-    
+    if f is not None:
+        f.flush()
+
     gc.collect()
 
     client = None
@@ -668,6 +681,8 @@ def main():
             
             time_taken = time.time() - start
             print("cluster generation: " + str(time_taken))
+            if f is not None:
+                f.flush()
             # cluster.scale(params["numprocesses"])
 
             # Set the working directory for the scheduler and workers
@@ -678,8 +693,8 @@ def main():
             client = Client(cluster)
             time_taken = time.time() - start
             print("client generation: " + str(time_taken))
-
-            f.flush()
+            if f is not None:
+                f.flush()
 
             # plugin = ReadOnlyData(agentsfilepath)
             # client.register_worker_plugin(plugin, name="read-only-data")
@@ -733,7 +748,8 @@ def main():
                 time_taken = time.time() - start
                 print("upload modules remotely: " + str(time_taken))
 
-                f.flush()
+                if f is not None:
+                    f.flush()   
 
         itinerary_sum_time_taken = 0
         tourist_itinerary_sum_time_taken = 0
@@ -776,13 +792,18 @@ def main():
         if params["dask_use_mp"]:
             for worker_index in range(len(list(client.scheduler_info()["workers"].keys()))):
                 num_processes = params["dask_nodes_n_workers"][worker_index]
-                dmp_params = (num_processes, worker_index)
+                dmp_params = (num_processes, worker_index, params["remotelogsubfoldername"], params["logfilename"])
                 actor_future = client.submit(ActorDistMP, dmp_params, actor=True)
                 
                 actor = actor_future.result()
                 actors.append(actor)
 
         for day in simdays_range: # 365 + 1 / 1 + 1
+
+            print("simulating day {0}".format(str(day)))
+            if f is not None:
+                f.flush()
+
             day_start = time.time()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
@@ -825,13 +846,25 @@ def main():
                                                     dyn_params,
                                                     tourists)
                 
-                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
-                start = time.time()
-                it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day)
-                
-                itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday)
+                print("generating_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
 
-                tourist_util.sync_and_clean_tourist_data(day, client, actors, log_file_name)
+                start = time.time()
+                it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
+                print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
+
+                itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, log_file_name, f)
+                print("generate_tourist_itinerary (done) for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
+
+                tourist_util.sync_and_clean_tourist_data(day, client, actors, log_file_name, f)
+                print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
 
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
@@ -840,8 +873,8 @@ def main():
                 perf_timings_df.loc[day, "tourismitinerary_avg"] = round(avg_time_taken, 2)
 
                 print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-
-                f.flush()
+                if f is not None:
+                    f.flush()
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
@@ -996,10 +1029,14 @@ def main():
                 if dask_mp_it_processes_time_taken is not None and len(dask_mp_it_processes_time_taken) > 0:
                     print("inner mp processes: time results [start, time_taken]: {0}".format(str(dask_mp_it_processes_time_taken)))
                 
-                f.flush()
+                if f is not None:
+                    f.flush()
 
                 if not params["quickitineraryrun"]:
                     print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
+                        f.flush()
+
                     start = time.time()       
 
                     if params["use_mp"]:
@@ -1056,10 +1093,14 @@ def main():
                     if dask_mp_cn_processes_time_taken is not None and len(dask_mp_cn_processes_time_taken) > 0:
                         print("inner mp processes: time results [start, time_taken]: {0}".format(str(dask_mp_cn_processes_time_taken)))
 
-                    f.flush()
+                    if f is not None:
+                        f.flush()
 
                 # contact tracing
                 print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
+
                 start = time.time()
 
                 vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
@@ -1119,10 +1160,15 @@ def main():
                 perf_timings_df.loc[day, "contacttracing_day"] = round(time_taken, 2)
                 perf_timings_df.loc[day, "contacttracing_avg"] = round(avg_time_taken, 2)
                 print("contact_tracing time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-                f.flush()
+
+                if f is not None:
+                    f.flush()   
 
                 # vaccinations
                 print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
+
                 start = time.time()
                 epi_util.schedule_vaccinations(day)
                 time_taken = time.time() - start
@@ -1131,9 +1177,13 @@ def main():
                 perf_timings_df.loc[day, "vaccination_day"] = round(time_taken, 2)
                 perf_timings_df.loc[day, "vaccination_avg"] = round(avg_time_taken, 2)
                 print("schedule_vaccinations time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-                f.flush()
+                if f is not None:
+                    f.flush()
 
                 print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
+
                 start = time.time()
                 dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids)
                 time_taken = time.time() - start
@@ -1142,7 +1192,8 @@ def main():
                 perf_timings_df.loc[day, "refreshdynamicparams_day"] = round(time_taken, 2)
                 perf_timings_df.loc[day, "refreshdynamicparams_avg"] = round(avg_time_taken, 2)
                 print("refresh_dynamic_parameters time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-                f.flush()
+                if f is not None:
+                    f.flush()
 
             memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
 
@@ -1153,7 +1204,8 @@ def main():
             vars_util.reset_cells_agents_timesteps() # re initialize for next day
 
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
-            f.flush()
+            if f is not None:
+                f.flush()
 
             perf_timings_df.to_csv(perf_timings_file_name, index_label="day")
             mem_logs_df.to_csv(mem_logs_file_name, index_label="day")
@@ -1182,7 +1234,9 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
         time_taken = time.time() - start
 
         print("memory footprint. it_agents: {0}, epi_agents: {1}, cat: {2}, seir_state: {3}, inf_type: {4}, inf_sev: {5}, dir_con: {6}, dir_con_idx1: {7}, dir_con_idx2: {8}, time_taken: {9}".format(str(it_agents_mem), str(epi_agents_mem), str(cat_mem), str(seir_state_mem), str(inf_type_mem), str(inf_sev_mem), str(dir_con_mem), str(dir_con_idx1_mem), str(dir_con_idx2_mem), str(time_taken)))
-
+        if f is not None:
+            f.flush()
+        
         if sums is not None:
             it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, inf_type_sum, inf_sev_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum = sums
             it_agents_sum += it_agents_mem
@@ -1196,9 +1250,6 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
             dir_con_idx2_sum += dir_con_idx2_mem
 
             sums = it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, inf_type_sum, inf_sev_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum
-
-        if f is not None:
-            f.flush()
 
         if df is not None:
             start = time.time()
@@ -1234,6 +1285,8 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
             time_taken = time.time() - start
 
             print("memory footprint (averages). it_agents: {0}, epi_agents: {1}, cat: {2}, seir_state: {3}, inf_type: {4}, inf_sev: {5}, dir_con: {6}, dir_con_idx1: {7}, dir_con_idx2: {8}, time_taken: {9}".format(str(it_agents_avg), str(epi_agents_avg), str(cat_avg), str(seir_state_avg), str(inf_type_avg), str(inf_sev_avg), str(dir_con_avg), str(dir_con_idx1_avg), str(dir_con_idx2_avg), str(time_taken)))
+            if f is not None:
+                f.flush()
 
     return sums, df
 

@@ -38,7 +38,7 @@ class Tourism:
         self.agents_static_to_sync = {}
         self.departing_tourists_ids = {} # {day: []}
 
-    def initialize_foreign_arrivals_departures_for_day(self, day):
+    def initialize_foreign_arrivals_departures_for_day(self, day, f=None):
         tourist_groupids_by_day = set(self.touristsgroupsdays[day])
 
         tourist_groupids_by_nextday = []
@@ -51,7 +51,7 @@ class Tourism:
                 self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day)
             else:
                 self.tourists_arrivals_departures_for_day = copy(self.tourists_arrivals_departures_for_nextday)
-            
+          
         self.tourists_arrivals_departures_for_nextday = {}
         if len(tourist_groupids_by_nextday):
             self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday)
@@ -191,7 +191,7 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, log_file_name):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, log_file_name, f=None):
         departing_tourist_agent_ids = []
 
         start = time.time()
@@ -236,6 +236,8 @@ class Tourism:
         self.departing_tourists_ids[day] = departing_tourist_agent_ids
         time_taken = time.time() - start
         print("sync_and_clean_tourist_data on client: " + str(time_taken))
+        if f is not None:
+            f.flush()
 
         # sync new tourists with remote workers and remove tourists who have left on the previous day
         if client is not None:
@@ -250,27 +252,34 @@ class Tourism:
                 prev_day_departing_tourists_ids = self.departing_tourists_ids[day-1]
 
             for worker_index, worker in enumerate(workers):
-                params = (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, log_file_name, worker_index)
                 if len(actors) == 0:
+                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, log_file_name, worker_index)
                     future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
                     futures.append(future)
                 else:
+                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, worker_index)
                     actor = actors[worker_index]
                     future = actor.run_update_tourist_data_remote(params)
                     futures.append(future)
             
             success = False
             for future in as_completed(futures):
-                success = future.result()
+                process_index, success = future.result()
 
                 if len(actors) == 0:
                     future.release()
+
+                print("process_index {0}, success {1}".format(str(process_index), str(success)))
+                if f is not None:
+                    f.flush()
 
             if len(prev_day_departing_tourists_ids) > 0:
                 del self.departing_tourists_ids[day-1]
 
             time_taken = time.time() - start
             print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
+            if f is not None:
+                f.flush()
 
         
 

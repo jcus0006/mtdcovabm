@@ -7,7 +7,8 @@ from copy import copy
 import util, seirstateutil
 from epidemiology import Epidemiology
 from epidemiologyclasses import SEIRState, InfectionType, QuarantineType
-import time
+import os
+import traceback
 
 class Itinerary:
     def __init__(self, 
@@ -1368,201 +1369,170 @@ class Itinerary:
 
         return skip_ts
 
-    def generate_tourist_itinerary(self, simday, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday):
-        agents_quar_hosp = {}
-
-        for groupid in tourists_active_groupids:
-            tourists_group = touristsgroups[groupid]
-
-            accomtype = tourists_group["accomtype"] # 1 = Collective, 2 = Other rented, 3 = Non rented
-            accominfo = tourists_group["accominfo"]
-            arrivalday = tourists_group["arr"]
-            departureday = tourists_group["dep"]
-            purpose = tourists_group["purpose"] # 1 = Holiday, 2 = Business, 3 = Visiting Family, 4 = Other
-            subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
-            agentids = tourists_group["agent_ids"]
-            rescellids = tourists_group["res_cell_ids"]
-
-            is_group_activity_for_day = False
-            is_arrivalday = arrivalday == simday
-            is_departureday = departureday == simday
-            is_arrivalnextday = arrivalday == simday + 1
-            is_departurenextday = departureday == simday + 1
-
-            arr_dep_for_day, arr_dep_ts, arr_dep_time, airport_duration = None, None, None, None
-            arr_dep_for_nextday, dep_nextday_ts, dep_nextday_time = None, None, None
-
-            if is_arrivalday or is_departureday:
-                is_group_activity_for_day = True
-                arr_dep_for_day = tourists_arrivals_departures_for_day[groupid]
-                arr_dep_ts = arr_dep_for_day["ts"]
-                airport_duration = arr_dep_for_day["airport_duration"]
-                arr_dep_time = self.get_hour_by_timestep(arr_dep_ts)
+    def generate_tourist_itinerary(self, simday, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, log_file_name, f=None):
+        stack_trace_log_file_name = ""
+        try:
+            folder_name = ""
+            if log_file_name != "output.txt":
+                folder_name = os.path.dirname(log_file_name)
             else:
-                if tourists_group["under_age_agent"]:
-                    is_group_activity_for_day = True
-                else:
-                    tour_group_activity_rand = random.random()
-                    tour_group_activity_prob = self.tourism_group_activity_probability_by_purpose[purpose-1]
-
-                    is_group_activity_for_day = tour_group_activity_rand < tour_group_activity_prob
-
-            if is_departurenextday:
-                if simday < 365:
-                    arr_dep_for_nextday = tourists_arrivals_departures_for_nextday[groupid]
-                    dep_nextday_ts = arr_dep_for_nextday["ts"]
-                    airport_duration = arr_dep_for_nextday["airport_duration"]
-                    dep_nextday_time = self.get_hour_by_timestep(dep_nextday_ts)
+                folder_name = os.getcwd()
             
-            for agentid in agentids:
-                is_quarantined, is_hospitalised = False, False
-                is_quarantined_or_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day = False, False, False
-                hosp_start_day_ts, hosp_end_day_ts, hosp_start_day, hosp_end_day = None, None, None, None
-                quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
+            stack_trace_log_file_name = os.path.join(folder_name, "tourism_stack_trace_" + str(simday) + ".txt")
 
-                if not is_arrivalnextday:
-                    agent = self.agents_dynamic[agentid]
-                    agent_epi = self.agents_epi[agentid]
+            agents_quar_hosp = {}
 
-                    if is_arrivalday:
-                        # sample tourist entry infection probability
-                        exposed_rand = random.random()
+            for groupid in tourists_active_groupids:
+                tourists_group = touristsgroups[groupid]
 
-                        if exposed_rand < self.tourist_entry_infection_probability:                 
-                            potential_days = np.arange(arrivalday-14, arrivalday+1)
+                accomtype = tourists_group["accomtype"] # 1 = Collective, 2 = Other rented, 3 = Non rented
+                accominfo = tourists_group["accominfo"]
+                arrivalday = tourists_group["arr"]
+                departureday = tourists_group["dep"]
+                purpose = tourists_group["purpose"] # 1 = Holiday, 2 = Business, 3 = Visiting Family, 4 = Other
+                subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
+                agentids = tourists_group["agent_ids"]
+                rescellids = tourists_group["res_cell_ids"]
 
-                            sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0]
+                is_group_activity_for_day = False
+                is_arrivalday = arrivalday == simday
+                is_departureday = departureday == simday
+                is_arrivalnextday = arrivalday == simday + 1
+                is_departurenextday = departureday == simday + 1
 
-                            agent_state_transition_by_day = agent_epi["state_transition_by_day"]
-                            agent_epi_age_bracket_index = self.agents_static.get(agentid, "epi_age_bracket_index")
-                            agent_quarantine_days = agent_epi["quarantine_days"]
+                arr_dep_for_day, arr_dep_ts, arr_dep_time, airport_duration = None, None, None, None
+                arr_dep_for_nextday, dep_nextday_ts, dep_nextday_time = None, None, None
 
-                            # agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
-                            agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
-                    
-                            if agent_infection_type != InfectionType.Undefined:
-                                # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
-                                self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, agentid)
-                                # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
-                                self.vars_util.agents_infection_type[agentid] = agent_infection_type
-                                # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
-                                self.vars_util.agents_infection_severity[agentid] = agent_infection_severity
-                                
-                    new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
+                if is_arrivalday or is_departureday:
+                    is_group_activity_for_day = True
+                    arr_dep_for_day = tourists_arrivals_departures_for_day[groupid]
+                    arr_dep_ts = arr_dep_for_day["ts"]
+                    airport_duration = arr_dep_for_day["airport_duration"]
+                    arr_dep_time = self.get_hour_by_timestep(arr_dep_ts)
+                else:
+                    if tourists_group["under_age_agent"]:
+                        is_group_activity_for_day = True
+                    else:
+                        tour_group_activity_rand = random.random()
+                        tour_group_activity_prob = self.tourism_group_activity_probability_by_purpose[purpose-1]
 
-                    # this updates the state, infection type and severity (such that the itinerary may also handle public health interventions)
-                    new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentid, simday) # agentid is guaranteed to be agentindex here
+                        is_group_activity_for_day = tour_group_activity_rand < tour_group_activity_prob
 
-                    if new_states is not None:
-                        new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
+                if is_departurenextday:
+                    if simday < 365:
+                        arr_dep_for_nextday = tourists_arrivals_departures_for_nextday[groupid]
+                        dep_nextday_ts = arr_dep_for_nextday["ts"]
+                        airport_duration = arr_dep_for_nextday["airport_duration"]
+                        dep_nextday_time = self.get_hour_by_timestep(dep_nextday_ts)
+                
+                for agentid in agentids:
+                    is_quarantined, is_hospitalised = False, False
+                    is_quarantined_or_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day = False, False, False
+                    hosp_start_day_ts, hosp_end_day_ts, hosp_start_day, hosp_end_day = None, None, None, None
+                    quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
 
-                        self.vars_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
-
-                    if len(agent_epi["hospitalisation_days"]) > 0:
-                        hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
-
-                        # hosp_start_day = hosp_start_day_ts[0]
-                        # hosp_end_day = hosp_end_day_ts[0]
-
-                        if simday >= hosp_start_day and simday <= hosp_end_day:
-                            # print("is hospitalised")
-                            is_group_activity_for_day = False
-                            is_hospitalised = True
-                            is_quarantined_or_hospitalised = True
-
-                        if simday == hosp_start_day:
-                            is_quarantine_hospital_start_day = True
-
-                        if simday == hosp_end_day:
-                            is_quarantine_hospital_end_day = True
-
-                    if len(agent_epi["quarantine_days"]) > 0:
-                        quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
-
-                        # quar_start_day = quar_start_day_ts[0]
-                        # quar_end_day = quar_end_day_ts[0]
-
-                        if simday >= quar_start_day and simday <= quar_end_day:
-                            # print("is quarantined")
-                            is_group_activity_for_day = False
-                            is_quarantined = True
-                            is_quarantined_or_hospitalised = True
-
-                        if simday == quar_start_day:
-                            is_quarantine_hospital_start_day = True
-
-                        if simday == quar_end_day:
-                            is_quarantine_hospital_end_day = True
-
-                agents_quar_hosp[agentid] = [is_quarantined_or_hospitalised, is_quarantined, is_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day]
-
-            if not is_arrivalnextday:
-                if is_group_activity_for_day:
-                    agent_quar_hosp = agents_quar_hosp[tourists_group["reftourid"] + self.n_locals] # convert tourist id to agent id
-                    # sample wake up time, breakfast time / place, sleep time, fill in activities in between
-                    tourists_group, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
-
-                    for agentid in agentids:
+                    if not is_arrivalnextday:
                         agent = self.agents_dynamic[agentid]
-                        res_cellid = self.agents_static.get(agentid, "res_cellid")
-                        agent["itinerary"] = copy(tourists_group["itinerary"])
-                        agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
+                        agent_epi = self.agents_epi[agentid]
 
-                        agent, agent_epi, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
-                                                                                                               agent,
-                                                                                                               agent_epi, 
-                                                                                                               agentid, # agentid guaranteed to be agentindex here
-                                                                                                               res_cellid,
-                                                                                                               simday, 
-                                                                                                               wakeup_timestep, 
-                                                                                                               sleep_timestep, 
-                                                                                                               is_departure_day_today= is_departureday, 
-                                                                                                               is_arrival_day_today= is_arrivalday, 
-                                                                                                               arr_dep_ts= arr_dep_ts, 
-                                                                                                               currently_on_travel_vacation= False, 
-                                                                                                               is_tourist= True)
+                        if is_arrivalday:
+                            # sample tourist entry infection probability
+                            exposed_rand = random.random()
 
-                        # just for debugging purposes
-                        if temp_is_hospitalised or temp_is_quarantined:
-                            if temp_is_hospitalised:
+                            if exposed_rand < self.tourist_entry_infection_probability:                 
+                                potential_days = np.arange(arrivalday-14, arrivalday+1)
+
+                                sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0]
+
+                                agent_state_transition_by_day = agent_epi["state_transition_by_day"]
+                                agent_epi_age_bracket_index = self.agents_static.get(agentid, "epi_age_bracket_index")
+                                agent_quarantine_days = agent_epi["quarantine_days"]
+
+                                # agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
+                                agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                        
+                                if agent_infection_type != InfectionType.Undefined:
+                                    # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
+                                    self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, agentid)
+                                    # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
+                                    self.vars_util.agents_infection_type[agentid] = agent_infection_type
+                                    # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
+                                    self.vars_util.agents_infection_severity[agentid] = agent_infection_severity
+                                    
+                        new_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = None, None, None, None, None
+
+                        # this updates the state, infection type and severity (such that the itinerary may also handle public health interventions)
+                        new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentid, simday) # agentid is guaranteed to be agentindex here
+
+                        if new_states is not None:
+                            new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
+
+                            self.vars_util.agents_seir_state_transition_for_day[agentid] = (new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep)
+
+                        if len(agent_epi["hospitalisation_days"]) > 0:
+                            hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
+
+                            # hosp_start_day = hosp_start_day_ts[0]
+                            # hosp_end_day = hosp_end_day_ts[0]
+
+                            if simday >= hosp_start_day and simday <= hosp_end_day:
+                                # print("is hospitalised")
+                                is_group_activity_for_day = False
                                 is_hospitalised = True
+                                is_quarantined_or_hospitalised = True
 
-                            if temp_is_quarantined:
-                                is_quarantined = True
+                            if simday == hosp_start_day:
+                                is_quarantine_hospital_start_day = True
+
+                            if simday == hosp_end_day:
+                                is_quarantine_hospital_end_day = True
 
                         if len(agent_epi["quarantine_days"]) > 0:
-                            agent_epi["prev_day_quarantine_days"] = copy(agent_epi["quarantine_days"])
+                            quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
 
-                        self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [res_cellid])
-                else:
-                    for accinfoindex, accinfo in enumerate(accominfo):
-                        accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
+                            # quar_start_day = quar_start_day_ts[0]
+                            # quar_end_day = quar_end_day_ts[0]
 
-                        room_members = subgroupsmemberids[accinfoindex] # this room
+                            if simday >= quar_start_day and simday <= quar_end_day:
+                                # print("is quarantined")
+                                is_group_activity_for_day = False
+                                is_quarantined = True
+                                is_quarantined_or_hospitalised = True
 
-                        for tourist_id in room_members: # tourists ids in room
-                            tourist = self.tourists[tourist_id]
-                            agent = self.agents_dynamic[tourist["agentid"]]
+                            if simday == quar_start_day:
+                                is_quarantine_hospital_start_day = True
+
+                            if simday == quar_end_day:
+                                is_quarantine_hospital_end_day = True
+
+                    agents_quar_hosp[agentid] = [is_quarantined_or_hospitalised, is_quarantined, is_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day]
+
+                if not is_arrivalnextday:
+                    if is_group_activity_for_day:
+                        agent_quar_hosp = agents_quar_hosp[tourists_group["reftourid"] + self.n_locals] # convert tourist id to agent id
+                        # sample wake up time, breakfast time / place, sleep time, fill in activities in between
+                        tourists_group, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
+
+                        for agentid in agentids:
+                            agent = self.agents_dynamic[agentid]
                             res_cellid = self.agents_static.get(agentid, "res_cellid")
-
-                            agent_quar_hosp = agents_quar_hosp[tourist["agentid"]]
-
-                            agent, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp, tourist["agentid"])
+                            agent["itinerary"] = copy(tourists_group["itinerary"])
+                            agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
 
                             agent, agent_epi, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
-                                                                                                                   agent,
-                                                                                                                   agent_epi, 
-                                                                                                                   agentid, # agentid guaranteed to be agentindex here
-                                                                                                                   res_cellid,
-                                                                                                                   simday, 
-                                                                                                                   wakeup_timestep, 
-                                                                                                                   sleep_timestep, 
-                                                                                                                   is_departure_day_today= is_departureday, 
-                                                                                                                   is_arrival_day_today= is_arrivalday, 
-                                                                                                                   arr_dep_ts= arr_dep_ts, 
-                                                                                                                   currently_on_travel_vacation= False, 
-                                                                                                                   is_tourist= True)
-
+                                                                                                                agent,
+                                                                                                                agent_epi, 
+                                                                                                                agentid, # agentid guaranteed to be agentindex here
+                                                                                                                res_cellid,
+                                                                                                                simday, 
+                                                                                                                wakeup_timestep, 
+                                                                                                                sleep_timestep, 
+                                                                                                                is_departure_day_today= is_departureday, 
+                                                                                                                is_arrival_day_today= is_arrivalday, 
+                                                                                                                arr_dep_ts= arr_dep_ts, 
+                                                                                                                currently_on_travel_vacation= False, 
+                                                                                                                is_tourist= True)
+                            
                             # just for debugging purposes
                             if temp_is_hospitalised or temp_is_quarantined:
                                 if temp_is_hospitalised:
@@ -1571,11 +1541,56 @@ class Itinerary:
                                 if temp_is_quarantined:
                                     is_quarantined = True
 
-                            self.update_cell_agents_timesteps(agent["itinerary"], [tourist["agentid"]], [res_cellid])
+                            if len(agent_epi["quarantine_days"]) > 0:
+                                agent_epi["prev_day_quarantine_days"] = copy(agent_epi["quarantine_days"])
 
-                            if tourists_group["reftourid"] == tourist_id: # if reference tourist id is being handled as a single tourist, copy his itineraries to the tourists_group
-                                tourists_group["itinerary"] = copy(agent["itinerary"])
-                                tourists_group["itinerary_nextday"] = copy(agent["itinerary_nextday"])
+                            self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [res_cellid])
+                    else:
+                        for accinfoindex, accinfo in enumerate(accominfo):
+                            accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
+
+                            room_members = subgroupsmemberids[accinfoindex] # this room
+
+                            for tourist_id in room_members: # tourists ids in room
+                                tourist = self.tourists[tourist_id]
+                                agent = self.agents_dynamic[tourist["agentid"]]
+                                res_cellid = self.agents_static.get(agentid, "res_cellid")
+                                agent_quar_hosp = agents_quar_hosp[tourist["agentid"]]
+
+                                agent, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp, tourist["agentid"])
+
+                                agent, agent_epi, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
+                                                                                                                    agent,
+                                                                                                                    agent_epi, 
+                                                                                                                    agentid, # agentid guaranteed to be agentindex here
+                                                                                                                    res_cellid,
+                                                                                                                    simday, 
+                                                                                                                    wakeup_timestep, 
+                                                                                                                    sleep_timestep, 
+                                                                                                                    is_departure_day_today= is_departureday, 
+                                                                                                                    is_arrival_day_today= is_arrivalday, 
+                                                                                                                    arr_dep_ts= arr_dep_ts, 
+                                                                                                                    currently_on_travel_vacation= False, 
+                                                                                                                    is_tourist= True)
+                                
+                                # just for debugging purposes
+                                if temp_is_hospitalised or temp_is_quarantined:
+                                    if temp_is_hospitalised:
+                                        is_hospitalised = True
+
+                                    if temp_is_quarantined:
+                                        is_quarantined = True
+
+                                self.update_cell_agents_timesteps(agent["itinerary"], [tourist["agentid"]], [res_cellid])
+
+                                if tourists_group["reftourid"] == tourist_id: # if reference tourist id is being handled as a single tourist, copy his itineraries to the tourists_group
+                                    tourists_group["itinerary"] = copy(agent["itinerary"])
+                                    tourists_group["itinerary_nextday"] = copy(agent["itinerary_nextday"])
+        except Exception as e:
+            with open(stack_trace_log_file_name, 'w') as f:
+                traceback.print_exc(file=f)
+
+            raise
 
     def handle_tourism_itinerary(self, day, weekday, agent_group, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp, agentid = -1):
         res_cell_id = -1 # this will be updated later when calling self.update_cell_agents_timesteps

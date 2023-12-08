@@ -10,6 +10,7 @@ import multiprocessing as mp
 from copy import copy, deepcopy
 import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, tourism_dist
 from util import MethodType
+import shutil
 
 class ActorDistMP:
     def __init__(self, params):
@@ -18,7 +19,23 @@ class ActorDistMP:
 
         worker = get_worker()
 
-        numprocesses, workerindex = params
+        numprocesses, workerindex, logsubfoldername, logfilename = params
+
+        current_directory = os.getcwd()
+
+        subfolder_name = logfilename.replace(".txt", "")
+
+        log_subfolder_path = os.path.join(current_directory, logsubfoldername, subfolder_name)
+
+        # Create the subfolder if it doesn't exist
+        if not os.path.exists(log_subfolder_path):
+            os.makedirs(log_subfolder_path)
+        else:
+            if workerindex > 0: # don't delete the sub folder from the client machine (this assumes worker 0 is the client)
+                shutil.rmtree(log_subfolder_path)
+                os.makedirs(log_subfolder_path)
+
+        self.folder_name = log_subfolder_path
 
         self.num_processes = numprocesses
         self.worker_index = workerindex
@@ -192,7 +209,7 @@ class ActorDistMP:
             return exception_info
     
     def run_update_tourist_data_remote(self, params):
-        return tourism_dist.update_tourist_data_remote(params)
+        return tourism_dist.update_tourist_data_remote(params, self.folder_name)
 
 def run_itinerary_single(params):
     f = None
