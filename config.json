@@ -1,0 +1,6 @@
+{
+    "scheduler_working_directory": "",
+    "worker_working_directory": "",
+    "scheduler_remote_python": "~/AppsPy/mtdcovabm/bin/python3.11",
+    "worker_remote_python": "~/AppsPy/mtdcovabm/bin/python3.11"
+}

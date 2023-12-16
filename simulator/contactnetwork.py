@@ -4,6 +4,7 @@ import time
 from copy import copy
 from copy import deepcopy
 import util
+from cellsclasses import CellType, SimCellType
 from epidemiology import Epidemiology
 import matplotlib.pyplot as plt
 
@@ -13,9 +14,10 @@ class ContactNetwork:
                 n_tourists, 
                 locals_ratio_to_full_pop, 
                 agents_static,
-                agents_dynamic, 
+                agents_epi, 
                 vars_util, 
-                cells, 
+                cells_type, 
+                indids_by_cellid,
                 cells_households, 
                 cells_institutions, 
                 cells_accommodation, 
@@ -27,13 +29,15 @@ class ContactNetwork:
                 maintain_directcontacts_count=False, 
                 process_index=-1):
         self.agents_static = agents_static
-        self.agents_dynamic = agents_dynamic
+        self.agents_epi = agents_epi
 
-        self.cells = cells
+        self.cells_type = cells_type
+        self.indids_by_cellid = indids_by_cellid
 
         # self.mp_cells_keys = []
 
-        self.cells_agents_timesteps = vars_util.cells_agents_timesteps # {cellid: [(agentid, starttimestep, endtimestep)]}
+        self.vars_util = vars_util
+
         self.contactnetworkparams = contactnetworkparams
         self.ageactivitycontactmatrix = np.array(self.contactnetworkparams["ageactivitycontactmatrix"])
 
@@ -47,29 +51,38 @@ class ContactNetwork:
         # self.sync_queue = sync_queue
 
         self.population_per_timestep = [0 for i in range(144)]
+
+        self.agents_seir_indices = None
+        # self.agents_seir_indices = {agentid:idx for idx, agentid in enumerate(self.agents_dynamic.keys())}
+
+        # print("agents_seir_indices values: " + str(self.agents_seir_indices.keys()))
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_dynamic, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
 
     # full day, all cells context
-    def simulate_contact_network(self, day, weekday):        
-        agents_directcontacts_by_simcelltype_by_day  = []
+    def simulate_contact_network(self, day, weekday):
+        if self.process_index != -1:        
+            agents_directcontacts_by_simcelltype_by_day  = []
+        else:
+            agents_directcontacts_by_simcelltype_by_day = self.vars_util.directcontacts_by_simcelltype_by_day
+
         updated_agents_ids = []
         # if self.process_index >= 0:
         #     sp_cells_keys = self.mp_cells_keys[self.process_index]
         # else:
-        #     sp_cells_keys = list(self.cells_agents_timesteps.keys()) # single process without multi-processing
+        #     sp_cells_keys = list(self.vars_util.cells_agents_timesteps.keys()) # single process without multi-processing
 
-        print("generate contact network for " + str(len(self.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
+        print("generate contact network for " + str(len(self.vars_util.cells_agents_timesteps)) + " cells on process: " + str(self.process_index))
         start = time.time()
-        for cellindex, cellid in enumerate(self.cells_agents_timesteps.keys()):
-            cell_updated_agents_ids, cell_agents_directcontacts, cell = self.simulate_contact_network_by_cellid(cellid, day)
+        for cellindex, cellid in enumerate(self.vars_util.cells_agents_timesteps.keys()):
+            cell_updated_agents_ids, cell_agents_directcontacts, cell_type = self.simulate_contact_network_by_cellid(cellid, day)
 
             updated_agents_ids.extend(cell_updated_agents_ids)
 
             if len(cell_agents_directcontacts) > 0:
-                cell_type = cell["type"]
+                # cell_type = cell["type"]
 
                 sim_cell_type = util.convert_celltype_to_simcelltype(cellid, celltype=cell_type)
 
@@ -79,6 +92,9 @@ class ContactNetwork:
                 # agents_directcontacts_thissimcelltype_thisday = agents_directcontacts_by_simcelltype_thisday[sim_cell_type]
 
                 # agents_directcontacts_thissimcelltype_thisday += list(cell_agents_directcontacts.keys())
+
+                current_index = len(agents_directcontacts_by_simcelltype_by_day)
+
                 for key in cell_agents_directcontacts.keys():
                     contact_pair_timesteps = cell_agents_directcontacts[key]
 
@@ -86,26 +102,34 @@ class ContactNetwork:
 
                     agent1_id, agent2_id = key[0], key[1]
                         
-                    agents_directcontacts_by_simcelltype_by_day.append([day, sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts])
+                    agents_directcontacts_by_simcelltype_by_day.append([sim_cell_type, agent1_id, agent2_id, min_start_ts, max_end_ts])
                     # agents_directcontacts_thissimcelltype_thisday.add((key, (min_start_ts, max_end_ts)))
+
+                    current_index += 1
+
+                    if self.process_index == -1:
+                        self.vars_util.dc_by_sct_by_day_agent1_index.append([agent1_id, current_index])
+                        self.vars_util.dc_by_sct_by_day_agent2_index.append([agent2_id, current_index])
 
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
         avg_time_taken = self.contactnetwork_sum_time_taken / day
         print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
 
-        agents_partial = {agentid:self.agents_dynamic[agentid] for agentid in updated_agents_ids}
-        self.epi_util.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
+        agents_partial = {agentid:self.agents_epi[agentid] for agentid in updated_agents_ids}
 
-        return self.process_index, updated_agents_ids, agents_partial, self.epi_util.vars_util
+        if self.process_index != -1: # if -1 would already be assigned above
+            self.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
+
+        return self.process_index, updated_agents_ids, agents_partial, self.vars_util
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
-        agents_directcontacts, cell = self.generate_contact_network(cellid)
+        agents_directcontacts, cell_type = self.generate_contact_network(cellid)
 
-        updated_agents_ids = self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell, day)
+        updated_agents_ids = self.epi_util.simulate_direct_contacts(agents_directcontacts, cellid, cell_type, day)
 
-        return updated_agents_ids, agents_directcontacts, cell
+        return updated_agents_ids, agents_directcontacts, cell_type
 
     def generate_contact_network(self, cellid):
         # print("generating contact network for cell " + str(cellid))
@@ -118,18 +142,18 @@ class ContactNetwork:
         agents_directcontacts_count = {} # {agentid: contact_count}
 
         # cell = None
-        # if cellid in self.cells_agents_timesteps:
-        cell = self.cells[cellid]
+        # if cellid in self.vars_util.cells_agents_timesteps:
+        cell_type = self.cells_type[cellid]
 
-        cell_agents_timesteps = self.cells_agents_timesteps[cellid]
+        cell_agents_timesteps = self.vars_util.cells_agents_timesteps[cellid]
 
         indid = None
 
-        if cell["type"] == "workplace":
-            if "indid" in cell["place"]:
-                indid = cell["place"]["indid"]
+        if cell_type == CellType.Workplace:
+            if cellid in self.indids_by_cellid: # "indid" in cell["place"]
+                indid = self.indids_by_cellid[cellid]
 
-        ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell["type"], indid)
+        ageactivitycontact_cm_activityid = self.convert_celltype_to_ageactivitycontactmatrixtype(cellid, cell_type, indid)
         
         agents_timesteps_sum = 0
 
@@ -202,11 +226,13 @@ class ContactNetwork:
                 agent_potentialcontacts_count = agents_potentialcontacts_count[agentid]
 
                 if agent_potentialcontacts_count > 0:
-                    agent = self.agents_dynamic[agentid]
+                    # agent = self.agents_dynamic[agentid]
 
                     agent_timestep_count = agents_total_timesteps[agentid]
 
-                    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[self.agents_static.get(agentid, "age_bracket_index"), 2 + ageactivitycontact_cm_activityid]
+                    age_bracket_index = self.agents_static.get(agentid, "age_bracket_index")
+
+                    avg_contacts_by_age_activity = self.ageactivitycontactmatrix[age_bracket_index, 2 + ageactivitycontact_cm_activityid]
 
                     timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
 
@@ -215,7 +241,12 @@ class ContactNetwork:
                     if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
                         potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
 
-                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * self.agents_static.get(agentid, "soc_rate") * (1 - self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)
+                    soc_rate = self.agents_static.get(agentid, "soc_rate")
+
+                    if soc_rate is None:
+                        print("agentindex {0}, agentid {1}, avg_contacts_by_age_activity {2}, timestep_multiplier {3}, potential_contacts_count_multiplier {4}, soc_rate {5}, masks_hygiene_distancing_multiplier {6}".format(str(agentindex), str(agentid), str(avg_contacts_by_age_activity), str(timestep_multiplier), str(potential_contacts_count_multiplier), str(soc_rate), str(self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)))
+                    
+                    agents_degrees[agentindex] = avg_contacts_by_age_activity * timestep_multiplier * potential_contacts_count_multiplier * soc_rate * (1 - self.epi_util.dyn_params.masks_hygiene_distancing_multiplier)
 
             agents_degrees_sum = round(np.sum(agents_degrees))
             
@@ -278,36 +309,36 @@ class ContactNetwork:
 
             # print(str(len(agents_directcontacts)) + " contacts created from a pool of " + str(n) + " agents and " + str(len(agents_potentialcontacts_backup)) + " potential contacts")
 
-        return agents_directcontacts, cell
+        return agents_directcontacts, cell_type
 
     def convert_celltype_to_ageactivitycontactmatrixtype(self, cellid, celltype=None, indid=None):
         if celltype is None:
-            cell = self.cells[cellid]
-            celltype = cell["type"]
+            celltype = self.cells_type[cellid]
+            # celltype = cell["type"]
 
-        if indid == 9 and celltype != "accom":
+        if indid == 9 and celltype != CellType.Accommodation:
             return 5
 
         match celltype:
-            case "household":
+            case CellType.Household:
                 return 1
-            case "workplace":
+            case CellType.Workplace:
                 return 3
-            case "accom":
+            case CellType.Accommodation:
                 return 1
-            case "hospital":
+            case CellType.Hospital:
                 return 5
-            case "entertainment":
+            case CellType.Entertainment:
                 return 5
-            case "school":
+            case CellType.School:
                 return 2
-            case "institution":
+            case CellType.Institution:
                 return 1
-            case "transport":
+            case CellType.Transport:
                 return 4
-            case "religion":
+            case CellType.Religion:
                 return 5
-            case "airport":
+            case CellType.Airport:
                 return 5
             case _:
                 return 0 # total
@@ -333,7 +364,14 @@ class ContactNetwork:
     def delete_all_pairs_by_id(self, agents_potentialcontacts, id):
         for pairid in list(agents_potentialcontacts.keys()):
             if id in pairid:
-                del agents_potentialcontacts[pairid]
+                try:
+                    del agents_potentialcontacts[pairid]
+                    # print("deleted id {0} from pairid {1}".format(str(id), str(pairid)))
+                except:
+                    if pairid not in agents_potentialcontacts:
+                        print("pairid {0} does not exist in agents_potentialcontacts!")
+
+                    raise
 
         return agents_potentialcontacts
     

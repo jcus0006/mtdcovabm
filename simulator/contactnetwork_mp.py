@@ -1,11 +1,14 @@
 import sys
+import os
 import multiprocessing as mp
 import multiprocessing.shared_memory as shm
 import threading
 import numpy as np
 import traceback
-import contactnetwork, util, vars
+import contactnetwork, util, daskutil, vars
 import time
+from copy import deepcopy
+from util import MethodType
 
 def contactnetwork_parallel(manager,
                             pool,
@@ -14,9 +17,10 @@ def contactnetwork_parallel(manager,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop, 
-                            agents_dynamic,
+                            agents_epi,
                             vars_util,
-                            cells,
+                            cells_type,
+                            indids_by_cellid,
                             cells_households, 
                             cells_institutions, 
                             cells_accommodation, 
@@ -27,148 +31,166 @@ def contactnetwork_parallel(manager,
                             num_processes=10,
                             num_threads=2,
                             keep_processes_open=True,
-                            log_file_name="output.txt"):
+                            log_file_name="output.txt",
+                            agents_static=None):
     # manager = mp.Manager()
     # sync_queue = manager.Queue()
-    process_counter = manager.Value("i", num_processes)
+    stack_trace_log_file_name = ""
+    # original_stdout = sys.stdout
 
-    if num_processes > 1:
-        # pool = mp.Pool(initializer=init_worker, initargs=(process_counter,))
-        # pool = mp.Pool()
+    try:
+        process_counter = None
+        if num_processes > 1:
+            process_counter = manager.Value("i", num_processes)
 
-        # mp_cells_keys = []
-        # cells_agents_timesteps_keys = list(vars_util.cells_agents_timesteps.keys())
-        # np.random.shuffle(cells_agents_timesteps_keys)
-        # mp_cells_keys = np.array_split(cells_agents_timesteps_keys, num_processes)
+        folder_name = ""
+        if log_file_name != "output.txt":
+            folder_name = os.path.dirname(log_file_name)
+        else:
+            folder_name = os.getcwd()
 
-        cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, num_processes)
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_mp_stack_trace_" + str(day) + ".txt"
+        task_results_stack_trace_log_file_name = os.path.join(folder_name, "cn_main_res_task_results_stack_trace_" + str(day) + ".txt")
 
-        imap_params, imap_results = [], []
+        if num_processes > 1:
+            # pool = mp.Pool(initializer=init_worker, initargs=(process_counter,))
+            # pool = mp.Pool()
 
-        for process_index in range(num_processes):
-            # cells_partial = {}
+            # mp_cells_keys = []
+            # cells_agents_timesteps_keys = list(vars_util.cells_agents_timesteps.keys())
+            # np.random.shuffle(cells_agents_timesteps_keys)
+            # mp_cells_keys = np.array_split(cells_agents_timesteps_keys, num_processes)
 
-            cells_agents_timesteps_partial = {}
-            agents_partial, agents_ids_by_ages_partial = {}, {}
-            vars_util_partial = vars.Vars()
-            vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-            vars_util_partial.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day
+            cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, num_processes)
 
-            # cells_keys = mp_cells_keys[process_index]
+            imap_params, imap_results = [], []
 
-            # for cell_key in cells_keys:
-            #     cell_agents_timesteps = vars_util.cells_agents_timesteps[cell_key]
-            #     cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
+            for process_index in range(num_processes):
+                # cells_partial = {}
 
-            cells_agents_timesteps_partial = cells_agents_timesteps_dicts[process_index]
+                cells_agents_timesteps_partial = {}
+                agents_partial, agents_ids_by_ages_partial = {}, {}
+                vars_util_partial = vars.Vars()
+                vars_util_partial.agents_seir_state = vars_util.agents_seir_state # may be optimized by sending only specific day
+                vars_util_partial.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day # to check re comment in above line for this line
 
-            unique_agent_ids = set()
-            for cell_vals in cells_agents_timesteps_partial.values():
-                for cell_agent_timesteps in cell_vals:
-                    unique_agent_ids.add(cell_agent_timesteps[0])
+                # cells_keys = mp_cells_keys[process_index]
 
-            unique_agent_ids = list(unique_agent_ids)
+                # for cell_key in cells_keys:
+                #     cell_agents_timesteps = vars_util.cells_agents_timesteps[cell_key]
+                #     cells_agents_timesteps_partial[cell_key] = cell_agents_timesteps
 
-            agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, agents_dynamic, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
+                cells_agents_timesteps_partial = cells_agents_timesteps_dicts[process_index]
 
-            vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
+                unique_agent_ids = set()
+                for cell_vals in cells_agents_timesteps_partial.values():
+                    for cell_agent_timesteps in cell_vals:
+                        unique_agent_ids.add(cell_agent_timesteps[0])
 
-            print("starting process index " + str(process_index) + " at " + str(time.time()))
+                unique_agent_ids = list(unique_agent_ids)
 
-            params = (day, 
-                      weekday, 
-                      n_locals, 
-                      n_tourists, 
-                      locals_ratio_to_full_pop, 
-                      agents_partial, 
-                      vars_util_partial, 
-                      cells, 
-                      cells_households, 
-                      cells_institutions, 
-                      cells_accommodation, 
-                      contactnetworkparams, 
-                      epidemiologyparams, 
-                      dynparams, 
-                      contact_network_sum_time_taken, 
-                      process_index, 
-                      process_counter,
-                      log_file_name)
+                agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_epi, vars_util, agents_partial, vars_util_partial)
+
+                vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
+
+                print("starting process index " + str(process_index) + " at " + str(time.time()))
+
+                params = (day, 
+                        weekday, 
+                        n_locals, 
+                        n_tourists, 
+                        locals_ratio_to_full_pop, 
+                        agents_partial, 
+                        deepcopy(vars_util_partial), # deepcopy(vars_util_partial) 
+                        cells_type, 
+                        indids_by_cellid,
+                        cells_households, 
+                        cells_institutions, 
+                        cells_accommodation, 
+                        contactnetworkparams, 
+                        epidemiologyparams, 
+                        dynparams, 
+                        contact_network_sum_time_taken, 
+                        process_index, 
+                        process_counter,
+                        log_file_name)
+                
+                imap_params.append(params)
+                # pool.apply_async(contactnetwork_worker, args=(params,))
+
+            imap_results = pool.imap(contactnetwork_worker, imap_params)
+
+            # update memory from multiprocessing.queue
             
-            imap_params.append(params)
-            # pool.apply_async(contactnetwork_worker, args=(params,))
+            # start = time.time()
 
-        imap_results = pool.imap(contactnetwork_worker, imap_params)
+            # option 1 - single thread
+            # sync_state_info(sync_queue, process_counter)
 
-        # update memory from multiprocessing.queue
-        
-        # start = time.time()
+            # option 2 - multiple threads
+            # Create multiple threads to process items from the queue
+            # threads = []
+            # for _ in range(num_threads):
+            #     t = threading.Thread(target=sync_state_info, args=(sync_queue, process_counter))
+            #     t.start()
+            #     threads.append(t)
 
-        # option 1 - single thread
-        # sync_state_info(sync_queue, process_counter)
+            # # Wait for all threads to complete
+            # for t in threads:
+            #     t.join()
 
-        # option 2 - multiple threads
-        # Create multiple threads to process items from the queue
-        # threads = []
-        # for _ in range(num_threads):
-        #     t = threading.Thread(target=sync_state_info, args=(sync_queue, process_counter))
-        #     t.start()
-        #     threads.append(t)
+            # option 3 - multiple processes
+            # processes = []
+            # for process_index in range(6):
+            #     process = mp.Process(target=sync_state_info, args=(sync_queue, process_counter))
+            #     process.start()
+            #     processes.append(process)
 
-        # # Wait for all threads to complete
-        # for t in threads:
-        #     t.join()
+            # for process in processes:
+            #     process.join()
 
-        # option 3 - multiple processes
-        # processes = []
-        # for process_index in range(6):
-        #     process = mp.Process(target=sync_state_info, args=(sync_queue, process_counter))
-        #     process.start()
-        #     processes.append(process)
-
-        # for process in processes:
-        #     process.join()
-
-        # sync_time_end = time.time()
-        # time_taken = sync_time_end - start
-        # print("contact network state info sync (combined). time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
-
-        start = time.time()
-
-        for result in imap_results:
-            process_index, updated_agent_ids, agents_partial, vars_util_partial = result
-
-            print("processing results for process " + str(process_index) + ", received " + str(len(updated_agent_ids)) + " agent ids to sync")
-            # print(working_schedule_times_by_resid_ordered)
-            # print(itinerary_times_by_resid_ordered)
-
-            agents_dynamic, vars_util = util.sync_state_info_by_agentsids(updated_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
-
-            vars_util = util.sync_state_info_sets(vars_util, vars_util_partial)
-
-        vars_util.cells_agents_timesteps = {}
-        
-        time_taken = time.time() - start
-        print("syncing pool imap results back with main process. time taken " + str(time_taken))
-        
-        if not keep_processes_open:
-            start = time.time()
-            pool.close()
-            manager.shutdown()
-            time_taken = time.time() - start
-            print("pool close time taken " + str(time_taken))
+            # sync_time_end = time.time()
+            # time_taken = sync_time_end - start
+            # print("contact network state info sync (combined). time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
 
             start = time.time()
-            pool.join()
+
+            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
+            
             time_taken = time.time() - start
-            print("pool join time taken " + str(time_taken))
-    else:
-        params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name
+            print("syncing pool imap results back with main process. time taken " + str(time_taken))
+            
+            if not keep_processes_open:
+                start = time.time()
+                pool.close()
+                manager.shutdown()
+                time_taken = time.time() - start
+                print("pool close time taken " + str(time_taken))
 
-        contactnetwork_worker(params)
+                start = time.time()
+                pool.join()
+                time_taken = time.time() - start
+                print("pool join time taken " + str(time_taken))
+        else:
+            params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_epi, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name, agents_static
 
-def contactnetwork_worker(params):
-    from shared_mp import agents_static
+            result = contactnetwork_worker(params, True)
 
+            if not type(result) is dict:
+                process_index, agents_epi, vars_util, _ = result
+            else:
+                exception_info = result
+
+                with open(exception_info["logfilename"], "a") as f:
+                    f.write(f"Exception Type: {exception_info['type']}\n")
+                    f.write(f"Exception Message: {exception_info['message']}\n")
+                    f.write(f"Traceback: {exception_info['traceback']}\n")
+    except:
+        with open(stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
+        raise
+
+def contactnetwork_worker(params, single_proc=False):
     # still to see how to handle (whether mp.Array or local in process and then sync with main memory)
     # in the case of Agents, these are purely read only however, 
     #  - using mp.dict will introduce speed degradation from locking, 
@@ -185,13 +207,19 @@ def contactnetwork_worker(params):
         start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
+        if len(params) > 19:      
+            day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name, agents_static = params
+        else:
+            day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
+            from shared_mp import agents_static
 
-        original_stdout = sys.stdout
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(process_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(process_index) + ".txt"
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
+        
+        if not single_proc:
+            original_stdout = sys.stdout
+            log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(day) + "_" + str(process_index) + ".txt"
+            f = open(log_file_name, "w")
+            sys.stdout = f
 
         print("process " + str(process_index) + " started at " + str(start))
 
@@ -201,7 +229,8 @@ def contactnetwork_worker(params):
                                                             agents_static,
                                                             agents_dynamic,
                                                             vars_util,
-                                                            cells, 
+                                                            cells_type, 
+                                                            indids_by_cellid,
                                                             cells_households, 
                                                             cells_institutions, 
                                                             cells_accommodation, 
@@ -216,21 +245,24 @@ def contactnetwork_worker(params):
         # agents_mp_cn = None
         # contact_network_util = None
         # global proc_counter
+        main_time_taken = time.time() - start
+
         print("process " + str(process_index) + " ended at " + str(time.time()))
 
-        return process_index, updated_agent_ids, agents_partial, vars_util
+        return process_index, agents_partial, vars_util, main_time_taken
     except:
         with open(stack_trace_log_file_name, 'w') as f: # cn_mp_stack_trace.txt
             traceback.print_exc(file=f)
     finally:
-        process_counter.value -= 1
+        if process_counter is not None:
+            process_counter.value -= 1
+
+        if f is not None:
+            # Close the file
+            f.close()
 
         if original_stdout is not None:
-            sys.stdout = original_stdout
-
-            if f is not None:
-                # Close the file
-                f.close()
+            sys.stdout = original_stdout   
 
 # def sync_state_info(sync_queue, process_counter):
 #     global agents_main

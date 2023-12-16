@@ -2,6 +2,7 @@ import numpy as np
 import random
 import math
 import util
+from cellsclasses import CellType, SimCellType
 
 class Cells:
     def __init__(self, agents, cells, cellindex, seed=6):
@@ -67,7 +68,7 @@ class Cells:
             households[hhid] = { "hhid": hhid, "resident_uids": np.array(member_uids), "staff_uids": np.array(this_hh_employees_uids), "reference_uid": ref_uid, "reference_age": ref_age, "visitor_uids": np.array([])}
             householdsworkplaces[hhid] = households[hhid]
 
-            self.cells[self.cellindex] = { "type": "household", "place": households[hhid]}
+            self.cells[self.cellindex] = { "type": CellType.Household, "place": households[hhid]}
             householdscells[self.cellindex] = self.cells[self.cellindex]
             householdsworkplacescells[self.cellindex] = self.cells[self.cellindex]
 
@@ -97,6 +98,7 @@ class Cells:
         breakfastcells_by_accomid = {}
         entertainmentcells = {}
         airportcells = {}
+        indids_by_cellid = {}
 
         airport_industries = [7, 8, 9, 19]
         airport_ensure_workplace_per_industry = [False, False, False, False] # [7, 8, 9, 19]
@@ -239,7 +241,9 @@ class Cells:
                     if not is_accom and not is_hospital and not is_entertainment and not is_airport:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
-                        self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
+                        indids_by_cellid[self.cellindex] = indid
+
+                        self.cells[self.cellindex] = { "type": CellType.Workplace, "place": cells_by_cellid[self.cellindex]}
 
                         if is_restaurant:
                             restaurantcells[self.cellindex] = self.cells[self.cellindex]
@@ -253,7 +257,7 @@ class Cells:
                     if is_accom:
                         cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(employees)}
 
-                        self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
+                        self.cells[self.cellindex] = { "type": CellType.Accommodation, "place": cells_by_cellid[self.cellindex]}
 
                         accommodationcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -272,7 +276,7 @@ class Cells:
                     if is_hospital:
                         cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(employees)}
 
-                        self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
+                        self.cells[self.cellindex] = { "type": CellType.Hospital, "place": cells_by_cellid[self.cellindex]}
 
                         hospitalcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -289,12 +293,14 @@ class Cells:
 
                         cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid, "activityid": sampled_activity, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
-                        self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
+                        indids_by_cellid[self.cellindex] = indid
+
+                        self.cells[self.cellindex] = { "type": CellType.Entertainment, "place": cells_by_cellid[self.cellindex]}
 
                         if sampled_activity not in entertainmentcells:
-                            entertainmentcells[sampled_activity] = {}
+                            entertainmentcells[int(sampled_activity)] = {}
 
-                        entertainmentcells_by_activity = entertainmentcells[sampled_activity]
+                        entertainmentcells_by_activity = entertainmentcells[int(sampled_activity)]
 
                         entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
 
@@ -308,8 +314,10 @@ class Cells:
                     
                     if is_airport:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(employees), "visitor_uids": np.array([])}
+                        
+                        indids_by_cellid[self.cellindex] = indid
 
-                        self.cells[self.cellindex] = { "type": "airport", "place": cells_by_cellid[self.cellindex]}
+                        self.cells[self.cellindex] = { "type": CellType.Airport, "place": cells_by_cellid[self.cellindex]}
 
                         airportcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -351,7 +359,9 @@ class Cells:
                         if not is_accom and not is_hospital and not is_entertainment and not is_airport: # normal workplace
                             cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
-                            self.cells[self.cellindex] = { "type": "workplace", "place": cells_by_cellid[self.cellindex]}
+                            indids_by_cellid[self.cellindex] = indid
+
+                            self.cells[self.cellindex] = { "type": CellType.Workplace, "place": cells_by_cellid[self.cellindex]}
 
                             if is_restaurant:
                                 restaurantcells[self.cellindex] = self.cells[self.cellindex]
@@ -365,7 +375,7 @@ class Cells:
                         if is_accom:
                             cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(temp_members)}
 
-                            self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
+                            self.cells[self.cellindex] = { "type": CellType.Accommodation, "place": cells_by_cellid[self.cellindex]}
 
                             accommodationcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -387,7 +397,7 @@ class Cells:
                         if is_hospital:
                             cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(temp_members)}
 
-                            self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
+                            self.cells[self.cellindex] = { "type": CellType.Hospital, "place": cells_by_cellid[self.cellindex]}
 
                             hospitalcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -404,12 +414,14 @@ class Cells:
 
                             cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "activityid": sampled_activity, "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
 
-                            self.cells[self.cellindex] = { "type": "entertainment", "place": cells_by_cellid[self.cellindex]}
+                            indids_by_cellid[self.cellindex] = indid
+
+                            self.cells[self.cellindex] = { "type": CellType.Entertainment, "place": cells_by_cellid[self.cellindex]}
 
                             if sampled_activity not in entertainmentcells:
-                                entertainmentcells[sampled_activity] = {}
+                                entertainmentcells[int(sampled_activity)] = {}
 
-                            entertainmentcells_by_activity = entertainmentcells[sampled_activity]
+                            entertainmentcells_by_activity = entertainmentcells[int(sampled_activity)]
 
                             entertainmentcells_by_activity[self.cellindex] = self.cells[self.cellindex]
 
@@ -423,8 +435,10 @@ class Cells:
 
                         if is_airport:
                             cells_by_cellid[self.cellindex] = { "wpid": wpid ,"indid": indid,  "staff_uids": np.array(temp_members), "visitor_uids": np.array([])}
+                            
+                            indids_by_cellid[self.cellindex] = indid
 
-                            self.cells[self.cellindex] = { "type": "airport", "place": cells_by_cellid[self.cellindex]}
+                            self.cells[self.cellindex] = { "type": CellType.Airport, "place": cells_by_cellid[self.cellindex]}
 
                             airportcells[self.cellindex] = self.cells[self.cellindex]
                                 
@@ -459,7 +473,7 @@ class Cells:
                 else:
                     industries_by_indid[indid] = workplaces_by_wpid
 
-        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, testinghubcells, vaccinationhubcells, entertainmentcells, airportcells
+        return industries_by_indid, workplacescells, restaurantcells, accommodationcells, accommodationcells_by_accomid, breakfastcells_by_accomid, rooms_by_accomid_by_accomtype, hospitalcells, testinghubcells, vaccinationhubcells, entertainmentcells, airportcells, indids_by_cellid
 
     # return schools_by_type which is a dict of dict of dict of dict with the below format:
     # schools_by_type (indid) -> schools_by_scid (wpid) -> cells_by_cellid (cellid) -> cellinfodict (clid, student_uids, teacher_uids, non_teaching_staff_uids)
@@ -489,7 +503,7 @@ class Cells:
             if len(nonteachingstaff) <= max_members:
                 cells_by_cellid[self.cellindex] = { "scid": scid, "non_teaching_staff_uids" : np.array(nonteachingstaff) }
                 
-                self.cells[self.cellindex] = { "type": "school", "place": cells_by_cellid[self.cellindex]}
+                self.cells[self.cellindex] = { "type": CellType.School, "place": cells_by_cellid[self.cellindex]}
                 schoolscells[self.cellindex] = self.cells[self.cellindex]
 
                 if len(self.agents) > 0:
@@ -518,7 +532,7 @@ class Cells:
 
                     cells_by_cellid[self.cellindex] = { "scid": scid, "non_teaching_staff_uids" : np.array(temp_nonteachingstaff) }
 
-                    self.cells[self.cellindex] = { "type": "school", "place": cells_by_cellid[self.cellindex]}
+                    self.cells[self.cellindex] = { "type": CellType.School, "place": cells_by_cellid[self.cellindex]}
                     schoolscells[self.cellindex] = self.cells[self.cellindex]
 
                     if len(self.agents) > 0:
@@ -536,7 +550,7 @@ class Cells:
 
                 cells_by_cellid[self.cellindex] = { "scid": scid, "clid":clid, "student_uids":np.array(students), "teacher_uids":np.array(teachers)}
 
-                self.cells[self.cellindex] = { "type": "classroom", "place": cells_by_cellid[self.cellindex]}
+                self.cells[self.cellindex] = { "type": CellType.Classroom, "place": cells_by_cellid[self.cellindex]}
                 classroomscells[self.cellindex] = self.cells[self.cellindex]
 
                 if len(self.agents) > 0:
@@ -593,7 +607,7 @@ class Cells:
             if num_members <= cellsize:
                 cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": np.array(residents), "staff_uids": np.array(staff)}
 
-                self.cells[self.cellindex] = { "type": "institution", "place": cells_by_cellid[self.cellindex]}
+                self.cells[self.cellindex] = { "type": CellType.Institution, "place": cells_by_cellid[self.cellindex]}
                 institutionscells[self.cellindex] = self.cells[self.cellindex]
 
                 if len(self.agents) > 0:
@@ -642,7 +656,7 @@ class Cells:
 
                     cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": temp_residents, "staff_uids": temp_staff }
 
-                    self.cells[self.cellindex] = { "type": "institution", "place": cells_by_cellid[self.cellindex]}
+                    self.cells[self.cellindex] = { "type": CellType.Institution, "place": cells_by_cellid[self.cellindex]}
                     institutionscells[self.cellindex] = self.cells[self.cellindex]
 
                     if len(self.agents) > 0:
@@ -673,7 +687,7 @@ class Cells:
     def create_airport_cell(self): # this is a single cell
         airport_cell = {"visitor_uids":[]}
 
-        self.cells[self.cellindex] = {"type":"airport", "place": airport_cell}
+        self.cells[self.cellindex] = {"type": CellType.Airport, "place": airport_cell}
 
         return self.cells[self.cellindex]
 
@@ -694,7 +708,7 @@ class Cells:
             if sampled_bus_capacity <= max_members: 
                 cells_by_cellid[self.cellindex] = {"busid": busid, "driver_uid": -1, "passenger_uids":[], "capacity": sampled_bus_capacity}
 
-                self.cells[self.cellindex] = {"type":"transport", "place": cells_by_cellid[self.cellindex]}
+                self.cells[self.cellindex] = {"type": CellType.Transport, "place": cells_by_cellid[self.cellindex]}
 
                 cells_transport[self.cellindex] = self.cells[self.cellindex]
 
@@ -708,7 +722,7 @@ class Cells:
                     else:
                         cells_by_cellid[self.cellindex] = { "busid": busid, "passenger_uids":[], "capacity": cell_size }
 
-                    self.cells[self.cellindex] = { "type": "transport", "place": cells_by_cellid[self.cellindex]}
+                    self.cells[self.cellindex] = { "type": CellType.Transport, "place": cells_by_cellid[self.cellindex]}
 
                     cells_transport[self.cellindex] = self.cells[self.cellindex]
 
@@ -725,7 +739,7 @@ class Cells:
             for roomid in roomids:                        
                 cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "roomid": roomid, "roomsize": roomsize, "guest_uids": np.array([])} # guest_uids here represents tourists that are not assigned yet
 
-                self.cells[self.cellindex] = { "type": "accom", "place": cells_by_cellid[self.cellindex]}
+                self.cells[self.cellindex] = { "type": CellType.Accommodation, "place": cells_by_cellid[self.cellindex]}
 
                 workplacescells[self.cellindex] = self.cells[self.cellindex]
                 accommodationcells[self.cellindex] = self.cells[self.cellindex]
@@ -747,7 +761,7 @@ class Cells:
         for i in range(0, total_no_rooms):
             cells_by_cellid[self.cellindex] = {"hospitalid": hospital_id, "staff_uids":np.array([]), "roomid": i, "patient_uids":np.array([])}
 
-            self.cells[self.cellindex] = { "type": "hospital", "place": cells_by_cellid[self.cellindex]}
+            self.cells[self.cellindex] = { "type": CellType.Hospital, "place": cells_by_cellid[self.cellindex]}
 
             workplacescells[self.cellindex] = self.cells[self.cellindex]
             hospitalcells[self.cellindex] = self.cells[self.cellindex]
@@ -770,7 +784,7 @@ class Cells:
             if sampled_size <= max_members:
                 cells_by_cellid[self.cellindex] = { "churchid": church_id, "visitor_uids" : [], "capacity": sampled_size }
                 
-                self.cells[self.cellindex] = { "type": "church", "place": cells_by_cellid[self.cellindex]}
+                self.cells[self.cellindex] = { "type": CellType.Religion, "place": cells_by_cellid[self.cellindex]}
                 churchcells[self.cellindex] = self.cells[self.cellindex]
 
                 self.cellindex += 1
@@ -782,7 +796,7 @@ class Cells:
                 for index, cell_size in enumerate(cell_sizes):
                     cells_by_cellid[self.cellindex] = { "churchid": church_id, "visitor_uids" : [], "capacity": cell_size }
 
-                    self.cells[self.cellindex] = { "type": "church", "place": cells_by_cellid[self.cellindex]}
+                    self.cells[self.cellindex] = { "type": CellType.Religion, "place": cells_by_cellid[self.cellindex]}
                     churchcells[self.cellindex] = self.cells[self.cellindex]
 
                     self.cellindex += 1

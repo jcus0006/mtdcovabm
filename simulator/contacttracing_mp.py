@@ -69,15 +69,6 @@ def contacttracing_parallel(manager,
 
                 agents_partial = ct_agents
 
-                # unique_agent_ids = set()
-                # for cell_vals in cells_agents_timesteps_partial.values():
-                #     for cell_agent_timesteps in cell_vals:
-                #         unique_agent_ids.add(cell_agent_timesteps[0])
-
-                # unique_agent_ids = list(unique_agent_ids)
-
-                # agents_partial, _, vars_util_partial = util.split_dicts_by_agentsids(unique_agent_ids, agents, None, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial)
-
                 print("starting process index " + str(process_index) + " at " + str(time.time()))
 
                 params = (day,
@@ -139,7 +130,7 @@ def contacttracing_worker(params):
         start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, process_index, process_counter, log_file_name = params
+        day, epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_partial, vars_util, cells_households, cells_institutions, cells_accommodation, dyn_params, process_index, process_counter, log_file_name = params
 
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_ct_mp_stack_trace_" + str(process_index) + ".txt"
@@ -154,7 +145,7 @@ def contacttracing_worker(params):
                                         n_tourists,
                                         locals_ratio_to_full_pop,
                                         agents_static,
-                                        agents,
+                                        agents_partial,
                                         vars_util,
                                         cells_households,
                                         cells_institutions,

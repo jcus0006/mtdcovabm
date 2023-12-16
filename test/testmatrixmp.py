@@ -56,10 +56,37 @@ def calculate_row_sum(result_queue, matrix, start_row, end_row, process_index, i
     time_taken = time.time() - start
     print("process " + str(process_index) + ": " + str(time_taken))
 
+def calculate_row_sum_map(matrix, start_row, end_row, process_index):
+    start = time.time()
+
+    result = {}
+
+    result_queue = []
+    for i in range(10): # simulation of computation
+        for row in range(start_row, end_row):
+            row_sum = np.sum(matrix[row])
+            result[row] = row_sum
+
+        for col in range(start_row, end_row):
+            col_sum = np.sum(matrix[:, col])
+            result[col] -= col_sum
+
+    result_queue.append((start_row, result))
+
+    time_taken = time.time() - start
+    print("process " + str(process_index) + ": " + str(time_taken))
+
+    return result_queue
+
 def worker(params):
     result_queue, matrix, start_row, end_row, process_index = params
 
     calculate_row_sum(result_queue, matrix, start_row, end_row, process_index)
+
+def worker_map(params):
+    matrix, start_row, end_row, process_index = params
+
+    return calculate_row_sum_map(matrix, start_row, end_row, process_index)
 
 def worker_shm(params):
     try:
@@ -275,18 +302,22 @@ def main_pool(pool, result_queue, num_rows, num_processes, int_range, use_map=Tr
             end_row = num_rows
 
         if use_map:
-            params.append((result_queue, matrix, start_row, end_row, process_index))
+            params.append((matrix, start_row, end_row, process_index))
         else:
             pool.apply_async(worker, args=((result_queue, matrix, start_row, end_row, process_index),))
 
+    results = {}
     if use_map:
         # Call the worker method in parallel
-        results = pool.map(worker, iter(params))
-
-    results = {}
-    for _ in range(num_processes):
-        start_index, result = result_queue.get()
-        results[start_index] = result
+        imap_results = pool.map(worker_map, iter(params))
+        
+        for res in imap_results:
+            start_index, result = res[0][0], res[0][1]
+            results[start_index] = result
+    else:
+        for _ in range(num_processes):
+            start_index, result = result_queue.get()
+            results[start_index] = result
 
     # Close the pool of processes
     pool.close()
@@ -467,7 +498,7 @@ def main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_
 if __name__ == '__main__':
     num_rows = 16384
     int_range = 10
-    num_processes = 4
+    num_processes = 10
 
     manager = mp.Manager()
 
@@ -488,7 +519,7 @@ if __name__ == '__main__':
 
     # main_single(result_queue, num_rows, int_range)
     # main_processes(result_queue, num_rows, num_processes, int_range) # by reference
-    # main_pool(pool, result_queue, num_rows, num_processes, int_range) # by value
+    main_pool(pool, result_queue, num_rows, num_processes, int_range) # by value
     # main_processes_shared_mem(result_queue, num_rows, num_processes, int_range) # by reference (shared memory)
     # main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=False) # by value (shared memory)
     # main_pool_keepalive_sharedmem(pool, worker_queue, result_queue, termination_flag, num_rows, num_processes, 2048, int_range, use_map=False) # by value (keep alive / shared memory)
@@ -519,4 +550,4 @@ if __name__ == '__main__':
     # print("average time taken: " + str(avg_time_taken))
     # end - shared_mem keep alive
 
-    main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=False, use_shared_results=True, shared_results=shared_results) # by value (shared memory)
+    # main_pool_sharedmem(pool, result_queue, num_rows, num_processes, int_range, use_map=False, use_shared_results=True, shared_results=shared_results) # by value (shared memory)

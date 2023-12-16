@@ -1,9 +1,11 @@
 import time
 import json
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "..")) # add root to sys.path
 import numpy as np
 import matplotlib.pyplot as plt
-from util.NpEncoder import NpEncoder
+from simulator.npencoder import NpEncoder
 
 class fdvalidation:
 

@@ -1,10 +1,14 @@
 import datetime
 import numpy as np
-import scipy.stats as stats
+# import scipy.stats as stats
 import powerlaw
 import matplotlib.pyplot as plt
 import random
 from copy import copy, deepcopy
+import seirstateutil, customdict
+from cellsclasses import CellType, SimCellType
+from enum import IntEnum
+import psutil
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -42,19 +46,24 @@ def sample_gamma(gamma_shape, min, max, k = 1, returnInt = False):
     return sample
 
 def sample_gamma_reject_out_of_range(gamma_shape, min, max, k = 1, returnInt = False, useNp = False):
-    if useNp:
-        sample = min - 1
+    # if useNp:
+    #     sample = min - 1
 
-        while sample < min or sample > max:
-            sample = sample_gamma(gamma_shape, min, max, k, returnInt)
-    else:
-        scale = (max - min) / (gamma_shape * k)
+    #     while sample < min or sample > max:
+    #         sample = sample_gamma(gamma_shape, min, max, k, returnInt)
+    # else:
+    #     scale = (max - min) / (gamma_shape * k)
 
-        trunc_gamma = stats.truncnorm((min - scale) / np.sqrt(gamma_shape),
-                              (max - scale) / np.sqrt(gamma_shape),
-                              loc=scale, scale=np.sqrt(gamma_shape))
+    #     trunc_gamma = stats.truncnorm((min - scale) / np.sqrt(gamma_shape),
+    #                           (max - scale) / np.sqrt(gamma_shape),
+    #                           loc=scale, scale=np.sqrt(gamma_shape))
         
-        sample = trunc_gamma.rvs()
+    #     sample = trunc_gamma.rvs()
+
+    sample = min - 1
+
+    while sample < min or sample > max:
+        sample = sample_gamma(gamma_shape, min, max, k, returnInt)
 
     return sample
 
@@ -187,30 +196,30 @@ def convert_celltype_to_simcelltype(cellid, cells=None, celltype=None):
         celltype = cell["type"]
 
     match celltype:
-        case "household":
-            return "residence"
-        case "workplace":
-            return "workplace"
-        case "accom":
-            return "residence"
-        case "hospital":
-            return "community"
-        case "entertainment":
-            return "community"
-        case "school":
-            return "school"
-        case "classroom":
-            return "school"
-        case "institution":
-            return "residence"
-        case "transport":
-            return "community"
-        case "religion":
-            return "community"
-        case "airport":
-            return "community"
+        case CellType.Household:
+            return SimCellType.Residence
+        case CellType.Workplace:
+            return SimCellType.Workplace
+        case CellType.Accommodation:
+            return SimCellType.Residence
+        case CellType.Hospital:
+            return SimCellType.Community
+        case CellType.Entertainment:
+            return SimCellType.Community
+        case CellType.School:
+            return SimCellType.School
+        case CellType.Classroom:
+            return SimCellType.School
+        case CellType.Institution:
+            return SimCellType.Residence
+        case CellType.Transport:
+            return SimCellType.Community
+        case CellType.Religion:
+            return SimCellType.Community
+        case CellType.Airport:
+            return SimCellType.Community
         case _:
-            return "community"
+            return SimCellType.Community
 
 # takes the contact structure in agents_contacts
 # can be used for both potential contacts and direct contacts (as they bear the same structure)
@@ -253,9 +262,9 @@ def filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_
     for agent, simcelltype, start_time in contact_tracing_info_arr:
         if min_ts <= start_time <= max_ts:
             if simcelltype not in contact_tracing_info_by_simcelltype:
-                contact_tracing_info_by_simcelltype[simcelltype] = []
+                contact_tracing_info_by_simcelltype[simcelltype] = set()
 
-            contact_tracing_info_by_simcelltype[simcelltype].append(agent)        
+            contact_tracing_info_by_simcelltype[simcelltype].add(agent)        
 
     return contact_tracing_info_by_simcelltype
 
@@ -318,11 +327,20 @@ def get_sus_mort_prog_age_bracket_index(age):
         else:
             return 9
         
-def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, agents_partial, agents_ids_by_ages_partial, vars_util_partial, is_itinerary=False):
+def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False, agents_epi=None, agents_epi_partial=None):
     for uid in agents_ids:
         agents_partial[uid] = agents[uid]
 
-        if is_itinerary:
+        if agents_epi is not None:
+            agents_epi_partial[uid] = agents_epi[uid]
+
+        if is_dask_task:
+            vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
+
+            # if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
+            #     vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
+
+        if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
         if uid in vars_util.agents_seir_state_transition_for_day:
@@ -334,50 +352,135 @@ def split_dicts_by_agentsids(agents_ids, agents, agents_ids_by_ages, vars_util, 
         if uid in vars_util.agents_infection_severity:
             vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
 
-    return agents_partial, agents_ids_by_ages_partial, vars_util_partial
+    return agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial
 
-def sync_state_info_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, contact_tracing=False):
-    # updated_count = 0
+def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
     for uid in agents_ids:
-        curr_agent = agents_partial[uid]
+        agents_partial[uid] = deepcopy(agents[uid])
+        agents_epi_partial[uid] = deepcopy(agents_epi[uid])
+
+        if is_dask_full_array_mapping:
+            vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
+
+            # if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
+            #     vars_util_partial.agents_vaccination_doses.append(copy(vars_util.agents_vaccination_doses[uid]))
+
+        if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
+            agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
+
+        if uid in vars_util.agents_seir_state_transition_for_day:
+            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
+
+        if uid in vars_util.agents_infection_type:
+            vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
+
+        if uid in vars_util.agents_infection_severity:
+            vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
+
+    if not is_dask_full_array_mapping:
+        vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
+
+    return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
+
+def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, contact_tracing=False):
+    # updated_count = 0
+    for agentindex, agentid in enumerate(agents_ids):
+        curr_agent = agents_partial[agentid]
+        curr_agent_epi = agents_epi_partial[agentid]
+        
         if not contact_tracing:
-            agents[uid] = curr_agent
+            agents[agentid] = curr_agent
+            agents_epi[agentid] = curr_agent_epi
         else:
-            main_agent = agents[uid] # may also add handling to update only the updated fields rather than all fields that can be updated
-            main_agent["test_day"] = curr_agent["test_day"]
-            main_agent["test_result_day"] = curr_agent["test_result_day"]
-            main_agent["quarantine_days"] = curr_agent["quarantine_days"]
+            main_agent = agents_epi[agentid] # may also add handling to update only the updated fields rather than all fields that can be updated
+            main_agent["test_day"] = curr_agent_epi["test_day"]
+            main_agent["test_result_day"] = curr_agent_epi["test_result_day"]
+            main_agent["quarantine_days"] = curr_agent_epi["quarantine_days"]
 
-        if uid in vars_util_partial.agents_seir_state_transition_for_day:
-            vars_util.agents_seir_state_transition_for_day[uid] = vars_util_partial.agents_seir_state_transition_for_day[uid]
+        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
-        if not contact_tracing or uid in vars_util_partial.agents_seir_state:
-            vars_util.agents_seir_state[uid] = vars_util_partial.agents_seir_state[uid] # not partial
+        if not contact_tracing:
+            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
-        if uid in vars_util_partial.agents_infection_type:
-            vars_util.agents_infection_type[uid] = vars_util_partial.agents_infection_type[uid]
+        if agentid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
 
-        if uid in vars_util_partial.agents_infection_severity:
-            vars_util.agents_infection_severity[uid] = vars_util_partial.agents_infection_severity[uid]
+        if agentid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
 
         # updated_count += 1  
 
     # print("synced " + str(updated_count) + " agents")
     
-    return agents, vars_util
+    return agents, agents_epi, vars_util
 
-def sync_state_info_sets(vars_util, vars_util_partial):
+def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+    # updated_count = 0
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+
+        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+
+        if len(vars_util_partial.agents_seir_state) > 0:
+            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+
+        if agentid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
+
+        if agentid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
+
+        # updated_count += 1  
+
+    # print("synced " + str(updated_count) + " agents")
+    
+    return agents_epi, vars_util
+
+def sync_state_info_by_agentsids_ct(agents_ids, agents_epi, agents_epi_partial):
+    # updated_count = 0
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+    
+    return agents_epi
+
+def sync_state_info_sets(day, vars_util, vars_util_partial):
     if len(vars_util_partial.contact_tracing_agent_ids) > 0:
         vars_util.contact_tracing_agent_ids.update(vars_util_partial.contact_tracing_agent_ids)
 
     if len(vars_util_partial.directcontacts_by_simcelltype_by_day) > 0:
         current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+
+        if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+            vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
+
         vars_util.directcontacts_by_simcelltype_by_day.extend(vars_util_partial.directcontacts_by_simcelltype_by_day)
 
         for index, dc in enumerate(vars_util_partial.directcontacts_by_simcelltype_by_day):
             new_index = current_index + index
-            vars_util.dc_by_sct_by_day_agent1_index.append([dc[2], new_index])
-            vars_util.dc_by_sct_by_day_agent2_index.append([dc[3], new_index])
+            vars_util.dc_by_sct_by_day_agent1_index.append([dc[1], new_index])
+            vars_util.dc_by_sct_by_day_agent2_index.append([dc[2], new_index])
+
+    return vars_util
+
+# not currently being used
+# this was being used in single process scenarios (single-threaded), 
+# eventually went for a solution where the indexes are updated at the same point of inserting the contacts (for single process cases only)
+def update_direct_contact_indexes(day, vars_util):
+    current_index = len(vars_util.dc_by_sct_by_day_agent1_index)
+
+    if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+        vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
+
+    for new_index in range(current_index, len(vars_util.directcontacts_by_simcelltype_by_day)):
+        dc = vars_util.directcontacts_by_simcelltype_by_day[new_index]
+        vars_util.dc_by_sct_by_day_agent1_index.append([dc[1], new_index])
+        vars_util.dc_by_sct_by_day_agent2_index.append([dc[2], new_index])
 
     return vars_util
 
@@ -392,21 +495,21 @@ def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
 
 # load balancing
 
-def split_residences_by_weight(residences, num_processes):
+def split_residences_by_weight(residences, num_partitions):
     # Sort residences based on their weights in ascending order
     sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight'])
 
     sorted_residences = [residence for _, residence in sorted_residences_with_indices]
     sorted_indices = [index for index, _ in sorted_residences_with_indices]
 
-    process_residences_indices = [[] for i in range(num_processes)]
+    process_residences_indices = [[] for i in range(num_partitions)]
     cursor = 0
     for index, _ in enumerate(sorted_residences):
         process_residences_indices[cursor].append(sorted_indices[index])
 
         cursor += 1
 
-        if cursor == num_processes:
+        if cursor == num_partitions:
             cursor = 0
 
     # process_residences_indices_lengths = [len(pri) for pri in process_residences_indices]
@@ -414,12 +517,78 @@ def split_residences_by_weight(residences, num_processes):
 
     return process_residences_indices
 
+# weights are worker based
+def itinerary_load_balancing(residences, num_workers, weights):
+    total = np.sum(weights) # get the total sum of the weights
+
+    # generate the num of tasks per worker by dividing each weight by the total and multiplying by the num of residences, converting to int and rounding to the nearest integer
+    tasks_per_worker = np.round((weights / total) * len(residences)).astype(int) 
+
+    if sum(tasks_per_worker) != len(residences):
+        remaining = len(residences) - sum(tasks_per_worker)
+        
+        new_added = 0
+        while (new_added < remaining):
+            for i in range(len(tasks_per_worker)-1, -1, -1):
+                if new_added < remaining:
+                    tasks_per_worker[i] += 1
+                    new_added += 1
+                else:
+                    break
+
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight']) # sort the residences based on the lb_weight (lb_weight is based on the num of residents in each residence)
+
+    sorted_indices = [index for index, _ in sorted_residences_with_indices] # reflect the indices of sorted_residences_with_indices
+
+    process_residences_indices = [[] for i in range(num_workers)] # create a multi-dim array with num_workers indices (node-agnostic) (the values of which will be added down under)
+
+    cursor = 0
+    for worker_index, num_tasks_this_worker in enumerate(tasks_per_worker): # add the indices of each residence, for every worker
+        process_residences_indices[worker_index].extend(sorted_indices[cursor: cursor + num_tasks_this_worker]) # use extend, as already an array
+        cursor += num_tasks_this_worker
+
+    return process_residences_indices
+
+def itinerary_load_balancing_by_node(residences, num_workers, nodes_n_workers, weights):
+    total = np.sum(weights) # get the total sum of the weights
+
+    tasks_per_node = np.round((weights / total) * len(residences)).astype(int) # generate the num of tasks per node by dividing each weight by the total and multiplying by the num of residences, converting to int and rounding to the nearest integer
+
+    sorted_residences_with_indices = sorted(enumerate(residences), key=lambda x: x[1]['lb_weight']) # sort the residences based on the lb_weight (lb_weight is based on the num of residents in each residence)
+
+    sorted_indices = [index for index, _ in sorted_residences_with_indices] # reflect the indices of sorted_residences_with_indices
+
+    process_residences_indices = [[] for i in range(num_workers)] # create a multi-dim array with num_workers indices (node-agnostic) (the values of which will be added down under)
+
+    cursor = 0
+    worker_index = 0
+    for i, (ni, num_workers) in enumerate(nodes_n_workers.items()): # i is the current index, ni is the node of the index, num_workers is the num of workers per node
+        num_tasks_this_node = tasks_per_node[i] # get the num of tasks for the current node
+        num_tasks_per_worker = split_balanced_partitions(num_tasks_this_node, num_workers) # balance the num of tasks according to the num of workers
+
+        for _, num_tasks_this_worker in enumerate(num_tasks_per_worker): # add the indices of each residence, for every worker
+            process_residences_indices[worker_index].extend(sorted_indices[cursor: cursor + num_tasks_this_worker]) # use extend, as already an array
+            worker_index += 1
+            cursor += num_tasks_this_worker
+
+    return process_residences_indices
+
+def split_balanced_partitions(x, n):
+    base_value = x // n
+    remainder = x % n
+    partitions = [base_value] * n
+
+    for i in range(remainder):
+        partitions[i] += 1
+
+    return partitions
+
 def split_cellsagentstimesteps_balanced(cells_agents_timesteps, num_dicts):
     # Sort the keys based on the length of the array in the value in ascending order
     sorted_keys = sorted(cells_agents_timesteps.keys(), key=lambda k: len(cells_agents_timesteps[k]))
 
     # Initialize empty dictionaries for each partition
-    partitions = [{} for _ in range(num_dicts)]
+    partitions = [customdict.CustomDict() for _ in range(num_dicts)]
 
     # Distribute keys evenly across partitions
     for i, key in enumerate(sorted_keys):
@@ -434,7 +603,8 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
     while left <= right:
         mid = left + (right - left) // 2
 
-        if arr[mid][col_index] == target:
+        mid_value = arr[mid][col_index]
+        if mid_value == target:
             indices.append(mid)
             # Search to the left of mid
             i = mid - 1
@@ -447,13 +617,44 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
                 indices.append(i)
                 i += 1
             return indices
-        elif arr[mid][col_index] < target:
+        elif mid_value < target:
             left = mid + 1
         else:
             right = mid - 1
 
     return indices  # Empty list if no matches found
 
+def yield_chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i: i + n]
+
+def log_memory_usage(f=None, prepend_text=None, memory_info=None):
+    if prepend_text is None:
+        prepend_text = ""
+
+    if memory_info is None:
+        memory_info = psutil.virtual_memory()
+        
+    memory_total = memory_info.total / (1024 ** 2)
+    memory_available = memory_info.available / (1024 ** 2)
+    memory_used_up = memory_info.used / (1024 ** 2)
+    memory_cached = 0
+    try:
+        memory_cached = memory_info.cached / (1024 ** 2)
+    except:
+        memory_cached = -1
+
+    memory_buffer = 0
+    try:
+        memory_buffer = memory_info.buffers / (1024 ** 2)
+    except:
+        memory_buffer = -1
+        
+    print("{0}Total memory {1}, Used up memory {2}, Available memory {3}, Cached memory {4}, Buffer memory {5}".format(str(prepend_text), str(memory_total), str(memory_used_up), str(memory_available), str(memory_cached), str(memory_buffer)))
+
+    if f is not None:
+        f.flush()
+        
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
 # def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
 #     agents_partial = {}
@@ -511,3 +712,14 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
 #                         agents_partial[sec_agent_id] = agents[sec_agent_id]
 
 #     return agents_partial, dc_by_simcelltype_by_day_partial
+
+# itinerary, itinerary_daskmp, contactnetwork, contactnetwork_daskmp, contacttracing = False, False, False, False, False
+class MethodType(IntEnum):
+    ItineraryMP = 0
+    ItineraryDist = 1
+    ItineraryDistMP = 2
+    ContactNetworkMP = 3
+    ContactNetworkDist = 4
+    ContactNetworkDistMP = 5
+    ContactTracingMP = 6
+    ContactTracingDist = 7

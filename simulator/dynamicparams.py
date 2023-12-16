@@ -1,5 +1,6 @@
-from epidemiology import SEIRState
+from epidemiologyclasses import SEIRState
 import time
+# import json
 
 class DynamicParams:
     def __init__(self, n_locals, n_tourists, epidemiologyparams):
@@ -23,6 +24,24 @@ class DynamicParams:
         # daily refreshed statistics here
         self.infectious_rate = 0
 
+    def to_dict(self):
+        return {"n_locals": self.n_locals, 
+                "n_tourists": self.n_tourists, 
+                "masks_hygience_distancing_day_thresholds": self.masks_hygiene_distancing_day_thresholds, 
+                "masks_hygiene_distancing_infectiousrate_thresholds": self.masks_hygiene_distancing_infectiousrate_thresholds,
+                "vaccination_day_thresholds": self.vaccination_day_thresholds,
+                "vaccination_infectiousrate_thresholds": self.vaccination_infectiousrate_thresholds,
+                "intervention_day_thresholds": self.intervention_day_thresholds,
+                "intervention_infectiousrate_thresholds": self.intervention_infectiousrate_thresholds,
+                "quarantine_enabled": self.quarantine_enabled,
+                "testing_enabled": self.testing_enabled,
+                "contact_tracing_enabled": self.contact_tracing_enabled,
+                "masks_hygiene_distancing_multiplier": self.masks_hygiene_distancing_multiplier,
+                "vaccination_propensity": self.vaccination_propensity,
+                "last_vaccination_propensity": self.last_vaccination_propensity,
+                "num_agents_to_be_vaccinated": self.num_agents_to_be_vaccinated,
+                "infectious_rate": self.infectious_rate}
+
     def refresh_infectious_rate(self, agents_seir_state, tourists_active_ids): # to optimise
         n_infectious = 0
         n_inactive = 0
@@ -31,7 +50,7 @@ class DynamicParams:
 
         n_infectious = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
         n_inactive = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
-
+        
         n_infectious += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
         n_inactive += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
 
@@ -157,3 +176,9 @@ class DynamicParams:
             val=none_val
 
         return val
+    
+# class DynamicParamsEncoder(json.JSONEncoder):
+#     def default(self, obj):
+#         if isinstance(obj, DynamicParams):
+#             return {"data": obj.data}
+#         return super().default(obj)
