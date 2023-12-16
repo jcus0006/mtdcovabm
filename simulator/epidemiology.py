@@ -53,6 +53,7 @@ class Epidemiology:
         self.testing_days_distribution_parameters = epidemiologyparams["testing_days_distribution_parameters"]
         quarantine_duration_params = epidemiologyparams["quarantine_duration_parameters"]
         self.quarantine_positive_duration, self.quarantine_positive_contact_duration, self.quarantine_secondary_contact_duration = quarantine_duration_params[0], quarantine_duration_params[1], quarantine_duration_params[2]
+        self.quarantine_after_symptoms_probability = epidemiologyparams["quarantine_after_symptoms_probability"]
         self.testing_results_days_distribution_parameters = epidemiologyparams["testing_results_days_distribution_parameters"]
         testing_false_positive_negative_rates = epidemiologyparams["testing_false_positive_negative_rates"]
         self.testing_false_positive_rate, self.testing_false_negative_rate = testing_false_positive_negative_rates[0], testing_false_positive_negative_rates[1]
@@ -343,20 +344,25 @@ class Epidemiology:
         
         if symptomatic_day > -1:
             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-            test_scheduled, _, test_result_day = self.schedule_test(exposed_agent, exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Positive)
-            
-            start_quarantine_day = None
-            if test_scheduled:
-                if test_result_day[0] < symptomatic_day:
-                    start_quarantine_day = test_result_day[0]
-                else:
-                    start_quarantine_day = symptomatic_day
-            else:
-                start_quarantine_day = symptomatic_day
+            self.schedule_test(exposed_agent, exposed_agent_id, symptomatic_day, sampled_timestep, QuarantineType.Symptomatic)
 
+            # this was not correct. quarantine based on test_result_day happens when sampling intervention activities in the itinerary
+            # in this case, since the agent is symptomatic, we need to sample starting quarantine immediately (based on the relevant probability)
+            # start_quarantine_day = None
+            # if test_scheduled:
+            #     if test_result_day[0] < symptomatic_day:
+            #         start_quarantine_day = test_result_day[0]
+            #     else:
+            #         start_quarantine_day = symptomatic_day
+            # else:
+            #     start_quarantine_day = symptomatic_day
+
+            start_quarantine_day = symptomatic_day
+                
             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-            _, _ = self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Positive, quarantine_days=agent_quarantine_days, agent=exposed_agent)
-
+                
+            self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Symptomatic, quarantine_days=agent_quarantine_days, agent=exposed_agent)
+                
         return agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
     
     def schedule_test(self, agent, agent_id, incremental_days, start_timestep, quarantine_type):
@@ -383,7 +389,7 @@ class Epidemiology:
             if not test_already_scheduled:
                 test_after_symptoms_rand = -1
 
-                if quarantine_type == QuarantineType.Positive:
+                if quarantine_type == QuarantineType.Symptomatic:
                     test_after_symptoms_rand = random.random()
                 
                 if test_after_symptoms_rand == -1 or test_after_symptoms_rand < self.testing_after_symptoms_probability:
@@ -429,7 +435,20 @@ class Epidemiology:
         quarantine_scheduled = False
 
         if self.dyn_params.quarantine_enabled:
-            to_schedule_quarantine = True
+            to_schedule_quarantine = False
+
+            if quarantine_type == QuarantineType.Symptomatic:
+                quarantine_rand = random.random()
+
+                if quarantine_rand < self.quarantine_after_symptoms_probability:
+                    to_schedule_quarantine = True
+            else:
+                ignore_quarantine_rules_rand = random.random()
+
+                if ignore_quarantine_rules_rand < self.ignore_quarantine_rules_probability:
+                    to_schedule_quarantine = False
+                else:
+                    to_schedule_quarantine = True
 
             if to_schedule_quarantine:
                 if quarantine_days is None:
@@ -441,7 +460,7 @@ class Epidemiology:
                     # quarantine_days = self.agents_mp.get(agent_id, "quarantine_days")
 
                 if end_day is None:
-                    if quarantine_type == QuarantineType.Positive: # positive
+                    if quarantine_type == QuarantineType.Symptomatic or quarantine_type == QuarantineType.Positive: # symptomatic or positive, same duration
                         end_day = start_day + self.quarantine_positive_duration
                     elif quarantine_type == QuarantineType.PositiveContact:
                         start_day += self.contact_tracing_positive_delay_days
