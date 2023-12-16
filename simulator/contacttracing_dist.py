@@ -43,9 +43,6 @@ def contacttracing_distributed(client: Client,
         stack_trace_log_file_name = os.path.join(folder_name, "ct_main_dist_stack_trace_" + str(day) + ".txt")
         task_results_stack_trace_log_file_name = os.path.join(folder_name, "ct_main_res_task_results_stack_trace_" + str(day) + ".txt")
 
-        # stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_dist_stack_trace" + ".txt"
-        # task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_res_task_results_stack_trace" + ".txt"
-
         with performance_report(filename=dask_perf_log_file_name):
             workers = client.scheduler_info()["workers"].keys()
 

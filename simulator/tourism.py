@@ -48,17 +48,17 @@ class Tourism:
         self.tourists_arrivals_departures_for_day = {}
         if len(tourist_groupids_by_day) > 0:
             if day == 1:
-                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day)
+                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, f)
             else:
                 self.tourists_arrivals_departures_for_day = copy(self.tourists_arrivals_departures_for_nextday)
           
         self.tourists_arrivals_departures_for_nextday = {}
         if len(tourist_groupids_by_nextday):
-            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday)
+            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, f)
         
         return self.it_agents, self.agents_epi, self.tourists, self.cells, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
-    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures):
+    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, f):
         for tour_group_id in tourist_groupids:
             tourists_group = self.touristsgroups[tour_group_id]
 
@@ -145,13 +145,22 @@ class Tourism:
                             age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
 
                             self.it_agents[new_agent_id] = new_it_agent
-                            self.agents_epi[new_agent_id] = new_agent_epi
+                            self.agents_epi[new_agent_id] = new_agent_epi          
 
-                            self.agents_static.set(new_agent_id, "age", tourist["age"])
-                            self.agents_static.set(new_agent_id, "res_cellid", cellindex)
-                            self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
-                            self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
-                            self.agents_static.set(new_agent_id, "pub_transp_reg", True)
+                            # stbd_exists = "state_transition_by_day" in self.agents_epi[new_agent_id]
+                            # print(f"new agent id {new_agent_id} tourist id {tourist_id} state_transition_by_day exists {str(stbd_exists)}")
+                            # if f is not None:
+                            #     f.flush()
+
+                            if not self.agents_static.use_tourists_dict:
+                                self.agents_static.set(new_agent_id, "age", tourist["age"])
+                                self.agents_static.set(new_agent_id, "res_cellid", cellindex)
+                                self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
+                                self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
+                                self.agents_static.set(new_agent_id, "pub_transp_reg", True)
+                            else:
+                                props = {"age": tourist["age"], "res_cellid": cellindex, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "soc_rate": 0}
+                                self.agents_static.set_props(new_agent_id, props)
 
                             self.agents_static_to_sync[new_agent_id] = [tourist["age"], cellindex, age_bracket_index, epi_age_bracket_index, True, 0]
 
@@ -191,7 +200,7 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, log_file_name, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, f=None):
         departing_tourist_agent_ids = []
 
         start = time.time()
@@ -219,6 +228,7 @@ class Tourism:
 
                         departing_tourist_agent_ids.append(agentid)
 
+                        # self.agents_static.delete(agentid)
                         # self.agents_static.set(agentid, "age", None)
                         # self.agents_static.set(agentid, "res_cellid", None)
                         # self.agents_static.set(agentid, "age_bracket_index", None)
@@ -240,20 +250,20 @@ class Tourism:
             f.flush()
 
         # sync new tourists with remote workers and remove tourists who have left on the previous day
+        prev_day_departing_tourists_ids = []
+            
+        if day-1 in self.departing_tourists_ids:
+            prev_day_departing_tourists_ids = self.departing_tourists_ids[day-1]
+
         if client is not None:
             start = time.time()
 
             futures = []
             workers = list(client.scheduler_info()["workers"].keys()) # list()
 
-            prev_day_departing_tourists_ids = []
-            
-            if day-1 in self.departing_tourists_ids:
-                prev_day_departing_tourists_ids = self.departing_tourists_ids[day-1]
-
             for worker_index, worker in enumerate(workers):
                 if len(actors) == 0:
-                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, log_file_name, worker_index)
+                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_ids, remote_log_subfolder_name, log_file_name, worker_index)
                     future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
                     futures.append(future)
                 else:
@@ -261,6 +271,8 @@ class Tourism:
                     actor = actors[worker_index]
                     future = actor.run_update_tourist_data_remote(params)
                     futures.append(future)
+
+            self.agents_static_to_sync = {}
             
             success = False
             for future in as_completed(futures):
@@ -273,13 +285,17 @@ class Tourism:
                 if f is not None:
                     f.flush()
 
-            if len(prev_day_departing_tourists_ids) > 0:
-                del self.departing_tourists_ids[day-1]
-
             time_taken = time.time() - start
             print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
             if f is not None:
                 f.flush()
 
-        
+        if len(prev_day_departing_tourists_ids) > 0:
+            for agentid in prev_day_departing_tourists_ids:
+                self.it_agents[agentid] = {}
+                self.agents_epi[agentid] = {}
+                self.agents_static.delete(agentid)
+                # print(f"deleted agent {agentid} from agents_static")
+    
+            del self.departing_tourists_ids[day-1]
 

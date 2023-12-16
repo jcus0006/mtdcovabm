@@ -8,6 +8,7 @@ from copy import copy, deepcopy
 import seirstateutil, customdict
 from cellsclasses import CellType, SimCellType
 from enum import IntEnum
+import psutil
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -626,6 +627,33 @@ def binary_search_2d_all_indices(arr, target, col_index=0):
 def yield_chunks(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i: i + n]
+
+def log_memory_usage(f=None, prepend_text=None, memory_info=None):
+    if prepend_text is None:
+        prepend_text = ""
+
+    if memory_info is None:
+        memory_info = psutil.virtual_memory()
+        
+    memory_total = memory_info.total / (1024 ** 2)
+    memory_available = memory_info.available / (1024 ** 2)
+    memory_used_up = memory_info.used / (1024 ** 2)
+    memory_cached = 0
+    try:
+        memory_cached = memory_info.cached / (1024 ** 2)
+    except:
+        memory_cached = -1
+
+    memory_buffer = 0
+    try:
+        memory_buffer = memory_info.buffers / (1024 ** 2)
+    except:
+        memory_buffer = -1
+        
+    print("{0}Total memory {1}, Used up memory {2}, Available memory {3}, Cached memory {4}, Buffer memory {5}".format(str(prepend_text), str(memory_total), str(memory_used_up), str(memory_available), str(memory_cached), str(memory_buffer)))
+
+    if f is not None:
+        f.flush()
         
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
 # def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
@@ -693,5 +721,5 @@ class MethodType(IntEnum):
     ContactNetworkMP = 3
     ContactNetworkDist = 4
     ContactNetworkDistMP = 5
-    ContactTracing = 6
+    ContactTracingMP = 6
     ContactTracingDist = 7

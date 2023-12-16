@@ -24,9 +24,9 @@ from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
 
-params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
-            "simulationdays": 20, # 365/20
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -47,7 +47,10 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": True, # if this is true, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
+            "use_static_dict_tourists": True,
+            "use_static_dict_locals": False,
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
             "dask_numtasks": -1, # only works with dask_use_fg = False and dask_use_chunking = False. the number of tasks to split all computation into
@@ -63,15 +66,16 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            # "dask_nodes": ["localhost"],
-            # "dask_nodes_n_workers": [4], 
-            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            "dask_nodes_n_workers": [3, 4, 4, 6, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_nodes": ["localhost"], # 192.168.1.24
+            "dask_nodes_n_workers": [6], # 3, 11
+            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.22", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes_n_workers": [3, 4, 4, 3, 4], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
             "dask_batch_size": 86, # (last tried with 2 workers and batches of 2, still unbalanced) 113797 residences means that many calls. recursion limit is 999 calls. 113797 / 999 = 113.9, use batches of 120+ to be safe
             "dask_batch_recurring": False, # if recurring send batch size recurringly, else, send batch size the first time, then 1 task per "as_completed" future 
+            "dask_cluster_restart_days": -1, # supposedly would restart cluster every X days; but was crashing. need further investigation
             "dask_autoclose_cluster": True,
             "keep_processes_open": True,
             "itinerary_normal_weight": 1,
@@ -81,21 +85,35 @@ params = {  "popsubfolder": "500kagents2mtourists2019", # empty takes root (was 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "daskmp_500k_20d_6n_24w_itcn_shmfix_3.txt"
+            "logfilename": "dask_mp_10k_1n_6w_3d.txt"
         }
 
 # Load configuration
 with open('config.json', 'r') as config_file:
     config = json.load(config_file)
 
-# class ReadOnlyData(WorkerPlugin):
+# class ReadOnlyData(WorkerPlugin)
 #     def __init__(self, agentsfilepath):
 #         with open(agentsfilepath, "r") as read_file:          
 #             self.persons = json.load(read_file)
 #             self.persons_len = len(self.persons)
 
-def read_only_data(dask_worker: Worker, agents_ids_by_ages, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, use_shm):
+def read_only_data(dask_worker: Worker, dask_use_mp, agents_ids_by_ages, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, use_shm, use_static_dict_locals, use_static_dict_tourists, logsubfoldername, logfilename):
     import os
+    import platform
+    if dask_use_mp and platform.system() != "Linux": # mac osx uses spawn in recent Python versions; was causing "cannot pickle '_thread.lock' object" error
+        mp.set_start_method("fork")
+
+    current_directory = os.getcwd()
+    subfolder_name = logfilename.replace(".txt", "")
+    log_subfolder_path = os.path.join(current_directory, logsubfoldername, subfolder_name)
+
+    # Create the subfolder if it doesn't exist
+    try:
+        if not os.path.exists(log_subfolder_path):
+            os.makedirs(log_subfolder_path)
+    except:
+        pass # might fail if already created from another worker or process within same node, but should not matter
 
     dask_worker.data["agents_ids_by_ages"] = agents_ids_by_ages
     dask_worker.data["timestepmins"] = timestepmins
@@ -127,7 +145,7 @@ def read_only_data(dask_worker: Worker, agents_ids_by_ages, timestepmins, n_loca
         temp_agents = json.load(read_file)
 
         agents_static = static.Static()
-        agents_static.populate(temp_agents, n_locals, n_tourists, is_shm=use_shm)
+        agents_static.populate(temp_agents, n_locals, n_tourists, use_shm, use_static_dict_locals, use_static_dict_tourists, True)
         
         dask_worker.data["agents_static"] = agents_static
 
@@ -151,7 +169,7 @@ def main():
         params["use_shm"] = False
 
     data_load_start_time = time.time()
-
+    
     simdays_range = range(1, params["simulationdays"] + 1)
     perf_timings_df = pd.DataFrame(index=simdays_range, columns=["tourismitinerary_day", 
                                                               "localitinerary_day", 
@@ -581,7 +599,7 @@ def main():
 
     agents_static_start = time.time()
     agents_static = static.Static()
-    agents_static.populate(agents, n_locals, n_tourists, is_shm=params["use_shm"]) # for now trying without multiprocessing.RawArray
+    agents_static.populate(agents, n_locals, n_tourists, params["use_shm"], params["use_static_dict_locals"], params["use_static_dict_tourists"]) # for now trying without multiprocessing.RawArray
     agents_static_time_taken = time.time() - agents_static_start
 
     agents_dynamic_start = time.time()
@@ -606,17 +624,19 @@ def main():
         f.flush()
 
     gc.collect()
-
-    client = None
+    
+    manager, pool = None, None # mp
+    client = None # dask
     dask_combined_scores_nworkers = None
     dask_it_workers_time_taken, dask_cn_workers_time_taken = {}, {}
     dask_mp_it_processes_time_taken, dask_mp_cn_processes_time_taken = {}, {}
+    workers = []
     actors = []
     try:
-        if params["use_mp"]:
+        if params["use_mp"] and params["numprocesses"] > 1:
             manager = mp.Manager()
             pool = mp.Pool(processes=params["numprocesses"], initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
-        else:
+        elif not params["use_mp"]:
             start = time.time()
             # cluster = LocalCluster()
 
@@ -672,6 +692,8 @@ def main():
             else:
                 worker_class = "distributed.Worker"
 
+            print("dask_nodes {0}, num_workers {1}, nthreads {2}, worker_class {3}".format(str(dask_nodes), str(num_workers), str(num_threads), str(worker_class)))
+
             cluster = SSHCluster(dask_nodes, 
                             connect_options={"known_hosts": None},
                             worker_options={"n_workers": num_workers, "nthreads": num_threads, "local_directory": config["worker_working_directory"] }, # "memory_limit": "3GB" (in worker_options)
@@ -683,6 +705,11 @@ def main():
             print("cluster generation: " + str(time_taken))
             if f is not None:
                 f.flush()
+
+            if params["dask_use_mp"]:
+                print("sleeping for 5 seconds to make sure the cluster and inner processes have started successfully")
+                time.sleep(5)
+
             # cluster.scale(params["numprocesses"])
 
             # Set the working directory for the scheduler and workers
@@ -695,6 +722,13 @@ def main():
             print("client generation: " + str(time_taken))
             if f is not None:
                 f.flush()
+
+            workers = client.scheduler_info()["workers"]
+            print("num_workers: " + str(len(workers)))
+            workers_keys = list(workers.keys())
+            print("workers_keys: " + str(workers_keys))
+            # client_ip = workers_keys[0].replace("tcp://", "").split(':', 1)[0]
+            # print("client_ip: " + str(client_ip))
 
             # plugin = ReadOnlyData(agentsfilepath)
             # client.register_worker_plugin(plugin, name="read-only-data")
@@ -736,12 +770,17 @@ def main():
                     client.upload_file(dynamicjsonpath)
                 
                 callback = partial(read_only_data, 
+                                dask_use_mp=params["dask_use_mp"],
                                 agents_ids_by_ages=agents_ids_by_ages, 
                                 timestepmins=params["timestepmins"], 
                                 n_locals=n_locals, 
                                 n_tourists=n_tourists, 
                                 locals_ratio_to_full_pop=locals_ratio_to_full_pop,
-                                use_shm=params["use_shm"])
+                                use_shm=params["use_shm"],
+                                use_static_dict_locals=params["use_static_dict_locals"],
+                                use_static_dict_tourists=params["use_static_dict_tourists"],
+                                logsubfoldername=params["remotelogsubfoldername"],
+                                logfilename=params["logfilename"])
                 
                 client.register_worker_callbacks(callback)
 
@@ -787,10 +826,12 @@ def main():
             } for key, value in agents_dynamic.items()
         })
 
+        del agents_dynamic
+
         tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
         
         if params["dask_use_mp"]:
-            for worker_index in range(len(list(client.scheduler_info()["workers"].keys()))):
+            for worker_index in range(len(workers_keys)):
                 num_processes = params["dask_nodes_n_workers"][worker_index]
                 dmp_params = (num_processes, worker_index, params["remotelogsubfoldername"], params["logfilename"])
                 actor_future = client.submit(ActorDistMP, dmp_params, actor=True)
@@ -799,12 +840,19 @@ def main():
                 actors.append(actor)
 
         for day in simdays_range: # 365 + 1 / 1 + 1
-
             print("simulating day {0}".format(str(day)))
             if f is not None:
                 f.flush()
-
+            
             day_start = time.time()
+            
+            if not params["use_mp"] and params["dask_cluster_restart_days"] != -1 and day % params["dask_cluster_restart_days"] == 0: # force clean-up every X days
+                restart_start = time.time()
+                client.restart()
+                restart_time_taken = time.time() - restart_start
+                print("restart cluster on day {0} time_taken {1}".format(str(day), str(restart_time_taken)))
+                if f is not None:
+                    f.flush()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
 
@@ -861,7 +909,7 @@ def main():
                 if f is not None:
                     f.flush()
 
-                tourist_util.sync_and_clean_tourist_data(day, client, actors, log_file_name, f)
+                tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], f)
                 print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
                 if f is not None:
                     f.flush()
@@ -878,25 +926,8 @@ def main():
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
-            if not params["quickitineraryrun"]:
-                if day == 1: # from day 2 onwards always calculated at eod
-                    dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids)
-
-            # old
-            # start = time.time()
-            # it_agents = agentsutil.initialize_agents_dict_it(agents_dynamic)
-            # time_taken = time.time() - start
-            # print("initialize_agents_dict_it, time_taken: " + str(time_taken))
-
-            # start = time.time()
-            # cn_agents = agentsutil.initialize_agents_dict_cn(agents_dynamic)
-            # time_taken = time.time() - start
-            # print("initialize_agents_dict_cn, time_taken: " + str(time_taken))
-
-            # start = time.time()
-            # ct_agents = agentsutil.initialize_agents_dict_ct(agents_dynamic)
-            # time_taken = time.time() - start
-            # print("initialize_agents_dict_ct, time_taken: " + str(time_taken))
+            if day == 1: # from day 2 onwards always calculated at eod
+                dyn_params.refresh_dynamic_parameters(day, agents_seir_state, tourists_active_ids)
 
             if not params["quicktourismrun"]:
                 start = time.time()  
@@ -1012,6 +1043,8 @@ def main():
                                                                     dask_combined_scores_nworkers,
                                                                     dask_it_workers_time_taken,
                                                                     dask_mp_it_processes_time_taken,
+                                                                    params["dask_dynamic_load_balancing"],
+                                                                    params["dask_use_mp_innerproc_assignment"],
                                                                     f,
                                                                     actors,
                                                                     log_file_name)
@@ -1047,7 +1080,7 @@ def main():
                                                                 n_locals, 
                                                                 n_tourists, 
                                                                 locals_ratio_to_full_pop, 
-                                                                agents_dynamic, 
+                                                                agents_epi, 
                                                                 vars_util,
                                                                 cells_type, 
                                                                 indids_by_cellid,
@@ -1078,6 +1111,7 @@ def main():
                                                                 params["dask_nodes_n_workers"],
                                                                 dask_cn_workers_time_taken,
                                                                 dask_mp_cn_processes_time_taken,
+                                                                params["dask_use_mp_innerproc_assignment"],
                                                                 f,
                                                                 actors,
                                                                 log_file_name)
@@ -1216,7 +1250,7 @@ def main():
         sys.stdout = original_stdout
         f.close()
 
-        if params["dask_autoclose_cluster"]:
+        if params["dask_autoclose_cluster"] and client is not None:
             client.shutdown()
 
 def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util, sums=None, f=None, df=None):

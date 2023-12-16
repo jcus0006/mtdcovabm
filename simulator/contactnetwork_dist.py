@@ -27,6 +27,7 @@ def contactnetwork_distributed(client: Client,
                             dask_nodes_n_workers=None,
                             dask_workers_time_taken=None,
                             dask_mp_processes_time_taken=None,
+                            use_mp_innerproc_assignment=False,
                             f=None,
                             actors=None,
                             log_file_name="output.txt"):
@@ -64,10 +65,27 @@ def contactnetwork_distributed(client: Client,
                         w_index += 1
 
             if dask_numtasks == -1:
-                dask_numtasks = len(workers)
+                if not use_mp or not use_mp_innerproc_assignment:
+                    dask_numtasks = len(workers)
+                else:
+                    dask_numtasks = sum(dask_nodes_n_workers)
 
             start = time.time()
             cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, dask_numtasks)
+            
+            # just for dask with mp strategy, re-join the workers into a per-node split. will be re-split into separate processes in each dask worker node 
+            if use_mp and use_mp_innerproc_assignment:
+                temp_cells_agents_timesteps_dicts = [customdict.CustomDict() for _ in range(len(workers))]
+
+                cursor = 0
+                for ni, num_workers in enumerate(dask_nodes_n_workers):
+                    for _ in range(num_workers):
+                        temp_cells_agents_timesteps_dicts[ni].update(cells_agents_timesteps_dicts[cursor])
+                        cursor += 1
+
+                cells_agents_timesteps_dicts = temp_cells_agents_timesteps_dicts
+                dask_numtasks = len(workers)
+
             time_taken = time.time() - start
             print("split_cellsagentstimesteps_balanced (load balancing): " + str(time_taken))
             if f is not None:
@@ -77,7 +95,10 @@ def contactnetwork_distributed(client: Client,
             dask_params, futures, delayed_computations = [], [], []
 
             for worker_index in range(dask_numtasks):
+                worker_assign_start = time.time()
+
                 worker_url = workers[worker_index]
+                remote_worker_index = node_worker_index_by_worker_url[worker_url]
                 # cells_partial = {}
 
                 cells_agents_timesteps_partial = customdict.CustomDict()
@@ -115,7 +136,7 @@ def contactnetwork_distributed(client: Client,
                     f.flush()
 
                 if not use_mp:
-                    params = (day, weekday, agents_partial, vars_util_partial, dynparams, worker_index, log_file_name)
+                    params = (day, weekday, agents_partial, vars_util_partial, dynparams, remote_worker_index, log_file_name)
                 else:
                     params = (day, weekday, agents_partial, vars_util_partial, dynparams, log_file_name)
 
@@ -133,6 +154,13 @@ def contactnetwork_distributed(client: Client,
                     actor = actors[worker_index]
                     future = actor.run_contactnetwork_parallel(params)
                     futures.append(future)
+
+                worker_assign_time_taken = time.time() - worker_assign_start
+                
+                if not use_mp:
+                    dask_workers_time_taken[remote_worker_index] = [worker_assign_time_taken, None]
+                else:
+                    dask_workers_time_taken[remote_worker_index[0]] = [worker_assign_time_taken, None]
 
             time_taken = time.time() - start
             print("futures / delayed_results generation: " + str(time_taken))
@@ -236,10 +264,7 @@ def contactnetwork_worker(params):
         
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
-        vars_util.agents_seir_state = []
         vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
-        vars_util.agents_infection_type = customdict.CustomDict()
-        vars_util.agents_infection_severity = customdict.CustomDict()
         vars_util.agents_vaccination_doses = []
         
         main_time_taken = time.time() - main_start

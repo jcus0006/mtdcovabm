@@ -8,32 +8,27 @@ import numpy.ma as ma
 from dask.distributed import get_worker
 import multiprocessing as mp
 from copy import copy, deepcopy
-import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, tourism_dist
+import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, tourism_dist, customexception
 from util import MethodType
-import shutil
+import psutil
 
 class ActorDistMP:
     def __init__(self, params):
-        if platform.system() != "Linux": # mac osx uses spawn in recent Python versions; was causing "cannot pickle '_thread.lock' object" error
-            mp.set_start_method("fork")
-
         worker = get_worker()
 
         numprocesses, workerindex, logsubfoldername, logfilename = params
 
         current_directory = os.getcwd()
-
         subfolder_name = logfilename.replace(".txt", "")
-
         log_subfolder_path = os.path.join(current_directory, logsubfoldername, subfolder_name)
 
-        # Create the subfolder if it doesn't exist
-        if not os.path.exists(log_subfolder_path):
-            os.makedirs(log_subfolder_path)
-        else:
-            if workerindex > 0: # don't delete the sub folder from the client machine (this assumes worker 0 is the client)
-                shutil.rmtree(log_subfolder_path)
-                os.makedirs(log_subfolder_path)
+        # # Create the subfolder if it doesn't exist
+        # if not os.path.exists(log_subfolder_path):
+        #     os.makedirs(log_subfolder_path)
+        # else:
+        #     if workerindex > 0: # don't delete the sub folder from the client machine (this assumes worker 0 is the client)
+        #         shutil.rmtree(log_subfolder_path)
+        #         os.makedirs(log_subfolder_path)
 
         self.folder_name = log_subfolder_path
 
@@ -44,23 +39,25 @@ class ActorDistMP:
 
     def run_itinerary_parallel(self, params):
         stack_trace_log_file_name = ""
+        f = None
+        original_stdout = sys.stdout
 
         try:
             main_start = time.time()
 
             day, weekday, weekdaystr, hh_insts, it_agents, agents_epi, vars_util, dynparams, log_file_name = params
 
-            folder_name = ""
-            if log_file_name != "output.txt":
-                folder_name = os.path.dirname(log_file_name)
-            else:
-                folder_name = os.getcwd()
-
             worker = get_worker()
             agents_ids_by_ages = worker.data["agents_ids_by_ages"]
 
-            stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_mp_stack_trace_" + str(day) + ".txt"
-            task_results_stack_trace_log_file_name = os.path.join(folder_name, "it_main_res_task_results_stack_trace_" + str(day) + ".txt")
+            stack_trace_log_file_name = os.path.join(self.folder_name, "it_main_mp_stack_trace_" + str(day) + ".txt")
+            task_results_stack_trace_log_file_name = os.path.join(self.folder_name, "it_main_res_task_results_stack_trace_" + str(day) + ".txt")
+            log_file_name = os.path.join(self.folder_name, "it_main_mp_" + str(day) + ".txt")
+
+            f = open(log_file_name, "w")
+            sys.stdout = f
+
+            util.log_memory_usage(f, "Before assigning work. ")
 
             mp_hh_inst_indices = util.split_residences_by_weight(hh_insts, self.num_processes) # to do - for the time being this assumes equal split but we may have more information about the cores of the workers
 
@@ -97,6 +94,7 @@ class ActorDistMP:
                         deepcopy(vars_util_partial), # deepcopy(vars_util_partial) - without this was causing some nasty issues with multiprocessing (maybe with Dask it is fine)
                         dynparams, 
                         process_index, 
+                        self.folder_name,
                         log_file_name)  
                 
                 imap_params.append(params)
@@ -107,13 +105,29 @@ class ActorDistMP:
 
             imap_results = self.pool.imap(run_itinerary_single, imap_params)
 
+            util.log_memory_usage(f, "After assigning work. ")
+
             it_agents, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, workers_remote_time_taken)
                 
+            util.log_memory_usage(f, "After syncing results. ")
+
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
 
             return self.worker_index, it_agents, agents_epi, vars_util, workers_remote_time_taken
+        except customexception.CustomException as custom_exception:
+            actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
+
+            with open(actual_stack_trace_log_file_name, 'w') as f:
+                traceback.print_exception(type(customexception.CustomException), custom_exception, custom_exception.__traceback__, file=f)
+        
+            raise
         except Exception as e:
+            actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
+
+            with open(actual_stack_trace_log_file_name, 'w') as f:
+                traceback.print_exc(file=f)
+
             traceback_str = traceback.format_exc()
 
             exception_info = {"processindex": self.worker_index, 
@@ -123,23 +137,30 @@ class ActorDistMP:
                             "traceback": traceback_str}
         
             return exception_info
+        finally:
+            if f is not None:
+                f.close()
+
+            sys.stdout = original_stdout
     
     def run_contactnetwork_parallel(self, params):
         stack_trace_log_file_name = ""
+        f = None
+        original_stdout = sys.stdout
 
         try:
             main_start = time.time()
 
             day, weekday, agents_epi, vars_util, dynparams, log_file_name = params
 
-            folder_name = ""
-            if log_file_name != "output.txt":
-                folder_name = os.path.dirname(log_file_name)
-            else:
-                folder_name = os.getcwd()
+            stack_trace_log_file_name = os.path.join(self.folder_name, "cn_main_mp_stack_trace_" + str(day) + ".txt")
+            task_results_stack_trace_log_file_name = os.path.join(self.folder_name, "cn_main_mp_task_results_stack_trace_" + str(day) + ".txt")
+            log_file_name = os.path.join(self.folder_name, "cn_main_mp_" + str(day) + ".txt")
 
-            stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_main_mp_stack_trace_" + str(day) + ".txt"
-            task_results_stack_trace_log_file_name = os.path.join(folder_name, "cn_main_res_task_results_stack_trace_" + str(day) + ".txt")
+            f = open(log_file_name, "w")
+            sys.stdout = f
+
+            util.log_memory_usage(f, "Before assigning work. ")
 
             cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, self.num_processes)
 
@@ -173,7 +194,7 @@ class ActorDistMP:
         
                 vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
-                params = (day, weekday, agents_partial, vars_util_partial, dynparams, process_index, log_file_name)
+                params = (day, weekday, agents_partial, vars_util_partial, dynparams, process_index, self.folder_name, log_file_name)
                 
                 imap_params.append(params)
 
@@ -182,22 +203,37 @@ class ActorDistMP:
                 workers_remote_time_taken[process_index] = [time_taken, None]
 
             imap_results = self.pool.imap(run_contactnetwork_single, imap_params)
+            
+            util.log_memory_usage(f, "After assigning work. ")
 
             _, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, workers_remote_time_taken)
                 
+            util.log_memory_usage(f, "After syncing results. ")
+
             # certain data does not have to go back because it would not have been updated in this context
             vars_util.cells_agents_timesteps = customdict.CustomDict()
-            vars_util.agents_seir_state = []
             vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
-            vars_util.agents_infection_type = customdict.CustomDict()
-            vars_util.agents_infection_severity = customdict.CustomDict()
             vars_util.agents_vaccination_doses = []
+
+            util.log_memory_usage(f, "Before returning. ")
 
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
 
             return self.worker_index, agents_epi, vars_util, workers_remote_time_taken
+        except customexception.CustomException as custom_exception:
+            actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
+
+            with open(actual_stack_trace_log_file_name, 'w') as f:
+                traceback.print_exception(type(customexception.CustomException), custom_exception, custom_exception.__traceback__, file=f)
+        
+            raise
         except Exception as e:
+            actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
+
+            with open(actual_stack_trace_log_file_name, 'w') as f:
+                traceback.print_exc(file=f)
+
             traceback_str = traceback.format_exc()
 
             exception_info = {"processindex": self.worker_index, 
@@ -207,6 +243,11 @@ class ActorDistMP:
                             "traceback": traceback_str}
         
             return exception_info
+        finally:
+            if f is not None:
+                f.close()
+
+            sys.stdout = original_stdout
     
     def run_update_tourist_data_remote(self, params):
         return tourism_dist.update_tourist_data_remote(params, self.folder_name)
@@ -215,9 +256,11 @@ def run_itinerary_single(params):
     f = None
     stack_trace_log_file_name = ""
     worker_index = None
-    # original_stdout = sys.stdout
+    original_stdout = sys.stdout
 
     try:
+        pre_mem_info = psutil.virtual_memory()
+
         main_start = time.time()
 
         from shared_mp import agents_ids_by_ages
@@ -242,13 +285,16 @@ def run_itinerary_single(params):
         from shared_mp import cells_accommodation
         from shared_mp import agents_static
 
-        day, weekday, weekdaystr, hh_insts, agents_dynamic, agents_epi, vars_util_mp, dyn_params, worker_index, log_file_name = params
+        day, weekday, weekdaystr, hh_insts, agents_dynamic, agents_epi, vars_util_mp, dyn_params, worker_index, folder_name, log_file_name = params
 
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_mp_stack_trace_" + str(day) + "_" + str(worker_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_it_mp_" + str(day) + "_" + str(worker_index) + ".txt"
+        stack_trace_log_file_name = os.path.join(folder_name, "it_mp_stack_trace_" + str(day) + "_" + str(worker_index) + ".txt")
+        log_file_name = os.path.join(folder_name, "it_mp_" + str(day) + "_" + str(worker_index) + ".txt")
 
-        # f = open(log_file_name, "w")
-        # sys.stdout = f
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
+        util.log_memory_usage(f, "Pre global memory important. ", pre_mem_info)
+        util.log_memory_usage(f, "Before processing itinerary. ")
 
         itinerary_util = itinerary.Itinerary(itineraryparams,
                                             timestepmins, 
@@ -313,6 +359,8 @@ def run_itinerary_single(params):
 
         main_time_taken = time.time() - main_start
 
+        util.log_memory_usage(f, "After processing itinerary. ")
+
         return worker_index, agents_dynamic, agents_epi, vars_util_mp, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
         traceback_str = traceback.format_exc()
@@ -329,15 +377,17 @@ def run_itinerary_single(params):
             # Close the file
             f.close()
 
-        # sys.stdout = original_stdout
+        sys.stdout = original_stdout
 
 def run_contactnetwork_single(params):
     f = None
     stack_trace_log_file_name = ""
     worker_index = None
-    # original_stdout = sys.stdout
+    original_stdout = sys.stdout
 
     try:
+        pre_mem_info = psutil.virtual_memory()
+
         main_start = time.time()
 
         from shared_mp import n_locals
@@ -352,13 +402,16 @@ def run_contactnetwork_single(params):
         from shared_mp import cells_accommodation
         from shared_mp import agents_static
 
-        day, weekday, agents_epi, vars_util, dyn_params, worker_index, log_file_name = params
+        day, weekday, agents_epi, vars_util, dyn_params, worker_index, folder_name, log_file_name = params
 
-        stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(worker_index) + ".txt"
-        # log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_" + str(day) + "_" + str(worker_index) + ".txt"
+        stack_trace_log_file_name = os.path.join(folder_name, "cn_mp_stack_trace_" + str(day) + "_" + str(worker_index) + ".txt")
+        log_file_name = os.path.join(folder_name, "cn_mp_" + str(day) + "_" + str(worker_index) + ".txt")
 
-        # f = open(log_file_name, "w")
-        # sys.stdout = f
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
+        util.log_memory_usage(f, "Pre global memory important. ", pre_mem_info)
+        util.log_memory_usage(f, "Before processing contact network. ")
 
         contact_network_util = contactnetwork.ContactNetwork(n_locals, 
                                                             n_tourists, 
@@ -378,15 +431,16 @@ def run_contactnetwork_single(params):
 
         _, _, agents_epi, vars_util = contact_network_util.simulate_contact_network(day, weekday)
         
+        util.log_memory_usage(f, "After processing contact network. ") 
+
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
-        vars_util.agents_seir_state = []
         vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
-        vars_util.agents_infection_type = customdict.CustomDict()
-        vars_util.agents_infection_severity = customdict.CustomDict()
         vars_util.agents_vaccination_doses = []
 
         main_time_taken = time.time() - main_start
+
+        util.log_memory_usage(f, "After cleaning data structures. ")
 
         return worker_index, agents_epi, vars_util, main_time_taken
     except Exception as e:
@@ -404,4 +458,4 @@ def run_contactnetwork_single(params):
             # Close the file
             f.close()
 
-        # sys.stdout = original_stdout
+        sys.stdout = original_stdout

@@ -193,6 +193,9 @@ class Epidemiology:
                     if exposed_rand < infection_probability: # exposed (infected but not yet infectious)
                         updated_agents_ids.append(exposed_agent_id)
 
+                        if "state_transition_by_day" not in exposed_agent_epi:
+                            print(f"exposed_agent_epi {exposed_agent_id} is empty. will crash.")
+
                         agent_state_transition_by_day = exposed_agent_epi["state_transition_by_day"]
                         agent_quarantine_days = exposed_agent_epi["quarantine_days"]
 
@@ -225,9 +228,6 @@ class Epidemiology:
         exp_to_inf_days = util.sample_log_normal(self.exp_to_inf_mean, self.exp_to_inf_std, 1, True)
 
         incremental_days += exp_to_inf_days
-
-        if agent_state_transition_by_day is None:
-            agent_state_transition_by_day = []
 
         agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.ExposedToInfectious, sampled_exposed_timestep])
 
@@ -670,100 +670,107 @@ class Epidemiology:
 
                                 if simcelltype != SimCellType.Residence and positive_contact_agent is not None: # compute secondary contacts (i.e. residential), only applicable if simcelltype not already residential
                                     # res_cell_id = self.agents_mp.get(positive_contact_agent_id, "res_cellid")
-                                    res_cell_id = self.agents_static.get(contact_id, "res_cellid")
+                                    res_cell_id = -1
 
-                                    residence = None
+                                    try:
+                                        res_cell_id = self.agents_static.get(contact_id, "res_cellid")
+                                    except:
+                                        if contact_id < self.n_locals: # if tourist would have departed, skip
+                                            raise ValueError("Agent {0} not found during contact tracing".format(str(contact_id)))
 
-                                    residents_key = ""
-                                    staff_key = ""
+                                    if res_cell_id != -1:
+                                        residence = None
 
-                                    if res_cell_id in self.cells_households:
-                                        residents_key = "resident_uids"
-                                        staff_key = "staff_uids"
-                                        residence = self.cells_households[res_cell_id] # res_cell_id
-                                    elif res_cell_id in self.cells_institutions:
-                                        residents_key = "resident_uids"
-                                        staff_key = "staff_uids"
-                                        residence = self.cells_institutions[res_cell_id]["place"] # res_cell_id 
-                                    elif res_cell_id in self.cells_accommodation:
-                                        residents_key = "member_uids"
-                                        residence = self.cells_accommodation[res_cell_id]["place"] # res_cell_id
+                                        residents_key = ""
+                                        staff_key = ""
 
-                                    if residence is not None:
-                                        resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
-                                        contact_id_index = np.argwhere(resident_ids == contact_id)
-                                        resident_ids = np.delete(resident_ids, contact_id_index)
+                                        if res_cell_id in self.cells_households:
+                                            residents_key = "resident_uids"
+                                            staff_key = "staff_uids"
+                                            residence = self.cells_households[res_cell_id] # res_cell_id
+                                        elif res_cell_id in self.cells_institutions:
+                                            residents_key = "resident_uids"
+                                            staff_key = "staff_uids"
+                                            residence = self.cells_institutions[res_cell_id]["place"] # res_cell_id 
+                                        elif res_cell_id in self.cells_accommodation:
+                                            residents_key = "member_uids"
+                                            residence = self.cells_accommodation[res_cell_id]["place"] # res_cell_id
 
-                                        employees_ids = []
+                                        if residence is not None:
+                                            resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
+                                            contact_id_index = np.argwhere(resident_ids == contact_id)
+                                            resident_ids = np.delete(resident_ids, contact_id_index)
 
-                                        if staff_key != "":
-                                            employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
+                                            employees_ids = []
 
-                                        secondary_contact_ids = []
-                                        if employees_ids is None or len(employees_ids) == 0:
-                                            secondary_contact_ids = resident_ids
-                                        else:
-                                            try:
-                                                secondary_contact_ids = np.concatenate((resident_ids, employees_ids))
-                                            except Exception as e:
-                                                print("problemos: " + e)
+                                            if staff_key != "":
+                                                employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
 
-                                        if secondary_contact_ids is not None and len(secondary_contact_ids) > 0:
-                                            num_of_sec_successfully_traced = round(len(secondary_contact_ids) * self.contact_tracing_residence_probability)
-                                
-                                            sampled_sec_traced_contact_ids = np.random.choice(np.array(secondary_contact_ids), size=num_of_sec_successfully_traced, replace=False)
-
-                                            secondary_contact_indices = np.arange(len(sampled_sec_traced_contact_ids))
-
-                                            num_of_sec_quarantined = round(num_of_sec_successfully_traced * self.contact_tracing_secondary_quarantine_prob)
-
-                                            if num_of_sec_quarantined == len(secondary_contact_indices):
-                                                sampled_sec_quarantine_indices = secondary_contact_indices
+                                            secondary_contact_ids = []
+                                            if employees_ids is None or len(employees_ids) == 0:
+                                                secondary_contact_ids = resident_ids
                                             else:
-                                                sampled_sec_quarantine_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_quarantined, replace=False)
+                                                try:
+                                                    secondary_contact_ids = np.concatenate((resident_ids, employees_ids))
+                                                except Exception as e:
+                                                    print("problemos: " + e)
 
-                                            num_of_sec_tests = round(num_of_sec_successfully_traced * self.contact_tracing_secondary_test_prob)
+                                            if secondary_contact_ids is not None and len(secondary_contact_ids) > 0:
+                                                num_of_sec_successfully_traced = round(len(secondary_contact_ids) * self.contact_tracing_residence_probability)
+                                    
+                                                sampled_sec_traced_contact_ids = np.random.choice(np.array(secondary_contact_ids), size=num_of_sec_successfully_traced, replace=False)
 
-                                            if num_of_sec_tests == len(secondary_contact_indices):
-                                                sampled_sec_test_indices = secondary_contact_indices
-                                            else:
-                                                sampled_sec_test_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_tests, replace=False)
+                                                secondary_contact_indices = np.arange(len(sampled_sec_traced_contact_ids))
 
-                                            quar_start_day, quar_start_timestep, quar_end_day = None, None, None
-                                            if quarantine_reference_quar_days is not None:
-                                                quar_start_day, quar_start_timestep, quar_end_day = quarantine_reference_quar_days[0], quarantine_reference_quar_days[1], quarantine_reference_quar_days[2]
-                                            else:
-                                                quar_start_day = day
-                                                quar_start_timestep = np.random.choice(self.timestep_options, size=1)[0]
+                                                num_of_sec_quarantined = round(num_of_sec_successfully_traced * self.contact_tracing_secondary_quarantine_prob)
 
-                                            for sec_index, sec_contact_id in enumerate(secondary_contact_ids):
-                                                secondary_contact_agent = None
+                                                if num_of_sec_quarantined == len(secondary_contact_indices):
+                                                    sampled_sec_quarantine_indices = secondary_contact_indices
+                                                else:
+                                                    sampled_sec_quarantine_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_quarantined, replace=False)
 
-                                                if sec_index in sampled_sec_quarantine_indices and sec_contact_id not in quarantine_scheduled_ids:
-                                                    secondary_contact_agent = self.agents_epi[sec_contact_id]
+                                                num_of_sec_tests = round(num_of_sec_successfully_traced * self.contact_tracing_secondary_test_prob)
 
-                                                    sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                                    quarantine_scheduled, quar_days = self.schedule_quarantine(sec_contact_id, quar_start_day, quar_start_timestep, QuarantineType.SecondaryContact, quar_end_day, agent=secondary_contact_agent)
+                                                if num_of_sec_tests == len(secondary_contact_indices):
+                                                    sampled_sec_test_indices = secondary_contact_indices
+                                                else:
+                                                    sampled_sec_test_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_tests, replace=False)
 
-                                                    if quarantine_scheduled:
-                                                        quarantine_scheduled_ids.append(sec_contact_id)
+                                                quar_start_day, quar_start_timestep, quar_end_day = None, None, None
+                                                if quarantine_reference_quar_days is not None:
+                                                    quar_start_day, quar_start_timestep, quar_end_day = quarantine_reference_quar_days[0], quarantine_reference_quar_days[1], quarantine_reference_quar_days[2]
+                                                else:
+                                                    quar_start_day = day
+                                                    quar_start_timestep = np.random.choice(self.timestep_options, size=1)[0]
 
-                                                        if quarantine_reference_quar_days is None:
-                                                            quarantine_reference_quar_days = quar_days
+                                                for sec_index, sec_contact_id in enumerate(secondary_contact_ids):
+                                                    secondary_contact_agent = None
 
-                                                        updated_agent_ids.add(sec_contact_id)
-
-                                                if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids:
-                                                    if secondary_contact_agent is None:
+                                                    if sec_index in sampled_sec_quarantine_indices and sec_contact_id not in quarantine_scheduled_ids:
                                                         secondary_contact_agent = self.agents_epi[sec_contact_id]
 
-                                                    sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                                    test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, sec_contact_id, day, sampled_timestep, QuarantineType.SecondaryContact)
+                                                        sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
+                                                        quarantine_scheduled, quar_days = self.schedule_quarantine(sec_contact_id, quar_start_day, quar_start_timestep, QuarantineType.SecondaryContact, quar_end_day, agent=secondary_contact_agent)
 
-                                                    if test_scheduled:
-                                                        test_scheduled_ids.append(sec_contact_id)
+                                                        if quarantine_scheduled:
+                                                            quarantine_scheduled_ids.append(sec_contact_id)
 
-                                                        updated_agent_ids.add(sec_contact_id)
+                                                            if quarantine_reference_quar_days is None:
+                                                                quarantine_reference_quar_days = quar_days
+
+                                                            updated_agent_ids.add(sec_contact_id)
+
+                                                    if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids:
+                                                        if secondary_contact_agent is None:
+                                                            secondary_contact_agent = self.agents_epi[sec_contact_id]
+
+                                                        sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
+                                                        test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, sec_contact_id, day, sampled_timestep, QuarantineType.SecondaryContact)
+
+                                                        if test_scheduled:
+                                                            test_scheduled_ids.append(sec_contact_id)
+
+                                                            updated_agent_ids.add(sec_contact_id)
 
             print("quarantine scheduled from contact tracing {0}, tests scheduled from contact tracing {0}".format(str(len(quarantine_scheduled_ids)), str(len(test_scheduled_ids))))        
                     # time_taken = time.time() - start

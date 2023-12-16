@@ -17,7 +17,7 @@ def contactnetwork_parallel(manager,
                             n_locals, 
                             n_tourists, 
                             locals_ratio_to_full_pop, 
-                            agents_dynamic,
+                            agents_epi,
                             vars_util,
                             cells_type,
                             indids_by_cellid,
@@ -39,7 +39,9 @@ def contactnetwork_parallel(manager,
     # original_stdout = sys.stdout
 
     try:
-        process_counter = manager.Value("i", num_processes)
+        process_counter = None
+        if num_processes > 1:
+            process_counter = manager.Value("i", num_processes)
 
         folder_name = ""
         if log_file_name != "output.txt":
@@ -87,7 +89,7 @@ def contactnetwork_parallel(manager,
 
                 unique_agent_ids = list(unique_agent_ids)
 
-                agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_dynamic, vars_util, agents_partial, vars_util_partial)
+                agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_epi, vars_util, agents_partial, vars_util_partial)
 
                 vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
@@ -153,7 +155,7 @@ def contactnetwork_parallel(manager,
 
             start = time.time()
 
-            agents_dynamic, agents_dynamic, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, agents_dynamic, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
+            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -170,15 +172,25 @@ def contactnetwork_parallel(manager,
                 time_taken = time.time() - start
                 print("pool join time taken " + str(time_taken))
         else:
-            params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name, agents_static
+            params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_epi, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name, agents_static
 
-            process_index, agents_dynamic, vars_util, _ = contactnetwork_worker(params)
+            result = contactnetwork_worker(params, True)
+
+            if not type(result) is dict:
+                process_index, agents_epi, vars_util, _ = result
+            else:
+                exception_info = result
+
+                with open(exception_info["logfilename"], "a") as f:
+                    f.write(f"Exception Type: {exception_info['type']}\n")
+                    f.write(f"Exception Message: {exception_info['message']}\n")
+                    f.write(f"Traceback: {exception_info['traceback']}\n")
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
         raise
 
-def contactnetwork_worker(params):
+def contactnetwork_worker(params, single_proc=False):
     # still to see how to handle (whether mp.Array or local in process and then sync with main memory)
     # in the case of Agents, these are purely read only however, 
     #  - using mp.dict will introduce speed degradation from locking, 
@@ -201,11 +213,13 @@ def contactnetwork_worker(params):
             day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name = params
             from shared_mp import agents_static
 
-        original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
-        log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(day) + "_" + str(process_index) + ".txt"
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        
+        if not single_proc:
+            original_stdout = sys.stdout
+            log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(day) + "_" + str(process_index) + ".txt"
+            f = open(log_file_name, "w")
+            sys.stdout = f
 
         print("process " + str(process_index) + " started at " + str(start))
 
@@ -240,7 +254,8 @@ def contactnetwork_worker(params):
         with open(stack_trace_log_file_name, 'w') as f: # cn_mp_stack_trace.txt
             traceback.print_exc(file=f)
     finally:
-        process_counter.value -= 1
+        if process_counter is not None:
+            process_counter.value -= 1
 
         if f is not None:
             # Close the file

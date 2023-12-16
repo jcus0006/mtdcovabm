@@ -40,8 +40,14 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 #   - update agent state (as required) - to be logged
 #   - clear agent["state_transition_by_day"] for day
 def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, agentindex, day):
-    if day in agent["state_transition_by_day"]:
-        seir_state_transition, timestep = agent["state_transition_by_day"][day]
+    today_index = -1
+    for index, day_entry in enumerate(agent["state_transition_by_day"]): # should always be a short list
+        if day_entry[0] == day:
+            today_index = index
+            break
+    
+    if today_index > -1:
+        _, seir_state_transition, timestep = agent["state_transition_by_day"][today_index]
         current_seir_state = agents_seir_state_get(agents_seir_state, agentid) #agentindex
         current_infection_type = agents_infection_type[agentid]
         current_infection_severity = agents_infection_severity[agentid]
@@ -57,7 +63,7 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
         if new_infection_severity != current_infection_severity: # to be logged
             agents_infection_severity[agentid] = new_infection_severity
             
-        del agent["state_transition_by_day"][day] # clean up
+        del agent["state_transition_by_day"][today_index] # clean up
 
         return new_seir_state, SEIRState(current_seir_state), new_infection_type, new_infection_severity, seir_state_transition, timestep
 

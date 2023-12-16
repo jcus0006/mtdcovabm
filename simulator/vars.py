@@ -58,7 +58,7 @@ class Vars:
 
         # transmission model
         self.agents_seir_state = agents_seir_state # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
-        self.agents_seir_state_transition_for_day = agents_seir_state_transition_for_day # handled as dict, represents during day transitions. value: [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
+        self.agents_seir_state_transition_for_day = agents_seir_state_transition_for_day # handled as dict, represents during day transitions, set in itinerary and used in contact network. value: [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
         self.agents_infection_type = agents_infection_type # handled as dict, because not every agent will be infected
         self.agents_infection_severity = agents_infection_severity # handled as dict, because not every agent will be infected
         self.agents_vaccination_doses = agents_vaccination_doses # number of doses per agent

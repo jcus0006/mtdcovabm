@@ -289,40 +289,16 @@ def localitinerary_parallel(manager,
                 start = time.time()
 
                 if proc_use_pool == 3:
-                    if dask:
-                        for result in imap_results:
-                            agents_partial_results, vars_util_partial_results = None, None
-
-                            process_index, agents_partial_results, vars_util_partial_results, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_ws, num_agents_it = result
-
-                            if dask:
-                                if len(agents_partial_results) == 0:
-                                    print("itinerary_mp results, agents_partial_results is empty")
-                                else:
-                                    print("itinerary_mp results, agents_partial_results is not empty")
-
-                                for i in range(1000):
-                                    if i in agents_partial_results:
-                                        if agents_partial_results[i]["itinerary"] is None or len(agents_partial_results[i]["itinerary"]) == 0:
-                                            print("itinerary_mp results, itinerary is empty " + str(i))
-
-                                agents_partial_results_combined.extend(agents_partial_results)
-                                vars_util_partial_results_combined.extend(vars_util_partial_results) # TODO - Not an array, crashes
-                    else:
-                        it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None)
+                    it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None)
                 elif proc_use_pool == 4:
                     for future in as_completed(futures):
                         result = future.result()
 
                         process_index, agents_partial_results, vars_util_partial_results = result
 
-                        if dask:
-                            agents_partial_results_combined.extend(agents_partial_results)
-                            vars_util_partial_results_combined.extend(vars_util_partial_results)
-                        else:
-                            agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results) # TODO - to base on it_agents and agents_epi
+                        agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results) # TODO - to base on it_agents and agents_epi
                         
-                        print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
+                        # print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
                         # print(itinerary_times_by_resid_ordered)             
                     
@@ -352,10 +328,10 @@ def localitinerary_parallel(manager,
         else:
             # params = sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, process_counter
             params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, it_agents, agents_epi, agents_ids_by_ages, vars_util, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dynparams, use_shm, -1, process_counter, log_file_name, agents_static
-            result = localitinerary_worker(params)
+            result = localitinerary_worker(params, True)
 
             if not type(result) is dict:
-                process_index, agents_dynamic, agents_dynamic, vars_util, _, _, _, _, _ = result
+                process_index, it_agents, agents_epi, vars_util, _, _, _, _, _ = result
             else:
                 exception_info = result
 
@@ -363,19 +339,6 @@ def localitinerary_parallel(manager,
                     f.write(f"Exception Type: {exception_info['type']}\n")
                     f.write(f"Exception Message: {exception_info['message']}\n")
                     f.write(f"Traceback: {exception_info['traceback']}\n")
-
-            if dask:
-                return [agents_dynamic], [vars_util]
-            else:
-                return agents_dynamic, vars_util
-
-        if dask:
-            if len(agents_partial_results_combined) == 0:
-                print("itinerary mp return: agents_partial_results_combined is empty")
-        
-            return agents_partial_results_combined, vars_util_partial_results_combined
-        else:
-            return it_agents, agents_epi, vars_util
     except:
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
@@ -418,7 +381,7 @@ def custom_print(*args, **kwargs):
     with open("ouput.log", "a") as log_file:
         print(*args, **kwargs, file=log_file)
 
-def localitinerary_worker(params):
+def localitinerary_worker(params, single_proc=False):
     import os
     import sys
 
@@ -426,7 +389,7 @@ def localitinerary_worker(params):
     node_worker_index = -1
     f = None
     stack_trace_log_file_name = ""
-    original_stdout = sys.stdout
+    original_stdout = None
 
     try:
         main_start = time.time()
@@ -438,20 +401,19 @@ def localitinerary_worker(params):
             use_mp = True # could likely be in else of line 409
 
             if len(params) > 32:
-                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_epi, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name, agents_static = params
+                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, it_agents, agents_epi, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name, agents_static = params
             else:
-                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_epi, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name = params
+                day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, it_agents, agents_epi, agents_ids_by_ages, vars_util_mp, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, epidemiologyparams, dyn_params, use_shm, node_worker_index, process_counter, log_file_name = params
         else:
-            day, weekday, weekdaystr, hh_insts, agents_dynamic, agents_epi, vars_util_mp, dyn_params, node_worker_index, log_file_name = params
+            day, weekday, weekdaystr, hh_insts, it_agents, agents_epi, vars_util_mp, dyn_params, node_worker_index, log_file_name = params
 
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_mp_stack_trace_" + str(day) + "_" + str(node_worker_index) + ".txt"
         
-        if use_mp:
+        if use_mp and not single_proc:
+            original_stdout = sys.stdout
             log_file_name = log_file_name.replace(".txt", "") + "_it_" + str(day) + "_" + str(node_worker_index) + ".txt"
             f = open(log_file_name, "w")
             sys.stdout = f
-
-        # sys.stdout = custom_print
 
         worker = None
         if use_mp:
@@ -536,7 +498,7 @@ def localitinerary_worker(params):
                                             n_tourists, 
                                             locals_ratio_to_full_pop, 
                                             agents_static,
-                                            agents_dynamic, 
+                                            it_agents, 
                                             agents_epi,
                                             agents_ids_by_ages,
                                             vars_util_mp,
@@ -607,7 +569,7 @@ def localitinerary_worker(params):
         #             print("itinerary_mp, itinerary is empty " + str(i))
         main_time_taken = time.time() - main_start
 
-        return node_worker_index, agents_dynamic, agents_epi, vars_util_mp, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary, main_time_taken
+        return node_worker_index, it_agents, agents_epi, vars_util_mp, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
         traceback_str = traceback.format_exc()
 
@@ -626,7 +588,8 @@ def localitinerary_worker(params):
             # Close the file
             f.close()
 
-        sys.stdout = original_stdout
+        if original_stdout is not None:
+            sys.stdout = original_stdout
 
 # def sync_state_info(sync_queue, process_counter, cpu_affinity=None, agents_main_temp=None, vars_util_main_temp=None):
 #     from multiprocessing import queues

@@ -1,5 +1,7 @@
+import traceback
+
 class CustomException(Exception):
-    def __init__(self, ex):
-        self.type = ex['type']
-        self.traceback = ex['traceback']
-        super().__init__(ex['message'])
+    def __init__(self, message, errors=None):
+        self.errors = errors
+        self.traceback = traceback.format_exc()
+        super().__init__(message)

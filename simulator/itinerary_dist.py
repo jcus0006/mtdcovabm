@@ -418,6 +418,8 @@ def localitinerary_distributed(client: Client,
                             dask_combined_scores_nworkers=None, # frequency distribution based on CPU scores
                             dask_workers_time_taken=None,
                             dask_mp_processes_time_taken=None,
+                            dask_dynamic_load_balancing=None,
+                            use_mp_innerproc_assignment=False,
                             f=None,
                             actors=None,
                             log_file_name="output.txt"): 
@@ -457,13 +459,16 @@ def localitinerary_distributed(client: Client,
                         w_index += 1
             
             if dask_numtasks == -1:
-                dask_numtasks = len(workers)
+                if not use_mp or not use_mp_innerproc_assignment:
+                    dask_numtasks = len(workers)
+                else:
+                    dask_numtasks = sum(dask_nodes_n_workers)
 
             start = time.time()
 
             if not use_mp and dask_combined_scores_nworkers is not None: # load balancing
                 mp_hh_inst_indices = util.itinerary_load_balancing(hh_insts, dask_numtasks, dask_nodes_n_workers, dask_combined_scores_nworkers)
-            elif not use_mp and dask_workers_time_taken is not None:
+            elif not use_mp and dask_dynamic_load_balancing and dask_workers_time_taken is not None:
                 inverted_dask_nodes_time_taken = {i: 1/v for i,v in dask_workers_time_taken.items()} # invert to assign less work to slower nodes, and more work to faster nodes
                 inverted_dask_nodes_time_taken = dict(sorted(inverted_dask_nodes_time_taken.items(), key=lambda item: item[1])) # sort by slowest first
                 workers = [workers[wid[1]] for wid in inverted_dask_nodes_time_taken.keys()] # re-arrange workers to slowest first based on inverted_dask_nodes_time_taken
@@ -474,6 +479,19 @@ def localitinerary_distributed(client: Client,
             else:
                 mp_hh_inst_indices = util.split_residences_by_weight(hh_insts, dask_numtasks) # to do - for the time being this assumes equal split but we may have more information about the cores of the workers
             
+            # just for dask with mp strategy, re-join the workers into a per-node split. will be re-split into separate processes in each dask worker node
+            if use_mp and use_mp_innerproc_assignment:
+                temp_mp_hh_inst_indices = [[] for _ in range(len(workers))]
+
+                cursor = 0        
+                for ni, num_workers in enumerate(dask_nodes_n_workers):
+                    for _ in range(num_workers):
+                        temp_mp_hh_inst_indices[ni].extend(mp_hh_inst_indices[cursor])
+                        cursor += 1
+
+                mp_hh_inst_indices = temp_mp_hh_inst_indices
+                dask_numtasks = len(workers)
+
             time_taken = time.time() - start
             print("split residences by indices (load balancing): " + str(time_taken))
             if f is not None:
@@ -486,7 +504,7 @@ def localitinerary_distributed(client: Client,
             futures = []
 
             for worker_index in range(dask_numtasks):
-                worker_start = time.time()
+                worker_assign_start = time.time()
 
                 # cells_partial = {}
                 hh_insts_partial = []
@@ -566,12 +584,12 @@ def localitinerary_distributed(client: Client,
                         # delayed_computation = dask.delayed(localitinerary_dist_worker)(params)
                         # delayed_computations.append(delayed_computation)
 
-                worker_time_taken = time.time() - worker_start
+                worker_assign_time_taken = time.time() - worker_assign_start
                 
                 if not use_mp:
-                    dask_workers_time_taken[remote_worker_index] = [worker_time_taken, None]
+                    dask_workers_time_taken[remote_worker_index] = [worker_assign_time_taken, None]
                 else:
-                    dask_workers_time_taken[remote_worker_index[0]] = [worker_time_taken, None]
+                    dask_workers_time_taken[remote_worker_index[0]] = [worker_assign_time_taken, None]
 
             time_taken = time.time() - start
             print("futures / delayed results generation: " + str(time_taken))

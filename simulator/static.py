@@ -27,6 +27,9 @@ class Static:
         self.n_total = None
         self.n_locals = None
         self.n_tourists = None
+        self.use_shm = False
+        self.use_agents_dict = False
+        self.use_tourists_dict = False
 
         self.age = [] # int
         self.sc_student = []
@@ -64,7 +67,10 @@ class Static:
         self.shm_ent_activity = []
         # self.shm_busdriver = []
 
-    def populate(self, data, n_locals, n_tourists, is_shm=True):
+        self.manager = None # mp.manager
+        self.static_agents_dict = {} # for the time being being used for tourists only
+
+    def populate(self, data, n_locals, n_tourists, use_shm=True, use_agents_dict=False, use_tourists_dict=False, remote=False):
         start = time.time()
 
         n_total = n_locals + n_tourists
@@ -73,48 +79,68 @@ class Static:
         self.n_locals = n_locals
         self.n_tourists = n_tourists
 
-        for _, properties in data.items():
-            if len(properties) > 0:
-                self.age.append(properties["age"] if "age" in properties else None)
-                self.sc_student.append(properties["sc_student"] if "sc_student" in properties else None)
-                self.empstatus.append(properties["empstatus"] if "empstatus" in properties else None)
-                self.empind.append(properties["empind"] if "empind" in properties else None)
-                self.empftpt.append(properties["empftpt"] if "empftpt" in properties else None)
-                self.res_cellid.append(properties["res_cellid"])
-                self.work_cellid.append(properties["work_cellid"])
-                self.school_cellid.append(properties["school_cellid"])
-                self.age_bracket_index.append(properties["age_bracket_index"] if "age_bracket_index" in properties else None)
-                self.epi_age_bracket_index.append(properties["epi_age_bracket_index"] if "epi_age_bracket_index" in properties else None)
-                self.working_age_bracket_index.append(properties["working_age_bracket_index"] if "working_age_bracket_index" in properties else None)
-                self.soc_rate.append(properties["soc_rate"] if "soc_rate" in properties else None)
-                self.guardian_id.append(properties["guardian_id"] if "guardian_id" in properties else None)
-                self.isshiftbased.append(properties["isshiftbased"] if "isshiftbased" in properties else None) # this is calculated in working schedule generation on first day
-                self.pub_transp_reg.append(properties["pub_transp_reg"])
-                self.ent_activity.append(properties["ent_activity"] if "ent_activity" in properties else None)
-                # self.busdriver.append(None)
-            else:
-                self.age.append(None)
-                self.sc_student.append(None)
-                self.empstatus.append(None)
-                self.empind.append(None)
-                self.empftpt.append(None)
-                self.res_cellid.append(None)
-                self.work_cellid.append(None)
-                self.school_cellid.append(None)
-                self.age_bracket_index.append(None)
-                self.epi_age_bracket_index.append(None)
-                self.working_age_bracket_index.append(None)
-                self.soc_rate.append(None)
-                self.guardian_id.append(None)
-                self.isshiftbased.append(None) # this is calculated in working schedule generation on first day
-                self.pub_transp_reg.append(None)
-                self.ent_activity.append(None)
-                # self.busdriver.append(None)
+        self.use_shm = use_shm
+        self.use_agents_dict = use_agents_dict
+        self.use_tourists_dict = use_tourists_dict
 
-        if is_shm:
-            self.convert_to_shared_memory_readonly(loadall=True, clear_normal_memory=True)
-        else:
-            self.convert_to_numpy_readonly(loadall=True, clear_normal_memory=True)
+        if self.use_shm:
+            self.manager = mp.Manager()
+            self.static_agents_dict = self.manager.dict()
+
+        for id, properties in data.items():
+            if remote:
+                id = int(id)
+
+            use_arrays = (id < self.n_locals and not self.use_agents_dict) or not self.use_tourists_dict
+
+            if len(properties) > 0:
+                if use_arrays:
+                    self.age.append(properties["age"] if "age" in properties else None)
+                    self.sc_student.append(properties["sc_student"] if "sc_student" in properties else None)
+                    self.empstatus.append(properties["empstatus"] if "empstatus" in properties else None)
+                    self.empind.append(properties["empind"] if "empind" in properties else None)
+                    self.empftpt.append(properties["empftpt"] if "empftpt" in properties else None)
+                    self.res_cellid.append(properties["res_cellid"])
+                    self.work_cellid.append(properties["work_cellid"])
+                    self.school_cellid.append(properties["school_cellid"])
+                    self.age_bracket_index.append(properties["age_bracket_index"] if "age_bracket_index" in properties else None)
+                    self.epi_age_bracket_index.append(properties["epi_age_bracket_index"] if "epi_age_bracket_index" in properties else None)
+                    self.working_age_bracket_index.append(properties["working_age_bracket_index"] if "working_age_bracket_index" in properties else None)
+                    self.soc_rate.append(properties["soc_rate"] if "soc_rate" in properties else None)
+                    self.guardian_id.append(properties["guardian_id"] if "guardian_id" in properties else None)
+                    self.isshiftbased.append(properties["isshiftbased"] if "isshiftbased" in properties else None) # this is calculated in working schedule generation on first day
+                    self.pub_transp_reg.append(properties["pub_transp_reg"])
+                    self.ent_activity.append(properties["ent_activity"] if "ent_activity" in properties else None)
+                    # self.busdriver.append(None)
+                else:
+                    self.static_agents_dict[id] = properties
+            else:
+                if use_arrays:
+                    self.age.append(None)
+                    self.sc_student.append(None)
+                    self.empstatus.append(None)
+                    self.empind.append(None)
+                    self.empftpt.append(None)
+                    self.res_cellid.append(None)
+                    self.work_cellid.append(None)
+                    self.school_cellid.append(None)
+                    self.age_bracket_index.append(None)
+                    self.epi_age_bracket_index.append(None)
+                    self.working_age_bracket_index.append(None)
+                    self.soc_rate.append(None)
+                    self.guardian_id.append(None)
+                    self.isshiftbased.append(None) # this is calculated in working schedule generation on first day
+                    self.pub_transp_reg.append(None)
+                    self.ent_activity.append(None)
+                    # self.busdriver.append(None)
+
+        is_arrays_based = len(self.age) > 0
+
+        if is_arrays_based:
+            if use_shm:
+                self.convert_to_shared_memory_readonly(loadall=True, clear_normal_memory=True)
+            else:
+                self.convert_to_numpy_readonly(loadall=True, clear_normal_memory=True)
 
         time_taken = time.time() - start
         print("agents_mp populate time taken: " + str(time_taken))
@@ -254,39 +280,69 @@ class Static:
         print("static.py convert_to_numpy_readonly time taken: " + str(time_taken))
     
     def get(self, index, name):
-        return getattr(self, "shm_" + name)[index]
-    
+        use_arrays = (index < self.n_locals and not self.use_agents_dict) or not self.use_tourists_dict
+
+        if use_arrays:
+            return getattr(self, "shm_" + name)[index]
+        else:
+            try:
+                return self.static_agents_dict[index][name] 
+            except: # some names might not be in the dict, rather than be None
+                if name == "ent_activity" or name == "isshiftbased" or name == "guardian_id": # to do - add further names that might be missing
+                    return None
+                else:
+                    raise
+
     def set(self, index, name, value):
-        if name == "age":
-            self.shm_age[index] = value
-        elif name == "sc_student":
-            self.shm_sc_student[index] = value
-        elif name == "empstatus":
-            self.shm_empstatus[index] = value
-        elif name == "empind":
-            self.shm_empind[index] = value
-        elif name == "empftpt":
-            self.shm_empftpt[index] = value
-        elif name == "res_cellid":
-            self.shm_res_cellid[index] = value
-        elif name == "work_cellid":
-            self.shm_work_cellid[index] = value
-        elif name == "school_cellid":
-            self.shm_school_cellid[index] = value
-        elif name == "age_bracket_index":
-            self.shm_age_bracket_index[index] = value
-        elif name == "epi_age_bracket_index":
-            self.shm_epi_age_bracket_index[index] = value
-        elif name == "working_age_bracket_index":
-            self.shm_working_age_bracket_index[index] = value
-        elif name == "soc_rate":
-            self.shm_soc_rate[index] = value
-        elif name == "guardian_id":
-            self.shm_guardian_id[index] = value
-        elif name == "isshiftbased":
-            self.shm_isshiftbased[index] = value
-        elif name == "pub_transp_reg":
-            self.shm_pub_transp_reg[index] = value
-        elif name == "ent_activity":
-            self.shm_ent_activity[index] = value
-    
+        is_local = index < self.n_locals
+        use_arrays = (is_local and not self.use_agents_dict) or not self.use_tourists_dict
+
+        if use_arrays:
+            if name == "age":
+                self.shm_age[index] = value
+            elif name == "sc_student":
+                self.shm_sc_student[index] = value
+            elif name == "empstatus":
+                self.shm_empstatus[index] = value
+            elif name == "empind":
+                self.shm_empind[index] = value
+            elif name == "empftpt":
+                self.shm_empftpt[index] = value
+            elif name == "res_cellid":
+                self.shm_res_cellid[index] = value
+            elif name == "work_cellid":
+                self.shm_work_cellid[index] = value
+            elif name == "school_cellid":
+                self.shm_school_cellid[index] = value
+            elif name == "age_bracket_index":
+                self.shm_age_bracket_index[index] = value
+            elif name == "epi_age_bracket_index":
+                self.shm_epi_age_bracket_index[index] = value
+            elif name == "working_age_bracket_index":
+                self.shm_working_age_bracket_index[index] = value
+            elif name == "soc_rate":
+                self.shm_soc_rate[index] = value
+            elif name == "guardian_id":
+                self.shm_guardian_id[index] = value
+            elif name == "isshiftbased":
+                self.shm_isshiftbased[index] = value
+            elif name == "pub_transp_reg":
+                self.shm_pub_transp_reg[index] = value
+            elif name == "ent_activity":
+                self.shm_ent_activity[index] = value
+        else:
+            if not is_local:
+                if index not in self.static_agents_dict:
+                    self.static_agents_dict[index] = {}
+
+            self.static_agents_dict[index][name] = value
+
+    # this assumes that static_agents_dict is being used (it does not consider array based)
+    def set_props(self, index, props):
+        self.static_agents_dict[index] = props
+
+    def delete(self, index):
+        use_arrays = (index < self.n_locals and not self.use_agents_dict) or not self.use_tourists_dict
+
+        if not use_arrays: # if mp.rawarray or numpy array, setting the array indices as None will have no effect on memory usage
+            del self.static_agents_dict[index]

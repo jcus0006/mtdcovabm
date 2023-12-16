@@ -364,7 +364,14 @@ class ContactNetwork:
     def delete_all_pairs_by_id(self, agents_potentialcontacts, id):
         for pairid in list(agents_potentialcontacts.keys()):
             if id in pairid:
-                del agents_potentialcontacts[pairid]
+                try:
+                    del agents_potentialcontacts[pairid]
+                    # print("deleted id {0} from pairid {1}".format(str(id), str(pairid)))
+                except:
+                    if pairid not in agents_potentialcontacts:
+                        print("pairid {0} does not exist in agents_potentialcontacts!")
+
+                    raise
 
         return agents_potentialcontacts
     

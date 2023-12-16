@@ -16,8 +16,8 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
     if workers_remote_time_taken is None:
         workers_remote_time_taken = {}
 
-    for future in results:
-        try:
+    try:
+        for future in results:
             if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP:
                 result = future.result()
             else:
@@ -27,21 +27,14 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
             remote_time_taken = None
 
             if type(result) is not dict: # success
-                if not extra_params:
-                    if len(result) == 2:
-                        it_agents_partial_result, vars_util_partial_result = result
-                    elif len(result) == 3:
-                        if type(result[2]) is not float:
-                            remote_worker_index, it_agents_partial_result, vars_util_partial_result = result
-                        else:
-                            remote_worker_index, agents_epi_partial_result, remote_time_taken = result
-                            contacttracing = True  
-                    elif len(result) == 4:
-                        remote_worker_index, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-                    else:
-                        remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-                else:
+                if method_type == MethodType.ItineraryMP or method_type == MethodType.ItineraryDist:
                     remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _, remote_time_taken = result
+                elif method_type == MethodType.ItineraryDistMP:
+                    remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
+                elif method_type == MethodType.ContactNetworkMP or method_type == MethodType.ContactNetworkDist or method_type == MethodType.ContactNetworkDistMP:
+                    remote_worker_index, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
+                elif method_type == MethodType.ContactTracingDist:
+                    remote_worker_index, agents_epi_partial_result, remote_time_taken = result
 
                 if remote_worker_index == -1 and log_timings:
                     remote_worker_index = future_count
@@ -65,7 +58,7 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
                     agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken, f)
 
                 it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
-            else:
+            else: # exception
                 exception_info = result
 
                 with open(exception_info["logfilename"], "a") as f:
@@ -73,17 +66,13 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
                     f.write(f"Exception Message: {exception_info['message']}\n")
                     f.write(f"Traceback: {exception_info['traceback']}\n")
 
-                raise customexception.CustomException(exception_info)
-        except:
-            with open(task_results_stack_trace_log_file_name, 'a') as f:
-                traceback.print_exc(file=f)
-
-            raise
-        finally:
+                raise customexception.CustomException(exception_info['message'], exception_info)
+            
             if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP and method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
                 future.release()
-            
-            future_count += 1
+                future_count += 1
+    except customexception.CustomException as custom_exception:
+        raise
 
     return it_agents, agents_epi, vars_util, workers_remote_time_taken, processes_remote_time_taken
 
