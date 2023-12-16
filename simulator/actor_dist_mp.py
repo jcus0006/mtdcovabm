@@ -8,7 +8,7 @@ import numpy.ma as ma
 from dask.distributed import get_worker
 import multiprocessing as mp
 from copy import copy, deepcopy
-import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, tourism_dist, customexception
+import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, tourism_dist
 from util import MethodType
 import psutil
 
@@ -115,28 +115,14 @@ class ActorDistMP:
             workers_remote_time_taken[-1] = main_time_taken
 
             return self.worker_index, it_agents, agents_epi, vars_util, workers_remote_time_taken
-        except customexception.CustomException as custom_exception:
-            actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
-
-            with open(actual_stack_trace_log_file_name, 'w') as f:
-                traceback.print_exception(type(customexception.CustomException), custom_exception, custom_exception.__traceback__, file=f)
-        
-            raise
         except Exception as e:
+            # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
             with open(actual_stack_trace_log_file_name, 'w') as f:
                 traceback.print_exc(file=f)
 
-            traceback_str = traceback.format_exc()
-
-            exception_info = {"processindex": self.worker_index, 
-                            "logfilename": stack_trace_log_file_name, 
-                            "type": type(e).__name__, 
-                            "message": str(e), 
-                            "traceback": traceback_str}
-        
-            return exception_info
+            return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
         finally:
             if f is not None:
                 f.close()
@@ -221,28 +207,14 @@ class ActorDistMP:
             workers_remote_time_taken[-1] = main_time_taken
 
             return self.worker_index, agents_epi, vars_util, workers_remote_time_taken
-        except customexception.CustomException as custom_exception:
-            actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
-
-            with open(actual_stack_trace_log_file_name, 'w') as f:
-                traceback.print_exception(type(customexception.CustomException), custom_exception, custom_exception.__traceback__, file=f)
-        
-            raise
         except Exception as e:
+            # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
             with open(actual_stack_trace_log_file_name, 'w') as f:
                 traceback.print_exc(file=f)
 
-            traceback_str = traceback.format_exc()
-
-            exception_info = {"processindex": self.worker_index, 
-                            "logfilename": stack_trace_log_file_name, 
-                            "type": type(e).__name__, 
-                            "message": str(e), 
-                            "traceback": traceback_str}
-        
-            return exception_info
+            return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
         finally:
             if f is not None:
                 f.close()
@@ -363,15 +335,7 @@ def run_itinerary_single(params):
 
         return worker_index, agents_dynamic, agents_epi, vars_util_mp, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
-        traceback_str = traceback.format_exc()
-
-        exception_info = {"processindex": worker_index, 
-                          "logfilename": stack_trace_log_file_name, 
-                          "type": type(e).__name__, 
-                          "message": str(e), 
-                          "traceback": traceback_str}
-        
-        return exception_info
+        raise
     finally:
         if f is not None:
             # Close the file
@@ -444,15 +408,7 @@ def run_contactnetwork_single(params):
 
         return worker_index, agents_epi, vars_util, main_time_taken
     except Exception as e:
-        traceback_str = traceback.format_exc()
-
-        exception_info = {"processindex": worker_index, 
-                          "logfilename": stack_trace_log_file_name, 
-                          "type": type(e).__name__, 
-                          "message": str(e), 
-                          "traceback": traceback_str}
-        
-        return exception_info
+        raise
     finally:
         if f is not None:
             # Close the file

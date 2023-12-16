@@ -272,15 +272,13 @@ def contactnetwork_worker(params):
 
         return process_index, agents_epi_partial, vars_util, main_time_taken
     except Exception as e:
-        traceback_str = traceback.format_exc()
+        # log on the node where it happened
+        actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
-        exception_info = {"processindex": process_index, 
-                          "logfilename": stack_trace_log_file_name, 
-                          "type": type(e).__name__, 
-                          "message": str(e), 
-                          "traceback": traceback_str}
-        
-        return exception_info
+        with open(actual_stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
+
+        return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
     finally:
         if f is not None:
             # Close the file

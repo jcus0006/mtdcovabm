@@ -1,6 +1,6 @@
 import time
 import traceback
-import util, customexception
+import util
 from dask.distributed import as_completed
 from copy import copy
 from util import MethodType
@@ -16,63 +16,59 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
     if workers_remote_time_taken is None:
         workers_remote_time_taken = {}
 
-    try:
-        for future in results:
-            if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP:
-                result = future.result()
-            else:
-                result = future
+    for future in results:
+        if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP:
+            result = future.result()
+        else:
+            result = future
 
-            remote_worker_index = -1
-            remote_time_taken = None
+        remote_worker_index = -1
+        remote_time_taken = None
 
-            if type(result) is not dict: # success
-                if method_type == MethodType.ItineraryMP or method_type == MethodType.ItineraryDist:
-                    remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _, remote_time_taken = result
-                elif method_type == MethodType.ItineraryDistMP:
-                    remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-                elif method_type == MethodType.ContactNetworkMP or method_type == MethodType.ContactNetworkDist or method_type == MethodType.ContactNetworkDistMP:
-                    remote_worker_index, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
-                elif method_type == MethodType.ContactTracingDist:
-                    remote_worker_index, agents_epi_partial_result, remote_time_taken = result
+        if type(result) != dict: # success
+            if method_type == MethodType.ItineraryMP or method_type == MethodType.ItineraryDist:
+                remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, _, _, _, _, remote_time_taken = result
+            elif method_type == MethodType.ItineraryDistMP:
+                remote_worker_index, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
+            elif method_type == MethodType.ContactNetworkMP or method_type == MethodType.ContactNetworkDist or method_type == MethodType.ContactNetworkDistMP:
+                remote_worker_index, agents_epi_partial_result, vars_util_partial_result, remote_time_taken = result
+            elif method_type == MethodType.ContactTracingDist:
+                remote_worker_index, agents_epi_partial_result, remote_time_taken = result
 
-                if remote_worker_index == -1 and log_timings:
-                    remote_worker_index = future_count
+            if remote_worker_index == -1 and log_timings:
+                remote_worker_index = future_count
 
-                if remote_time_taken is not None and workers_remote_time_taken is not None:
-                    if method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
-                        workers_remote_time_taken[remote_worker_index][1] = remote_time_taken
-                    else:
-                        if processes_remote_time_taken is not None:
-                            for k, v in remote_time_taken.items():
-                                processes_remote_time_taken[k] = v
-
-                        workers_remote_time_taken[remote_worker_index] = processes_remote_time_taken[-1]
-                        del processes_remote_time_taken[-1]
-                    
-                if method_type == MethodType.ItineraryMP or method_type == MethodType.ItineraryDist or method_type == MethodType.ItineraryDistMP: 
-                    it_agents, agents_epi, vars_util = sync_results_it(day, it_agents, agents_epi, vars_util, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
-                elif method_type == MethodType.ContactNetworkMP or method_type == MethodType.ContactNetworkDist or method_type == MethodType.ContactNetworkDistMP:
-                    agents_epi, vars_util = sync_results_cn(day, agents_epi, vars_util, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
+            if remote_time_taken is not None and workers_remote_time_taken is not None:
+                if method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
+                    workers_remote_time_taken[remote_worker_index][1] = remote_time_taken
                 else:
-                    agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken, f)
+                    if processes_remote_time_taken is not None:
+                        for k, v in remote_time_taken.items():
+                            processes_remote_time_taken[k] = v
 
-                it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
-            else: # exception
-                exception_info = result
+                    workers_remote_time_taken[remote_worker_index] = processes_remote_time_taken[-1]
+                    del processes_remote_time_taken[-1]
+                
+            if method_type == MethodType.ItineraryMP or method_type == MethodType.ItineraryDist or method_type == MethodType.ItineraryDistMP: 
+                it_agents, agents_epi, vars_util = sync_results_it(day, it_agents, agents_epi, vars_util, it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
+            elif method_type == MethodType.ContactNetworkMP or method_type == MethodType.ContactNetworkDist or method_type == MethodType.ContactNetworkDistMP:
+                agents_epi, vars_util = sync_results_cn(day, agents_epi, vars_util, agents_epi_partial_result, vars_util_partial_result, remote_worker_index, remote_time_taken, f)
+            else:
+                agents_epi = sync_results_ct(day, agents_epi, agents_epi_partial_result, remote_worker_index, remote_time_taken, f)
 
-                with open(exception_info["logfilename"], "a") as f:
-                    f.write(f"Exception Type: {exception_info['type']}\n")
-                    f.write(f"Exception Message: {exception_info['message']}\n")
-                    f.write(f"Traceback: {exception_info['traceback']}\n")
+            it_agents_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
+        else: # exception
+            exception_info = result
 
-                raise customexception.CustomException(exception_info['message'], exception_info)
-            
-            if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP and method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
-                future.release()
-                future_count += 1
-    except customexception.CustomException as custom_exception:
-        raise
+            with open(exception_info["logfilename"], "a") as f:
+                f.write(f"Exception: {exception_info['exception']}\n")
+                f.write(f"Traceback: {exception_info['traceback']}\n")
+
+            raise exception_info['exception']
+        
+        if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP and method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
+            future.release()
+            future_count += 1
 
     return it_agents, agents_epi, vars_util, workers_remote_time_taken, processes_remote_time_taken
 

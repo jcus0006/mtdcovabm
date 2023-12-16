@@ -571,15 +571,13 @@ def localitinerary_worker(params, single_proc=False):
 
         return node_worker_index, it_agents, agents_epi, vars_util_mp, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
-        traceback_str = traceback.format_exc()
+       # log on the node where it happened
+        actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
-        exception_info = {"processindex": node_worker_index, 
-                          "logfilename": stack_trace_log_file_name, 
-                          "type": type(e).__name__, 
-                          "message": str(e), 
-                          "traceback": traceback_str}
-        
-        return exception_info
+        with open(actual_stack_trace_log_file_name, 'w') as f:
+            traceback.print_exc(file=f)
+
+        return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
     finally:
         if process_counter is not None:
             process_counter.value -= 1

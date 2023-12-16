@@ -46,8 +46,8 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True,
             "use_static_dict_locals": False,
@@ -85,7 +85,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "dask_mp_10k_1n_6w_3d.txt"
+            "logfilename": "dask_mp_10k_1n_6w_3d_errorhandlingtesting.txt"
         }
 
 # Load configuration
@@ -740,7 +740,6 @@ def main():
 
             with performance_report(filename=dask_init_file_name):
                 start = time.time()
-                client.upload_file('simulator/customexception.py')
                 client.upload_file('simulator/cellsclasses.py')
                 client.upload_file('simulator/customdict.py')
                 client.upload_file('simulator/npencoder.py')
