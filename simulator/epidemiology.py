@@ -63,8 +63,11 @@ class Epidemiology:
         self.contact_tracing_positive_delay_days, self.contact_tracing_secondary_delay_days = contact_tracing_params[5], contact_tracing_params[6]
         contact_tracing_success_probability = epidemiologyparams["contact_tracing_success_probability"]
         self.contact_tracing_residence_probability, self.contact_tracing_work_probability, self.contact_tracing_school_probability, self.contact_tracing_community_probability = contact_tracing_success_probability[0], contact_tracing_success_probability[1], contact_tracing_success_probability[2], contact_tracing_success_probability[3]
-        self.daily_vaccinations_parameters = epidemiologyparams["daily_vaccinations_parameters"]
-        self.immunity_after_vaccination_multiplier = epidemiologyparams["immunity_after_vaccination_multiplier"]  
+        self.vaccination_effectiveness_parameters = epidemiologyparams["vaccination_effectiveness_parameters"]
+        self.vaccination_immunity_multiplier, self.vaccination_asymptomatic_multiplier, self.vaccination_exp_decay_interval = self.vaccination_effectiveness_parameters[0], self.vaccination_effectiveness_parameters[1], self.vaccination_effectiveness_parameters[2]
+        self.vaccination_daily_parameters = epidemiologyparams["vaccination_daily_parameters"]
+        self.lockdown_infectiousrate_thresholds = epidemiologyparams["lockdown_infectiousrate_thresholds"]
+        self.lockdown_day_thresholds = epidemiologyparams["lockdown_day_thresholds"]
 
         self.dyn_params = dyn_params 
         # self.sync_queue = sync_queue    
@@ -186,7 +189,9 @@ class Epidemiology:
 
                     infection_multiplier = max(1, math.log(contact_duration)) # to check how this affects covasim base probs
 
-                    infection_probability *= infection_multiplier * susceptibility_multiplier * (1 - self.dyn_params.masks_hygiene_distancing_multiplier)
+                    immunity_multiplier, asymptomatic_multiplier = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, exposed_agent_id, day, self.vaccination_immunity_multiplier, self.vaccination_asymptomatic_multiplier, self.vaccination_exp_decay_interval)
+                    
+                    infection_probability *= infection_multiplier * susceptibility_multiplier * (1 - self.dyn_params.masks_hygiene_distancing_multiplier) * immunity_multiplier
 
                     exposed_rand = random.random()
 
@@ -194,13 +199,13 @@ class Epidemiology:
                     if exposed_rand < infection_probability: # exposed (infected but not yet infectious)
                         updated_agents_ids.append(exposed_agent_id)
 
-                        if "state_transition_by_day" not in exposed_agent_epi:
-                            print(f"exposed_agent_epi {exposed_agent_id} is empty. will crash.")
+                        # if "state_transition_by_day" not in exposed_agent_epi:
+                        #     print(f"exposed_agent_epi {exposed_agent_id} is empty. will crash.")
 
                         agent_state_transition_by_day = exposed_agent_epi["state_transition_by_day"]
                         agent_quarantine_days = exposed_agent_epi["quarantine_days"]
 
-                        agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(exposed_agent_epi, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                        agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(exposed_agent_epi, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
 
                         # self.agents_mp.set(exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day)
                         # self.sync_queue.put(["a", exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day]) # updated by ref in agent           
@@ -215,7 +220,7 @@ class Epidemiology:
 
         return updated_agents_ids
     
-    def simulate_seir_state_transition(self, exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days):
+    def simulate_seir_state_transition(self, exposed_agent, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier = 1.0):
         symptomatic_day = -1
         recovered = False # if below condition is hit, False means Dead, True means recovered. 
         start_hosp_day, end_hosp_day = None, None
@@ -234,7 +239,7 @@ class Epidemiology:
 
         symptomatic_rand = random.random()
 
-        symptomatic_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SymptomaticProbability][agent_epi_age_bracket_index]
+        symptomatic_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SymptomaticProbability][agent_epi_age_bracket_index] * asymptomatic_multiplier # if effectiveness against symptoms is 0.9, this will be 1 - 0.9 = 0.1
 
         if symptomatic_rand < symptomatic_probability:
             infection_type = InfectionType.PreSymptomatic # Pre-Symptomatic is infectious, but only applies with Infectious state (and not Exposed)
@@ -879,23 +884,25 @@ class Epidemiology:
             if f is not None:
                 f.flush()
 
-    # currently handling not vaccinated / vaccinated, but can also handle first/second dose in a similar manner
+    # currently handling not vaccinated / not-vaccinated, but can also handle first/second dose
+    # agents_vaccination_doses has already been equipped to hold simulation days on which vaccination doses have been administered
+    # virus transmission has already been implemented to take this into consideration for immunity + asymptomatic likelihood
     def schedule_vaccinations(self, day):
         if self.dyn_params.vaccination_propensity > 0:
-            not_vaccinated_indices = np.where(self.vars_util.agents_vaccination_doses == 0)[0]
+            num_not_vaccinated = self.n_locals - len(self.vars_util.agents_vaccination_doses) # np.where(self.vars_util.agents_vaccination_doses == 0)[0]
 
-            num_already_vaccinated = self.n_locals - len(not_vaccinated_indices)
+            num_already_vaccinated = self.n_locals - num_not_vaccinated
 
             if self.dyn_params.vaccination_propensity != self.dyn_params.last_vaccination_propensity:
                 if self.dyn_params.num_agents_to_be_vaccinated == 0:
-                    self.dyn_params.num_agents_to_be_vaccinated = round(len(not_vaccinated_indices) * self.dyn_params.vaccination_propensity)
+                    self.dyn_params.num_agents_to_be_vaccinated = round(num_not_vaccinated * self.dyn_params.vaccination_propensity)
 
                     if self.dyn_params.num_agents_to_be_vaccinated == 0:
                         self.dyn_params.num_agents_to_be_vaccinated = 1
                 else:
                     change_in_propensity = self.dyn_params.vaccination_propensity - self.dyn_params.last_vaccination_propensity
 
-                    diff_num_agents_to_be_vaccinated = round(len(not_vaccinated_indices) * change_in_propensity)
+                    diff_num_agents_to_be_vaccinated = round(num_not_vaccinated * change_in_propensity)
 
                     if diff_num_agents_to_be_vaccinated == 0:
                         diff_num_agents_to_be_vaccinated = 1
@@ -904,34 +911,39 @@ class Epidemiology:
 
                 self.dyn_params.last_vaccination_propensity = self.dyn_params.vaccination_propensity
 
-            num_vaccinations_today = round(util.sample_log_normal(self.daily_vaccinations_parameters[0], self.daily_vaccinations_parameters[1], 1, True) * self.locals_ratio_to_full_pop)
+            self.dyn_params.num_vaccinations_today = round(util.sample_log_normal(self.vaccination_daily_parameters[0], self.vaccination_daily_parameters[1], 1, True) * self.locals_ratio_to_full_pop)
 
             num_remaining_agents_to_be_vaccinated = self.dyn_params.num_agents_to_be_vaccinated - num_already_vaccinated
 
-            if num_vaccinations_today > num_remaining_agents_to_be_vaccinated:
-                num_vaccinations_today = num_remaining_agents_to_be_vaccinated
+            if self.dyn_params.num_vaccinations_today > num_remaining_agents_to_be_vaccinated:
+                self.dyn_params.num_vaccinations_today = num_remaining_agents_to_be_vaccinated
 
             # num_agents_to_be_vaccinated *= self.locals_ratio_to_full_pop # would be 1 if full pop
 
-            if num_vaccinations_today > 0:
-                if len(not_vaccinated_indices) < num_vaccinations_today:
-                    sampled_to_vaccinate_indices = not_vaccinated_indices
+            if self.dyn_params.num_vaccinations_today > 0:
+                all_agent_ids = [agentid for agentid in range(self.n_locals)]
+                vaccinated_agent_ids = list(self.vars_util.agents_vaccination_doses.keys())
+                not_vaccinated_agent_ids = np.array(list(set(all_agent_ids) ^ set(vaccinated_agent_ids))) # symmetric difference
+                
+                if num_not_vaccinated < self.dyn_params.num_vaccinations_today:
+                    sampled_to_vaccinate_ids = not_vaccinated_agent_ids
                 else:
-                    sampled_to_vaccinate_indices = np.random.choice(not_vaccinated_indices, size=num_vaccinations_today, replace=False)
+                    sampled_to_vaccinate_ids = np.random.choice(not_vaccinated_agent_ids, size=self.dyn_params.num_vaccinations_today, replace=False)
 
-                for agentid in sampled_to_vaccinate_indices:
+                for agentid in sampled_to_vaccinate_ids:
                     agent = self.agents_epi[agentid]
                     agent_vaccination_days = agent["vaccination_days"]
-                    agent_vaccination_doses = self.vars_util.agents_vaccination_doses[agentid]
 
                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
 
                     agent_vaccination_days.append([day + 1, sampled_timestep])
-
-                    agent_vaccination_doses += 1
-
+                    
                     agent["vaccination_days"] = agent_vaccination_days
-                    self.vars_util.agents_vaccination_doses[agentid] = agent_vaccination_doses
+
+                    # increment on actual day of vaccination
+                    # agent_vaccination_doses = self.vars_util.agents_vaccination_doses[agentid]
+                    # agent_vaccination_doses += 1
+                    # self.vars_util.agents_vaccination_doses[agentid] = agent_vaccination_doses
 
     def convert_simcelltype_to_contact_tracing_success_prob(self, simcelltype):
         contact_tracing_success_prob = 0

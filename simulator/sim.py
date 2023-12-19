@@ -24,9 +24,9 @@ from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
 
-params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
+params = {  "popsubfolder": "10kagents40ktourists2019_decupd", # empty takes root (was 500kagents2mtourists2019 / 10kagents40ktourists2019 / 1kagents2ktourists2019)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 60, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -85,7 +85,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019", # empty takes root (was 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "dask_mp_10k_1n_6w_3d_errorhandlingtesting.txt"
+            "logfilename": "sp_10k_60d_vaccinationrefinements.txt"
         }
 
 # Load configuration
@@ -168,6 +168,9 @@ def main():
     if not params["use_mp"] and not params["dask_use_mp"]:
         params["use_shm"] = False
 
+    if not params["use_mp"] and params["numprocesses"] == 1:
+        params["use_mp"] = True # single process is handled in itinerary_mp and contactnetwork_mp, but does not actually use multiprocessing
+
     data_load_start_time = time.time()
     
     simdays_range = range(1, params["simulationdays"] + 1)
@@ -202,7 +205,46 @@ def main():
                                                           "direct_contacts_avg",
                                                           "direct_contacts_index1_avg",
                                                           "direct_contacts_index2_avg"])
-
+    
+    interventions_logs_df = pd.DataFrame(index=simdays_range, columns=["quarantine_enabled",
+                                                                    "testing_enabled",
+                                                                    "contact_tracing_enabled",
+                                                                    "workplaces_lockdown",
+                                                                    "schools_lockdown",
+                                                                    "entertainment_lockdown",
+                                                                    "masks_hygiene_distancing_multiplier",
+                                                                    "vaccination_propensity",
+                                                                    "last_vaccination_propensity"])
+    
+    statistics_logs_df = pd.DataFrame(index=simdays_range, columns=["total_population",
+                                                                    "total_locals",
+                                                                    "total_active_tourists",
+                                                                    "total_exposed",
+                                                                    "total_susceptible",
+                                                                    "total_infectious",
+                                                                    "total_recovered",
+                                                                    "total_deceased",
+                                                                    "new_exposed",
+                                                                    "new_susceptible",
+                                                                    "new_infectious",
+                                                                    "new_recoveries",
+                                                                    "new_deaths",
+                                                                    "infectious_rate",
+                                                                    "recovery_rate",
+                                                                    "mortality_rate",
+                                                                    "basic_reproduction_number",
+                                                                    "effective_reproduction_number",
+                                                                    "total_vaccinations",
+                                                                    "total_tests",
+                                                                    "total_contacttraced",
+                                                                    "total_quarantined",
+                                                                    "total_hospitalized",
+                                                                    "total_to_be_vaccinated",
+                                                                    "new_vaccinations",
+                                                                    "new_tests",
+                                                                    "new_contacttraced",
+                                                                    "new_quarantined",
+                                                                    "new_hospitalized"])
     subfolder_name = params["logsubfoldername"]
 
     current_directory = os.getcwd()
@@ -309,7 +351,7 @@ def main():
     agents_seir_state_transition_for_day = {} # handled as dict, because it will only apply for a subset of agents per day
     agents_infection_type = {} # handled as dict, because not every agent will be infected
     agents_infection_severity = {} # handled as dict, because not every agent will be infected
-    agents_vaccination_doses = [] # number of doses per agent
+    agents_vaccination_doses = customdict.CustomDict() # number of doses per agent
 
     # tourism
     tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
@@ -327,6 +369,8 @@ def main():
 
         touristsgroupsfile = open(os.path.join(current_directory, "population", population_sub_folder, "touristsgroups.json"))
         touristsgroups = json.load(touristsgroupsfile)
+        touristsgroups_prevdec = [tg["groupid"] for tg in touristsgroups if tg["arr"] <= 0]
+        tourists_prevdec = [id for grpid in touristsgroups_prevdec for subgroups in touristsgroups[grpid]["subgroupsmemberids"] for id in subgroups]
         touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid":tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups}
 
         touristsgroupsdaysfile = open(os.path.join(current_directory, "population", population_sub_folder, "touristsgroupsdays.json"))
@@ -358,7 +402,7 @@ def main():
         n_locals = len(agents)
 
         agents_initialize_start = time.time()
-        agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agentsutil.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
+        agents, agents_seir_state, agents_vaccination_doses, locals_ratio_to_full_pop, figure_count = agentsutil.initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, tourists_prevdec, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages)
         agents_initialize_time_taken = time.time() - agents_initialize_start
         print("agents dict initialize, time taken: " + str(agents_initialize_time_taken))
         if f is not None:
@@ -615,7 +659,7 @@ def main():
     vars_util.populate(agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses)
     vars_util_time_taken = time.time() - vars_util_start
 
-    dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams)
+    dyn_params = DynamicParams(n_locals, n_tourists, epidemiologyparams, vars_util)
 
     init_time_taken = time.time() - data_load_start_time
 

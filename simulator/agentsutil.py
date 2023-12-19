@@ -3,7 +3,7 @@ import util, seirstateutil, customdict
 from epidemiologyclasses import SEIRState
 import multiprocessing as mp
 
-def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages):
+def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tourists, touristsids_prevdec, params, itineraryparams, powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, initial_seir_state_distribution, figure_count, n_locals, age_brackets, age_brackets_workingages):
     temp_agents = {int(k): {"age": v["age"], 
                             "edu": v["edu"],
                             "sc_student": v["sc_student"], 
@@ -13,7 +13,7 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
                             "hhid": v["hhid"],
                             "scid": v["scid"]} for k, v in agents.items()}
 
-    agents_vaccination_doses = np.array([0 for i in range(n_locals)])
+    agents_vaccination_doses = customdict.CustomDict() # np.array([0 for i in range(n_locals)])
 
     locals_ratio_to_full_pop = n_locals / params["fullpop"]
 
@@ -21,8 +21,10 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
         largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
 
         for i in range(len(tourists)):
-            temp_agents[largest_agent_id+1] = {}
             largest_agent_id += 1
+
+            if (largest_agent_id - n_locals) in tourists:
+                temp_agents[largest_agent_id] = {}
 
     agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
 
@@ -31,7 +33,16 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
     # epi_util = contactnetwork_util.epi_util
 
     for index, (agent_uid, agent) in enumerate(temp_agents.items()):
-        if index < n_locals: # ignore tourists for now
+        populate_local = False
+        populate_tourist = False
+
+        if index < n_locals:
+            populate_local = True
+        else:
+            if (index - n_locals) in touristsids_prevdec:
+                populate_tourist = True
+
+        if populate_local: # ignore tourists for now
             # agent["curr_cellid"] = -1
             agent["res_cellid"] = -1
             agent["work_cellid"] = -1
@@ -56,8 +67,29 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
             agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
 
             agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
+        elif populate_tourist:
+            # get tourist from tourists here
+            # must also pass accom info to obtain cellid
+            
+            agent["res_cellid"] = -1
+            agent["tourist_id"] = index - n_locals 
+            agent["itinerary"] = {}
+            agent["itinerary_nextday"] = {}
+            agent["state_transition_by_day"] = []
+            # intervention_events_by_day
+            agent["test_day"] = [] # [day, timestep]
+            agent["test_result_day"] = [] # [day, timestep]
+            agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
+            agent["vaccination_days"] = [] # [[day, timestep]]
+            agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
+
+            agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
+
+            agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
+
+            agent["pub_transp_reg"] = True
         else:
-            break
+            continue
     
         # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
 

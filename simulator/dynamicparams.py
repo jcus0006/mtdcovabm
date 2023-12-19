@@ -1,9 +1,7 @@
-from epidemiologyclasses import SEIRState
-import time
-# import json
+from simulator.statistics import Statistics
 
 class DynamicParams:
-    def __init__(self, n_locals, n_tourists, epidemiologyparams):
+    def __init__(self, n_locals, n_tourists, epidemiologyparams, vars_util):
         self.n_locals = n_locals
         self.n_tourists = n_tourists
         self.masks_hygiene_distancing_day_thresholds = epidemiologyparams["masks_hygiene_distancing_day_thresholds"]
@@ -12,17 +10,23 @@ class DynamicParams:
         self.vaccination_infectiousrate_thresholds = epidemiologyparams["vaccination_infectiousrate_thresholds"]
         self.intervention_day_thresholds = epidemiologyparams["intervention_day_thresholds"]
         self.intervention_infectiousrate_thresholds = epidemiologyparams["intervention_infectiousrate_thresholds"]
+        self.lockdown_infectiousrate_thresholds = epidemiologyparams["lockdown_infectiousrate_thresholds"]
+        self.lockdown_day_thresholds = epidemiologyparams["lockdown_day_thresholds"]
 
         self.quarantine_enabled = False
         self.testing_enabled = False
         self.contact_tracing_enabled = False
+        self.workplaces_lockdown = False
+        self.schools_lockdown = False
+        self.entertainment_lockdown = False
         self.masks_hygiene_distancing_multiplier = 0
         self.vaccination_propensity = 0
         self.last_vaccination_propensity = self.vaccination_propensity
         self.num_agents_to_be_vaccinated = 0
+        self.num_vaccinations_today = 0
 
         # daily refreshed statistics here
-        self.infectious_rate = 0
+        self.statistics = Statistics(n_locals, n_tourists, vars_util)
 
     def to_dict(self):
         return {"n_locals": self.n_locals, 
@@ -41,41 +45,6 @@ class DynamicParams:
                 "last_vaccination_propensity": self.last_vaccination_propensity,
                 "num_agents_to_be_vaccinated": self.num_agents_to_be_vaccinated,
                 "infectious_rate": self.infectious_rate}
-
-    def refresh_infectious_rate(self, agents_seir_state, tourists_active_ids): # to optimise
-        n_infectious = 0
-        n_inactive = 0
-
-        start = time.time()
-
-        n_infectious = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
-        n_inactive = sum([1 for index, state in enumerate(agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
-        
-        n_infectious += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
-        n_inactive += sum([1 for tourist_id in tourists_active_ids if agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
-
-        time_taken = time.time() - start
-        print("refresh infectious rate (compr) time taken: " + str(time_taken))
-
-        # start = time.time()
-
-        # for index, state in enumerate(agents_seir_state):
-        #     if index < self.n_locals or index in tourists_active_ids:
-        #         if state == SEIRState.Infectious:
-        #             n_infectious += 1
-        #         elif state == SEIRState.Deceased:
-        #             n_inactive += 1
-        #     else:
-        #         n_inactive += 1
-
-        # time_taken = time.time() - start
-        # print("refresh infectious rate (loop) time taken: " + str(time_taken))
-
-        n_total = self.n_locals + len(tourists_active_ids)
-
-        n_active = n_total - n_inactive
-
-        self.infectious_rate = n_infectious / n_active
     
     def refresh_dynamic_parameters(self, day, agents_seir_state, tourists_active_ids, force_infectious_rate_refresh=True):
         infectious_rate_refreshed = False
@@ -84,79 +53,60 @@ class DynamicParams:
             self.refresh_infectious_rate(agents_seir_state, tourists_active_ids)
             infectious_rate_refreshed = True
 
-        if len(self.masks_hygiene_distancing_day_thresholds) > 0:
+        if len(self.masks_hygiene_distancing_infectiousrate_thresholds) == 0: # if both are present, default to infectiousrate thresholds
             self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(day, self.masks_hygiene_distancing_day_thresholds)
-
-            # for threshold, propensity in self.masks_hygiene_distancing_day_thresholds:
-            #     if day >= threshold:
-            #         self.masks_hygiene_distancing_propensity = propensity
         else:
             if not infectious_rate_refreshed:
                 self.refresh_infectious_rate(agents_seir_state, tourists_active_ids)
                 infectious_rate_refreshed = True
 
             self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(self.infectious_rate, self.masks_hygiene_distancing_infectiousrate_thresholds)
-            # for threshold, propensity in self.masks_hygiene_distancing_infectiousrate_thresholds:
-            #     if self.infectious_rate >= threshold:
-            #         self.masks_hygiene_distancing_propensity = propensity
-            #         break
 
-        if len(self.vaccination_day_thresholds) > 0:
+        if len(self.vaccination_infectiousrate_thresholds) == 0:
             self.vaccination_propensity = self.get_value_by_rate_in_threshold(day, self.vaccination_day_thresholds)
-
-            # for threshold, propensity in self.vaccination_day_thresholds:
-            #     if day >= threshold:
-            #         self.vaccination_propensity = propensity
-            #         break
         else:
             if not infectious_rate_refreshed:
                 self.refresh_infectious_rate(agents_seir_state, tourists_active_ids)
                 infectious_rate_refreshed = True
 
             self.vaccination_propensity = self.get_value_by_rate_in_threshold(self.infectious_rate, self.vaccination_infectiousrate_thresholds)        
-            # for threshold, propensity in self.vaccination_infectiousrate_thresholds:
-            #     if self.infectious_rate >= threshold:
-            #         self.vaccination_propensity = propensity
-            #         break
 
-        if len(self.intervention_day_thresholds) > 0:
-            quarantine, testing, contacttracing = self.intervention_day_thresholds[0], self.intervention_day_thresholds[1], self.intervention_day_thresholds[2]
+        if len(self.intervention_infectiousrate_thresholds) == 0:
+            quarantine_threshold, testing_threshold, contacttracing_threshold = self.intervention_day_thresholds[0], self.intervention_day_thresholds[1], self.intervention_day_thresholds[2]
 
-            if day >= quarantine:
-                self.quarantine_enabled = True
-            else:
-                self.quarantine_enabled = False
-
-            if day >= testing:
-                self.testing_enabled = True
-            else:
-                self.testing_enabled = False
-
-            if day >= contacttracing:
-                self.contact_tracing_enabled = True
-            else:
-                self.contact_tracing_enabled = False
+            self.quarantine_enabled = day >= quarantine_threshold
+            self.testing_enabled = day >= testing_threshold
+            self.contact_tracing_enabled = day >= contacttracing_threshold
         else:
             if not infectious_rate_refreshed:
                 self.refresh_infectious_rate(agents_seir_state, tourists_active_ids)
                 infectious_rate_refreshed = True
             
-            quarantine, testing, contacttracing = self.intervention_infectiousrate_thresholds[0], self.intervention_infectiousrate_thresholds[1], self.intervention_infectiousrate_thresholds[2]
+            quarantine_threshold, testing_threshold, contacttracing_threshold = self.intervention_infectiousrate_thresholds[0], self.intervention_infectiousrate_thresholds[1], self.intervention_infectiousrate_thresholds[2]
 
-            if self.infectious_rate >= quarantine:
-                self.quarantine_enabled = True
-            else:
-                self.quarantine_enabled = False
+            self.quarantine_enabled = self.infectious_rate >= quarantine_threshold
+            self.testing_enabled = self.infectious_rate >= testing_threshold
+            self.contact_tracing_enabled = self.infectious_rate >= contacttracing_threshold
 
-            if self.infectious_rate >= testing:
-                self.testing_enabled = True
-            else:
-                self.testing_enabled = False
+        if len(self.lockdown_infectiousrate_thresholds) == 0:
+            workplaces_threshold, schools_threshold, entertainment_threshold = self.lockdown_day_thresholds[0], self.lockdown_day_thresholds[1], self.lockdown_day_thresholds[2]
 
-            if self.infectious_rate >= contacttracing:
-                self.contact_tracing_enabled = True
-            else:
-                self.contact_tracing_enabled = False
+            self.workplaces_lockdown = day >= workplaces_threshold
+            self.schools_lockdown = day >= schools_threshold
+            self.entertainment_lockdown = day >= entertainment_threshold
+        else:
+            if not infectious_rate_refreshed:
+                self.refresh_infectious_rate(agents_seir_state, tourists_active_ids)
+                infectious_rate_refreshed = True
+            
+            workplaces_threshold, schools_threshold, entertainment_threshold = self.lockdown_infectiousrate_thresholds[0], self.lockdown_infectiousrate_thresholds[1], self.lockdown_infectiousrate_thresholds[2]
+
+            self.workplaces_lockdown = self.infectious_rate >= workplaces_threshold
+            self.schools_lockdown = self.infectious_rate >= schools_threshold
+            self.entertainment_lockdown = self.infectious_rate >= entertainment_threshold
+
+    def log_intervention_info():
+        pass
 
     def get_value_by_rate_in_threshold(self, rate, params, none_val=0):
         val = None

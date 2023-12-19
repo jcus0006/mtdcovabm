@@ -103,6 +103,32 @@ def sample_log_normal(mean, std, size, isInt=False):
     
     return samples
 
+def calculate_vaccination_multipliers(agents_vaccination_doses, agentid, current_day, vaccine_immunity, vaccine_asymptomatic, exponential_decay_interval):
+    immunity_multiplier = 1.0
+    asymptomatic_multiplier = 1.0
+
+    if agentid in agents_vaccination_doses:
+        doses_days = agents_vaccination_doses[agentid]
+        last_dose_day = doses_days[-1]
+        days_since_last_dose = current_day - last_dose_day
+
+        if days_since_last_dose == 0: # full effectiveness (otherwise will always result in 1.0 - (0.9 ^ 0) = 0.0 -> 1.0 - (1.0) = 0.0)
+            immunity_multiplier = 1.0 - vaccine_immunity
+            asymptomatic_multiplier = 1.0 - vaccine_asymptomatic
+        else:
+            immunity_exp_decay = days_since_last_dose / exponential_decay_interval
+            if immunity_exp_decay < 1:
+                immunity_exp_decay = 1
+
+            asymptomatic_exp_decay = days_since_last_dose / exponential_decay_interval
+            if asymptomatic_exp_decay < 1:
+                asymptomatic_exp_decay = 1
+
+            immunity_multiplier = 1.0 - (vaccine_immunity ** immunity_exp_decay) # e.g. 0.9 ^ (60 / 30) = 0.9 ^ 2
+            asymptomatic_multiplier = 1.0 - (vaccine_asymptomatic ** asymptomatic_exp_decay) # e.g. 0.9 ^ (60 / 30) = 0.9 ^ 2
+
+    return immunity_multiplier, asymptomatic_multiplier
+
 def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets, set_working_age_bracket=True):
     age = agent["age"]
     agents_ids_by_ages[agent_uid] = agent["age"]
@@ -352,6 +378,9 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if uid in vars_util.agents_infection_severity:
             vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
 
+        if uid in vars_util.agents_vaccination_doses:
+            vars_util_partial.agents_vaccination_doses[uid] = vars_util.agents_vaccination_doses[uid]
+
     return agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial
 
 def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
@@ -376,6 +405,9 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
 
         if uid in vars_util.agents_infection_severity:
             vars_util_partial.agents_infection_severity[uid] = vars_util.agents_infection_severity[uid]
+
+        if uid in vars_util.agents_vaccination_doses:
+            vars_util_partial.agents_vaccination_doses[uid] = deepcopy(vars_util.agents_vaccination_doses[uid])
 
     if not is_dask_full_array_mapping:
         vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
@@ -409,6 +441,9 @@ def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agen
         if agentid in vars_util_partial.agents_infection_severity:
             vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
 
+        if agentid in vars_util_partial.agents_vaccination_doses:
+            vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
+
         # updated_count += 1  
 
     # print("synced " + str(updated_count) + " agents")
@@ -433,6 +468,9 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
 
         if agentid in vars_util_partial.agents_infection_severity:
             vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
+
+        if agentid in vars_util_partial.agents_vaccination_doses:
+            vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
 
         # updated_count += 1  
 

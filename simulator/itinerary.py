@@ -553,10 +553,14 @@ class Itinerary:
                                 if next_day_sleep_timestep is not None and next_day_arrive_home_timestep is not None:
                                     break
                             
+                        immunity_multiplier, asymptomatic_multiplier = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, agentid, simday, self.epi_util.vaccination_immunity_multiplier, self.epi_util.vaccination_asymptomatic_multiplier, self.epi_util.vaccination_exp_decay_interval)
+
                         # sample tourist entry infection probability
                         exposed_rand = random.random()
 
-                        if exposed_rand < self.tourist_entry_infection_probability:                 
+                        entry_infection_probability = self.tourist_entry_infection_probability * immunity_multiplier
+
+                        if exposed_rand < entry_infection_probability:                 
                             potential_days = np.arange(departure_day, simday+1) # agent would have been exposed on a particular day/timestamp during the travel. 
 
                             sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0] # sample a day at random from the travel duration.
@@ -568,7 +572,7 @@ class Itinerary:
                             if agent_state_transition_by_day is None:
                                 agent_state_transition_by_day = []
 
-                            agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                            agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
 
                             if inf_type != InfectionType.Undefined:
                                 self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
@@ -2332,6 +2336,14 @@ class Itinerary:
                     self.add_to_itinerary(agent, start_ts, Action.Vaccine, sampled_vaccinationhub_cellid)
 
                     agent = self.modify_wakeup_sleep_work_school_for_interventions(agent, res_cellid, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
+
+                    # increase vaccination doses
+                    if agentid not in self.vars_util.agents_vaccination_doses:
+                        self.vars_util.agents_vaccination_doses[agentid] = []
+
+                    agent_vaccination_doses = self.vars_util.agents_vaccination_doses[agentid]
+                    agent_vaccination_doses.append(day)
+                    self.vars_util.agents_vaccination_doses[agentid] = agent_vaccination_doses
                 else:
                     if is_arrival_day_today and start_ts < arr_dep_ts: # re-scheduling not applicable for tourists leaving Malta (out of scope)
                         agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] = [day + 1, start_ts]

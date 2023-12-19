@@ -47,7 +47,7 @@ class Vars:
             agents_infection_severity = customdict.CustomDict()
 
         if agents_vaccination_doses is None:
-            agents_vaccination_doses = []
+            agents_vaccination_doses = customdict.CustomDict()
         
         self.cells_agents_timesteps = cells_agents_timesteps # {cellid: [[agentid, starttimestep, endtimestep]]} - IT
         self.directcontacts_by_simcelltype_by_day = directcontacts_by_simcelltype_by_day # [[simcelltype, agent1id, agent2id, start_ts, end_ts]] - CN for Contact tracing (was set)
@@ -61,7 +61,7 @@ class Vars:
         self.agents_seir_state_transition_for_day = agents_seir_state_transition_for_day # handled as dict, represents during day transitions, set in itinerary and used in contact network. value: [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
         self.agents_infection_type = agents_infection_type # handled as dict, because not every agent will be infected
         self.agents_infection_severity = agents_infection_severity # handled as dict, because not every agent will be infected
-        self.agents_vaccination_doses = agents_vaccination_doses # number of doses per agent
+        self.agents_vaccination_doses = agents_vaccination_doses # handled as dict, days on which each agent has been administered a dose. index represents dose1, dose2, etc
 
     def __reduce__(self):
         return (self.__class__, (self.cells_agents_timesteps, self.directcontacts_by_simcelltype_by_day, self.dc_by_sct_by_day_agent1_index, self.dc_by_sct_by_day_agent2_index, self.directcontacts_by_simcelltype_by_day_start_marker, self.contact_tracing_agent_ids, self.agents_seir_state, self.agents_seir_state_transition_for_day, self.agents_infection_type, self.agents_infection_severity, self.agents_vaccination_doses))
