@@ -73,8 +73,9 @@ class Vars:
         self.agents_infection_severity = ag_infection_severity
         self.agents_vaccination_doses = ag_vaccination_doses
 
-    def reset_cells_agents_timesteps(self):
+    def reset_daily_structures(self):
         self.cells_agents_timesteps = customdict.CustomDict()
+        self.agents_seir_state_transition_for_day = customdict.CustomDict()
 
     # def convert_to_dask_collections(self, partition_size):
     #     # self.cells_agents_timesteps = db.from_sequence(self.cells_agents_timesteps.items(), partition_size=128)

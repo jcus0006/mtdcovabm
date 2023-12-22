@@ -37,6 +37,11 @@ class ActorDistMP:
         self.manager = mp.Manager()
         self.pool = mp.Pool(processes=numprocesses, initializer=shared_mp.init_pool_processes_dask_mp, initargs=(worker,))
 
+    def close_pool(self):
+        self.pool.close()
+        self.pool.join()
+        self.manager.shutdown()
+
     def run_itinerary_parallel(self, params):
         stack_trace_log_file_name = ""
         f = None
@@ -174,9 +179,8 @@ class ActorDistMP:
 
                 agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_epi, vars_util, agents_partial, vars_util_partial, is_dask_task=False)
 
-                mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)
-                    
-                vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
+                # mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)        
+                # vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
         
                 vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 

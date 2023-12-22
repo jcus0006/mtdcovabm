@@ -18,7 +18,7 @@ class Itinerary:
                 n_tourists, 
                 locals_ratio_to_full_pop,
                 agents_static,
-                agents_dynamic, 
+                it_agents, 
                 agents_epi,
                 agents_ids_by_ages,          
                 vars_util,
@@ -57,7 +57,7 @@ class Itinerary:
         self.n_locals = n_locals
         self.n_tourists = n_tourists
         self.agents_static = agents_static
-        self.agents_dynamic = agents_dynamic
+        self.it_agents = it_agents
         self.agents_epi = agents_epi
         self.agents_ids_by_ages = agents_ids_by_ages
         self.tourists = tourists
@@ -154,7 +154,7 @@ class Itinerary:
     # to be called at the beginning of a new week
     def generate_working_days_for_week_residence(self, resident_uids, is_hh):
         for agentindex, agentid in enumerate(resident_uids):
-            agent_dynamic = self.agents_dynamic[agentid]
+            agent_dynamic = self.it_agents[agentid]
 
             if seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid) != SEIRState.Deceased: #agentindex
                 # if "working_schedule" not in agent:
@@ -309,7 +309,7 @@ class Itinerary:
             cohab_agents_ids_by_ages[agentid] = self.agents_ids_by_ages[agentid]
 
             if guardian_id is None:
-                agent = self.agents_dynamic[agentid]
+                agent = self.it_agents[agentid]
 
                 temp_guardian_id = self.agents_static.get(agentid, "guardian_id")
                 if temp_guardian_id != -1:
@@ -318,7 +318,7 @@ class Itinerary:
         cohab_agents_ids_by_ages = sorted(cohab_agents_ids_by_ages.items(), key=lambda y: y[1], reverse=True)
 
         for agentindex, (agentid, age) in enumerate(cohab_agents_ids_by_ages):
-            agent = self.agents_dynamic[agentid]
+            agent = self.it_agents[agentid]
             agent_epi = self.agents_epi[agentid]
 
             agent_seir_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid) #agentindex
@@ -579,7 +579,7 @@ class Itinerary:
                                 self.vars_util.agents_infection_type[agentid] = inf_type
                                 self.vars_util.agents_infection_severity[agentid] = inf_sev
 
-                                print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
+                                # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
                             
                                 # immediately clear any events that happened prior to today as they would not be relevant anymore
                                 delete_indices = []
@@ -781,7 +781,7 @@ class Itinerary:
 
                         if sampled_non_daily_activity is None: # sample non daily activity (normal case)
                             # set the working / school hours
-                            if self.agents_static.get(agentid, "empstatus") == 0: # 0: employed, 1: unemployed, 2: inactive
+                            if self.agents_static.get(agentid, "empstatus") == 0 and not self.epi_util.dyn_params.workplaces_lockdown: # 0: employed, 1: unemployed, 2: inactive
                                 # employed. consider workingday/ vacationlocal/ vacationtravel/ sickleave
                                 
                                 if weekday in working_schedule: # working day
@@ -850,7 +850,7 @@ class Itinerary:
                                             sampled_non_daily_activity = NonDailyActivityNonWorkingDay.Local
 
                                     sampled_non_daily_activity = self.convert_to_generic_non_daily_activity(sampled_non_daily_activity)
-                            elif self.agents_static.get(agentid, "sc_student") == 1:
+                            elif self.agents_static.get(agentid, "sc_student") == 1 and not self.epi_util.dyn_params.schools_lockdown:
                                 if weekday <= 5: # monday to friday
                                     is_work_or_school_day = True
 
@@ -941,7 +941,7 @@ class Itinerary:
                             
                         # if not sick and not travelling (local or normal work/school day), sample sleep timestep
                         # fill in activity_timestep_ranges, representing "free time"
-                        # sample acitivities to fill in the activity_timestep_ranges
+                        # sample activities to fill in the activity_timestep_ranges
                         # if kid with guardian, "copy" itinerary of guardian, where applicable
                         # if sick stay at home all day
                         # if travelling, yet to be done
@@ -1397,8 +1397,8 @@ class Itinerary:
                 departureday = tourists_group["dep"]
                 purpose = tourists_group["purpose"] # 1 = Holiday, 2 = Business, 3 = Visiting Family, 4 = Other
                 subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
-                agentids = tourists_group["agent_ids"]
-                rescellids = tourists_group["res_cell_ids"]
+                agentids = tourists_group["agent_ids"] # if len(subgroupsmemberids) > 0:
+                # rescellids = tourists_group["res_cell_ids"]
 
                 is_group_activity_for_day = False
                 is_arrivalday = arrivalday == simday
@@ -1438,7 +1438,7 @@ class Itinerary:
                     quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
 
                     if not is_arrivalnextday:
-                        agent = self.agents_dynamic[agentid]
+                        agent = self.it_agents[agentid]
                         agent_epi = self.agents_epi[agentid]
 
                         if is_arrivalday:
@@ -1465,7 +1465,7 @@ class Itinerary:
                                     self.vars_util.agents_infection_type[agentid] = inf_type
                                     self.vars_util.agents_infection_severity[agentid] = inf_sev
 
-                                    print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
+                                    # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
 
                                     # immediately clear any events that happened prior to today as they would not be relevant anymore
                                     delete_indices = []
@@ -1531,7 +1531,7 @@ class Itinerary:
                         tourists_group, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, tourists_group, accomtype, tourists_group["group_accom_id"], is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp)
 
                         for agentid in agentids:
-                            agent = self.agents_dynamic[agentid]
+                            agent = self.it_agents[agentid]
                             res_cellid = self.agents_static.get(agentid, "res_cellid")
                             agent["itinerary"] = copy(tourists_group["itinerary"])
                             agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
@@ -1570,7 +1570,7 @@ class Itinerary:
 
                             for tourist_id in room_members: # tourists ids in room
                                 tourist = self.tourists[tourist_id]
-                                agent = self.agents_dynamic[tourist["agentid"]]
+                                agent = self.it_agents[tourist["agentid"]]
                                 res_cellid = self.agents_static.get(agentid, "res_cellid")
                                 agent_quar_hosp = agents_quar_hosp[tourist["agentid"]]
 
@@ -1640,7 +1640,8 @@ class Itinerary:
         prev_day_itinerary_nextday = agent_group["itinerary_nextday"]
 
         prev_day_last_event = None
-        if not is_arrivalday:
+        # if not initial tourist and not arrival day; or initial tourist and have previous day itinerary (on day 1 there won't be)
+        if ("initial_tourist" not in agent_group and not is_arrivalday) or len(prev_day_itinerary) > 0:
             prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
             prev_day_last_ts = prev_day_itinerary_timesteps[0]
             prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
@@ -1916,7 +1917,7 @@ class Itinerary:
         return agent_group, wakeup_timestep, sleep_timestep
 
     def sample_activities(self, weekday, agent_group, res_cell_id, sleep_timestep, activity_timestep_ranges, age_bracket_index, is_tourist_group=False, airport_timestep=None):
-        # fill in activity_timestep_ranges with actual acitivities
+        # fill in activity_timestep_ranges with actual activities
         for timestep_range in activity_timestep_ranges:
             activities_slot_ts = sum([1 for i in timestep_range])
 

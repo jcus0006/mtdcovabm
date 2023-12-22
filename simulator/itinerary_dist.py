@@ -8,7 +8,7 @@ import json
 # import threading
 import math
 import numpy as np
-import numpy.ma as ma
+# import numpy.ma as ma
 import traceback
 import itinerary, itinerary_mp, actor_dist_mp, vars, shared_mp, jsonutil, customdict, daskutil, util
 import time
@@ -503,6 +503,20 @@ def localitinerary_distributed(client: Client,
             delayed_computations = []
             futures = []
 
+            # mem troubleshooting
+            agents_vacc_doses_len = len(vars_util.agents_vaccination_doses)
+            agents_seir_state_len = len(vars_util.agents_seir_state)
+            agents_inf_type_len = len(vars_util.agents_infection_type)
+            agents_inf_sev_len = len(vars_util.agents_infection_severity)
+
+            agents_vacc_doses_mem = sum([sys.getsizeof(vi) for v in vars_util.agents_vaccination_doses.values() for vi in v])
+            agents_seir_state_mem = sum([sys.getsizeof(s) for s in vars_util.agents_seir_state])
+            agents_inf_type_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util.agents_infection_type.items()])
+            agents_inf_sev_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util.agents_infection_severity.items()])
+            
+            print(f"itinerary lengths. vacc_doses: {agents_vacc_doses_len}, seir_state: {agents_seir_state_len}, inf type: {agents_inf_type_len}, inf sev: {agents_inf_sev_len}")
+            print(f"itinerary memory. vacc_doses: {agents_vacc_doses_mem}, seir_state: {agents_seir_state_mem}, inf type: {agents_inf_type_mem}, inf sev: {agents_inf_sev_mem}")
+
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
 
@@ -521,24 +535,40 @@ def localitinerary_distributed(client: Client,
                     agents_partial, agents_ids_by_ages_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
                     vars_util_partial = vars.Vars()
 
-                    if not dask_full_array_mapping:
-                        vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                        # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
-                    else:
-                        vars_util_partial.agents_seir_state = [] # to be populated hereunder
-
+                    # if not dask_full_array_mapping:
+                    #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    #     # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
+                    # else:
+                    #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                     vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                     
                     for hh_inst in hh_insts_partial:
                         agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, None, None, True, dask_full_array_mapping, agents_epi, agents_epi_partial)
 
-                    if not dask_full_array_mapping:
-                        agent_ids = sorted(list(agents_partial.keys()))
+                    # if not dask_full_array_mapping:
+                    #     agent_ids = sorted(list(agents_partial.keys()))
 
-                        mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), agent_ids, invert=True)
+                    #     mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), agent_ids, invert=True)
 
-                        vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
+                    #     vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
 
+                    agents_vacc_doses_mem = sum([sys.getsizeof(vi) for v in vars_util_partial.agents_vaccination_doses.values() for vi in v])
+                    agents_seir_state_mem = sum([sys.getsizeof(s) for s in vars_util_partial.agents_seir_state])
+                    agents_inf_type_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util_partial.agents_infection_type.items()])
+                    agents_inf_sev_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util_partial.agents_infection_severity.items()])
+                    
+                    state_trans_day_mem = sum([sys.getsizeof(vi) for v in agents_epi_partial.values() for vi in v["state_transition_by_day"]])
+                    test_day_mem = sum([sys.getsizeof(vi) for v in agents_epi_partial.values() for vi in v["test_day"]])
+                    test_result_day_mem = sum([sys.getsizeof(vi) for v in agents_epi_partial.values() for vi in v["test_result_day"]])
+                    hosp_mem = sum([sys.getsizeof(vi) for v in agents_epi_partial.values() for vi in v["hospitalisation_days"]])
+                    quar_mem = sum([sys.getsizeof(vi) for v in agents_epi_partial.values() for vi in v["quarantine_days"]])
+                    vacc_mem = sum([sys.getsizeof(vi) for v in agents_epi_partial.values() for vi in v["vaccination_days"]])
+
+                    print(f"itinerary lengths partial {worker_index}. vacc_doses: {agents_vacc_doses_len}, seir_state: {agents_seir_state_len}, inf type: {agents_inf_type_len}, inf sev: {agents_inf_sev_len}")
+                    print(f"itinerary memory partial {worker_index}. vacc_doses: {agents_vacc_doses_mem}, seir_state: {agents_seir_state_mem}, inf type: {agents_inf_type_mem}, inf sev: {agents_inf_sev_mem}")
+                    print(f"itinerary epi memory partial {worker_index}, state_trans_day {state_trans_day_mem}, test_day {test_day_mem}, test_result_day {test_result_day_mem}, hosp {hosp_mem}, quar {quar_mem}, vacc {vacc_mem}")
+                    
                     # Define parameters
                     if not use_mp:
                         params = (day, 

@@ -369,7 +369,7 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
-        if uid in vars_util.agents_seir_state_transition_for_day:
+        if not is_itinerary and uid in vars_util.agents_seir_state_transition_for_day: # although will never have data if is_itinerary
             vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
 
         if uid in vars_util.agents_infection_type:
@@ -397,7 +397,7 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
-        if uid in vars_util.agents_seir_state_transition_for_day:
+        if not is_itinerary and uid in vars_util.agents_seir_state_transition_for_day: # although will never have data if is_itinerary
             vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
 
         if uid in vars_util.agents_infection_type:
@@ -428,9 +428,6 @@ def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agen
             main_agent["test_day"] = curr_agent_epi["test_day"]
             main_agent["test_result_day"] = curr_agent_epi["test_result_day"]
             main_agent["quarantine_days"] = curr_agent_epi["quarantine_days"]
-
-        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
-            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
         if not contact_tracing:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
