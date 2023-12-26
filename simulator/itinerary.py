@@ -353,12 +353,13 @@ class Itinerary:
                 start_work_timestep_with_leeway, end_work_timestep_with_leeway = None, None
                 start_school_timestep, end_school_timestep = None, None
                 
-                prev_day_itinerary, prev_day_itinerary_nextday, prev_day_last_event = None, None, None
+                prev_day_itinerary, prev_day_last_event = None, None
                 if simday > 1:
                     prev_day_itinerary = agent["itinerary"]
-                    prev_day_itinerary_nextday = agent["itinerary_nextday"]
+                    # prev_day_itinerary_nextday = agent["itinerary_nextday"]
 
-                    prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
+                    prev_day_itinerary_timesteps = list(prev_day_itinerary.keys()) # should only be the last timestep of the previous day
+                    # prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
 
                     if len(prev_day_itinerary_timesteps) > 0:
                         prev_day_last_ts = prev_day_itinerary_timesteps[0]
@@ -553,7 +554,8 @@ class Itinerary:
                                 if next_day_sleep_timestep is not None and next_day_arrive_home_timestep is not None:
                                     break
                             
-                        immunity_multiplier, asymptomatic_multiplier = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, agentid, simday, self.epi_util.vaccination_immunity_multiplier, self.epi_util.vaccination_asymptomatic_multiplier, self.epi_util.vaccination_exp_decay_interval)
+                        # immunity_multiplier, asymptomatic_multiplier = 1, 1
+                        immunity_multiplier, asymptomatic_multiplier, _ = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, agentid, simday, self.epi_util.vaccination_immunity_multiplier, self.epi_util.vaccination_asymptomatic_multiplier, self.epi_util.vaccination_exp_decay_interval)
 
                         # sample tourist entry infection probability
                         exposed_rand = random.random()
@@ -1237,18 +1239,18 @@ class Itinerary:
 
                 # agent["prev_day_history"] = [simday, is_arrivalday, is_departureday, is_quarantined, is_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day, temp_is_quarantined, temp_is_hospitalised]
 
-                something_wrong_sleep = True
+                # something_wrong_sleep = True
 
-                for ts, (act, cellid) in agent["itinerary"].items():
-                    if act == Action.Sleep:
-                        something_wrong_sleep = False
-                        break
+                # for ts, (act, cellid) in agent["itinerary"].items():
+                #     if act == Action.Sleep:
+                #         something_wrong_sleep = False
+                #         break
 
-                if something_wrong_sleep:
-                    for ts, (act, cellid) in agent["itinerary_nextday"].items():
-                        if act == Action.Sleep:
-                            something_wrong_sleep = False
-                            break
+                # if something_wrong_sleep:
+                #     for ts, (act, cellid) in agent["itinerary_nextday"].items():
+                #         if act == Action.Sleep:
+                #             something_wrong_sleep = False
+                #             break
 
                 # if (something_wrong_sleep and
                 #     ((not is_quarantined_or_hospitalised or is_quarantine_hospital_start_day ) and
@@ -1265,6 +1267,12 @@ class Itinerary:
                     guardian_prevday_non_daily_activity_recurring = copy(agent["prevday_non_daily_activity_recurring"])
                     guardian_itinerary = copy(agent["itinerary"])
                     guardian_itinerary_nextday = copy(agent["itinerary_nextday"])
+
+                agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
+                last_timestep = agent_itinerary_timesteps[-1]
+                for timestep in agent_itinerary_timesteps:
+                    if timestep != last_timestep:
+                        del agent["itinerary"][timestep]
 
                 # old code
                 # start = time.time()
@@ -1291,6 +1299,15 @@ class Itinerary:
                 #         if ((len(test_itinerary_keys) > 2 and agent["itinerary"][test_itinerary_keys[0]][0] == Action.LocalActivity and agent["itinerary"][test_itinerary_keys[1]][0] == Action.Sleep) or
                 #             (len(test_itinerarynextday_keys) > 2 and agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] == Action.LocalActivity and agent["itinerary_nextday"][test_itinerarynextday_keys[1]][0] == Action.Sleep)):
                 #                 print("to check")
+
+        guardian_hospitalisation_days = None
+        guardian_quarantine_days = None
+        guardian_non_daily_activity_recurring = None
+        guardian_prevday_non_daily_activity_recurring = None
+        guardian_itinerary = None
+        guardian_itinerary_nextday = None
+
+        # gc.collect()
 
     def update_cell_agents_timesteps(self, itinerary, agentids, rescellids):
         # fill in cells_agents_timesteps

@@ -79,7 +79,7 @@ def localitinerary_distributed_finegrained(client: Client,
             vars_util_partial = vars.Vars()
 
             if not dask_scatter: # and not dask_persist
-                vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                # vars_util_partial.agents_seir_state = [] # to be populated hereunder
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                 
                 agents_partial, _, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, None, None, True, True, agents_epi, agents_epi_partial)               
@@ -173,10 +173,10 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                     agents_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict()
                     vars_util_partial = vars.Vars()
 
-                    if not dask_full_array_mapping:
-                        vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                    else:
-                        vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                    # if not dask_full_array_mapping:
+                    #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    # else:
+                    #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
                     
                     vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
@@ -225,10 +225,10 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                 agents_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict()
                 vars_util_partial = vars.Vars()
 
-                if not dask_full_array_mapping:
-                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                else:
-                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                # if not dask_full_array_mapping:
+                #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # else:
+                #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
 
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                 
@@ -354,10 +354,10 @@ def localitinerary_distributed_map_batched(client: Client,
                 agents_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict()
                 vars_util_partial = vars.Vars()
 
-                if not dask_full_array_mapping:
-                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                else:
-                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                # if not dask_full_array_mapping:
+                #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # else:
+                #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
                 
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
@@ -510,7 +510,7 @@ def localitinerary_distributed(client: Client,
             agents_inf_sev_len = len(vars_util.agents_infection_severity)
 
             agents_vacc_doses_mem = sum([sys.getsizeof(vi) for v in vars_util.agents_vaccination_doses.values() for vi in v])
-            agents_seir_state_mem = sum([sys.getsizeof(s) for s in vars_util.agents_seir_state])
+            agents_seir_state_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util.agents_seir_state.items()])
             agents_inf_type_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util.agents_infection_type.items()])
             agents_inf_sev_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util.agents_infection_severity.items()])
             
@@ -540,7 +540,7 @@ def localitinerary_distributed(client: Client,
                     #     # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
                     # else:
                     #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
-                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                     vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                     
                     for hh_inst in hh_insts_partial:
@@ -554,7 +554,7 @@ def localitinerary_distributed(client: Client,
                     #     vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
 
                     agents_vacc_doses_mem = sum([sys.getsizeof(vi) for v in vars_util_partial.agents_vaccination_doses.values() for vi in v])
-                    agents_seir_state_mem = sum([sys.getsizeof(s) for s in vars_util_partial.agents_seir_state])
+                    agents_seir_state_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util_partial.agents_seir_state.items()])
                     agents_inf_type_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util_partial.agents_infection_type.items()])
                     agents_inf_sev_mem = sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util_partial.agents_infection_severity.items()])
                     

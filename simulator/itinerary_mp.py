@@ -14,6 +14,7 @@ from util import MethodType
 from copy import copy, deepcopy
 from dask import compute, delayed
 from dask.distributed import as_completed, get_worker
+import gc
 
 def localitinerary_parallel(manager,
                             pool,
@@ -166,7 +167,7 @@ def localitinerary_parallel(manager,
 
                 agents_partial, agents_ids_by_ages_partial, agents_epi_partial = {}, {}, {}
                 vars_util_partial = vars.Vars()
-                vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
                 for hh_inst in hh_insts_partial:
@@ -343,6 +344,8 @@ def localitinerary_parallel(manager,
         with open(stack_trace_log_file_name, 'w') as f:
             traceback.print_exc(file=f)
         raise
+    finally:
+        gc.collect()
 
 def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
     index_start_time = time.time()

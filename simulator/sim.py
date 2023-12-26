@@ -23,6 +23,8 @@ import gc
 from memory_profiler import profile
 # import dask.dataframe as df
 import pandas as pd
+from pympler import asizeof
+from copy import copy, deepcopy
 
 params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
@@ -40,16 +42,16 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562,
-            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 4, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
-            "use_static_dict_tourists": True,
+            "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
             "dask_use_fg": False, # will use fine grained method that tackles single item (with single residence, batch sizes, and recurring)
@@ -66,10 +68,10 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            # "dask_nodes": ["localhost"], # 192.168.1.24
-            # "dask_nodes_n_workers": [4], # 3, 11
-            "dask_nodes": ["192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            "dask_nodes_n_workers": [4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_nodes": ["localhost"], # 192.168.1.24
+            "dask_nodes_n_workers": [4], # 3, 11
+            # "dask_nodes": ["192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes_n_workers": [4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
@@ -85,7 +87,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "dask_s1_h_500k_6d_5n_4wn_17w_seirstatetransopt_v2.txt"
+            "logfilename": "mp_4p_500k_3d_dynamictours_in_dicts.txt"
         }
 
 # Load configuration
@@ -162,15 +164,21 @@ def load_dask_worker_data(dask_worker, filepath, propname):
 #     # pool = mp.Pool(initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
 #     return manager, pool
 
-# fp = open("memory_profiler.log", "w+")
+# fp = open("memory_profiler_memissues_10k_3d.log", "w+")
 # @profile(stream=fp)
 def main():
-    if not params["use_mp"] and not params["dask_use_mp"]:
-        params["use_shm"] = False
-
     if not params["use_mp"] and not params["dask_use_mp"] and len(params["dask_nodes"]) == 0 and params["numprocesses"] == 1:
         params["use_mp"] = True # single process is handled in itinerary_mp and contactnetwork_mp, but does not actually use multiprocessing
 
+    if params["use_mp"]:
+        if params["numprocesses"] == 1:
+            params["use_shm"] = False
+        else:
+            params["use_shm"] = True
+
+    if not params["use_mp"] and not params["dask_use_mp"]:
+        params["use_shm"] = False
+            
     data_load_start_time = time.time()
     
     simdays_range = range(1, params["simulationdays"] + 1)
@@ -188,23 +196,27 @@ def main():
                                                               "refreshdynamicparams_avg"])
     
     mem_logs_df = pd.DataFrame(index=simdays_range, columns=["it_agents_day",
-                                                          "epi_agents_day",
-                                                          "cells_agents_timesteps_day",
-                                                          "seir_state_day",
-                                                          "infection_type_day",
-                                                          "infection_severity_day",
-                                                          "direct_contacts_day",
-                                                          "direct_contacts_index1_day",
-                                                          "direct_contacts_index2_day",
-                                                          "it_agents_avg",
-                                                          "epi_agents_avg",
-                                                          "cells_agents_timesteps_avg",
-                                                          "seir_state_avg",
-                                                          "infection_type_avg",
-                                                          "infection_severity_avg",
-                                                          "direct_contacts_avg",
-                                                          "direct_contacts_index1_avg",
-                                                          "direct_contacts_index2_avg"])
+                                                            "epi_agents_day",
+                                                            "cells_agents_timesteps_day",
+                                                            "seir_state_day",
+                                                            "seir_state_trans_for_day_day",
+                                                            "infection_type_day",
+                                                            "infection_severity_day",
+                                                            "vacc_doses_day",
+                                                            "direct_contacts_day",
+                                                            "direct_contacts_index1_day",
+                                                            "direct_contacts_index2_day",
+                                                            "it_agents_avg",
+                                                            "epi_agents_avg",
+                                                            "cells_agents_timesteps_avg",
+                                                            "seir_state_avg",
+                                                            "seir_state_trans_for_day_day", 
+                                                            "infection_type_avg",
+                                                            "infection_severity_avg",
+                                                            "vacc_doses_avg",
+                                                            "direct_contacts_avg",
+                                                            "direct_contacts_index1_avg",
+                                                            "direct_contacts_index2_avg"])
     
     interventions_logs_df = pd.DataFrame(index=simdays_range, columns=["quarantine_enabled",
                                                                     "testing_enabled",
@@ -282,6 +294,8 @@ def main():
     original_stdout = sys.stdout
     sys.stdout = f
 
+    util.log_memory_usage(f, "Created data frames. Loading data.. ")
+
     print("interpreter: " + os.path.dirname(sys.executable))
     print("current working directory: " + os.getcwd())
     if f is not None:
@@ -352,13 +366,14 @@ def main():
     # cells_agents_timesteps = {} # {cellid: (agentid, starttimestep, endtimestep)}
 
     # # transmission model
-    agents_seir_state = [] # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
+    agents_seir_state = customdict.CustomDict() # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
     agents_seir_state_transition_for_day = customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
     agents_infection_type = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_infection_severity = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_vaccination_doses = customdict.CustomDict() # number of doses per agent
 
     # tourism
+    tourists = {}
     tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
     tourists_arrivals_departures_for_nextday = {}
     n_tourists = 0
@@ -675,7 +690,12 @@ def main():
     if f is not None:
         f.flush()
 
+    util.log_memory_usage(f, "Loaded data. Before gc.collect() ")
+    gc_start = time.time()
     gc.collect()
+    gc_time_taken = time.time() - gc_start
+    print("gc time_taken: " + str(gc_time_taken))
+    util.log_memory_usage(f, "Loaded data. After gc.collect() ")
     
     manager, pool = None, None # mp
     client = None # dask
@@ -854,13 +874,15 @@ def main():
         epi_agents_sum_mem = 0
         cat_agents_sum_mem = 0
         seir_state_sum_mem = 0
+        seir_state_trans_for_day_sum_mem = 0
         inf_type_sum_mem = 0
         inf_sev_sum_mem = 0
+        vacc_doses_sum_mem = 0
         dir_con_sum_mem = 0
         dir_con_idx1_sum_mem = 0
         dir_con_idx2_sum_mem = 0
 
-        memory_sums = it_agents_sum_mem, epi_agents_sum_mem, cat_agents_sum_mem, seir_state_sum_mem, inf_type_sum_mem, inf_sev_sum_mem, dir_con_sum_mem, dir_con_idx1_sum_mem, dir_con_idx2_sum_mem
+        memory_sums = it_agents_sum_mem, epi_agents_sum_mem, cat_agents_sum_mem, seir_state_sum_mem, seir_state_trans_for_day_sum_mem, inf_type_sum_mem, inf_sev_sum_mem, vacc_doses_sum_mem, dir_con_sum_mem, dir_con_idx1_sum_mem, dir_con_idx2_sum_mem
 
         epi_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days", "vaccination_days"]
         it_keys = ["working_schedule", "non_daily_activity_recurring", "prevday_non_daily_activity_recurring", "itinerary", "itinerary_next_day"]
@@ -880,9 +902,11 @@ def main():
 
         del agents_dynamic
 
-        tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution)
-        
-        tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
+        tourist_util = None
+
+        if params["loadtourism"]:
+            tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution) 
+            tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
         
         if params["dask_use_mp"]:
             for worker_index in range(len(workers_keys)):
@@ -981,8 +1005,11 @@ def main():
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
             if day == 1: # from day 2 onwards always calculated at eod
-                num_arrivals = sum([1 for tour_val in tourist_util.tourists_arrivals_departures_for_day.values() if tour_val["arrival"]])
-                num_departures = len(tourist_util.tourists_arrivals_departures_for_day) - num_arrivals
+                num_arrivals, num_departures = 0, 0
+
+                if params["loadtourism"]:
+                    num_arrivals = sum([1 for tour_val in tourist_util.tourists_arrivals_departures_for_day.values() if tour_val["arrival"]])
+                    num_departures = len(tourist_util.tourists_arrivals_departures_for_day) - num_arrivals
             
                 dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_departures, tourists_active_ids)
 
@@ -1108,6 +1135,13 @@ def main():
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
 
+                util.log_memory_usage(f, "After itinerary. Before gc.collect() ")
+                gc_start = time.time()
+                gc.collect()
+                gc_time_taken = time.time() - gc_start
+                print("gc time_taken: " + str(gc_time_taken))
+                util.log_memory_usage(f, "After itinerary. After gc.collect() ")
+
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
                 avg_time_taken = itinerary_sum_time_taken / day
@@ -1173,6 +1207,13 @@ def main():
                                                                 actors,
                                                                 log_file_name)
 
+                    util.log_memory_usage(f, "After contact network. Before gc.collect() ")
+                    gc_start = time.time()
+                    gc.collect()
+                    gc_time_taken = time.time() - gc_start
+                    print("gc time_taken: " + str(gc_time_taken))
+                    util.log_memory_usage(f, "After contact network. After gc.collect() ")
+
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
                     avg_time_taken = contactnetwork_sum_time_taken / day
@@ -1227,11 +1268,11 @@ def main():
                 #                                         params["keep_processes_open"], 
                 #                                         log_file_name)
 
+                vars_util.reset_daily_structures()
+
                 if not params["contacttracing_distributed"]:
                     _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
                 else:
-                    vars_util.reset_daily_structures()
-
                     contacttracing_dist.contacttracing_distributed(client, 
                                                                 day, 
                                                                 epi_util,
@@ -1244,6 +1285,13 @@ def main():
                                                                 params["keep_processes_open"],
                                                                 f,
                                                                 log_file_name)
+
+                util.log_memory_usage(f, "After contact tracining. Before gc.collect() ")
+                gc_start = time.time()
+                gc.collect()
+                gc_time_taken = time.time() - gc_start
+                print("gc time_taken: " + str(gc_time_taken))
+                util.log_memory_usage(f, "After contact tracing. After gc.collect() ")
 
                 time_taken = time.time() - start
                 contactracing_sum_time_taken += time_taken
@@ -1276,8 +1324,13 @@ def main():
                     f.flush()
 
                 start = time.time()
-                num_arrivals = sum([1 for tour_val in tourist_util.tourists_arrivals_departures_for_day.values() if tour_val["arrival"]])
-                num_departures = len(tourist_util.tourists_arrivals_departures_for_day) - num_arrivals
+
+                num_arrivals, num_departures = 0, 0
+
+                if params["loadtourism"]:
+                    num_arrivals = sum([1 for tour_val in tourist_util.tourists_arrivals_departures_for_day.values() if tour_val["arrival"]])
+                    num_departures = len(tourist_util.tourists_arrivals_departures_for_day) - num_arrivals
+                    
                 dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_departures, tourists_active_ids)
                 interventions_logs_df, statistics_logs_df = dyn_params.update_logs_df(day, interventions_logs_df, statistics_logs_df)
                 time_taken = time.time() - start
@@ -1289,13 +1342,23 @@ def main():
                 if f is not None:
                     f.flush()
 
+            mem_start = time.time()
             memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
+            mem_time_taken = time.time() - mem_start
+            print("log memory info time_taken: " + str(mem_time_taken))
 
+            vars_util.reset_daily_structures() # re initialize for next day
+
+            util.log_memory_usage(f, "End of sim day. Before gc.collect() ")
+            gc_start = time.time()
+            gc.collect()
+            gc_time_taken = time.time() - gc_start
+            print("gc time_taken: " + str(gc_time_taken))
+            util.log_memory_usage(f, "End of sim day. After gc.collect() ")
+                              
             day_time_taken = time.time() - day_start
             simdays_sum_time_taken += day_time_taken
             simdays_avg_time_taken = simdays_sum_time_taken / day
-
-            vars_util.reset_daily_structures() # re initialize for next day
 
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.statistics.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
             if f is not None:
@@ -1323,15 +1386,28 @@ def main():
 def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util, sums=None, f=None, df=None):
     if log_memory_info:
         start = time.time()
-        it_agents_mem = round(sum([sys.getsizeof(d) for a in it_agents.values() for d in a.values()]) / (1024 * 1024), 2)
-        epi_agents_mem = round(sum([sys.getsizeof(i) for c in agents_epi.values() for i in c.values()]) / (1024 * 1024), 2)
-        cat_mem = round(sum([sys.getsizeof(i) for c in vars_util.cells_agents_timesteps.values() for i in c]) / (1024 * 1024), 2)
-        seir_state_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_seir_state]) / (1024 * 1024), 2)
-        inf_type_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_infection_type.values()]) / (1024 * 1024), 2)
-        inf_sev_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_infection_severity.values()]) / (1024 * 1024), 2)
-        dir_con_mem = round(sum([sys.getsizeof(i) for i in vars_util.directcontacts_by_simcelltype_by_day]) / (1024 * 1024), 2)
-        dir_con_idx1_mem = round(sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024), 2)
-        dir_con_idx2_mem = round(sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024), 2)
+
+        it_agents_mem = round(asizeof.asizeof(it_agents) / (1024 * 1024), 2)
+        epi_agents_mem = round(asizeof.asizeof(agents_epi) / (1024 * 1024), 2)
+        cat_mem = round(asizeof.asizeof(vars_util.cells_agents_timesteps) / (1024 * 1024), 2)
+        seir_state_mem = round(asizeof.asizeof(vars_util.agents_seir_state) / (1024 * 1024), 2)
+        seir_state_trans_for_day_mem = round(asizeof.asizeof(vars_util.agents_seir_state_transition_for_day) / (1024 * 1024), 2)
+        inf_type_mem = round(asizeof.asizeof(vars_util.agents_infection_type) / (1024 * 1024), 2)
+        inf_sev_mem = round(asizeof.asizeof(vars_util.agents_infection_severity) / (1024 * 1024), 2)
+        vacc_doses_mem = round(asizeof.asizeof(vars_util.agents_vaccination_doses) / (1024 * 1024), 2)
+        dir_con_mem = round(asizeof.asizeof(vars_util.directcontacts_by_simcelltype_by_day) / (1024 * 1024), 2)
+        dir_con_idx1_mem = round(asizeof.asizeof(vars_util.dc_by_sct_by_day_agent1_index) / (1024 * 1024), 2)
+        dir_con_idx2_mem = round(asizeof.asizeof(vars_util.dc_by_sct_by_day_agent2_index) / (1024 * 1024), 2)
+
+        # it_agents_mem = round(sum([sys.getsizeof(d) for a in it_agents.values() for d in a.values()]) / (1024 * 1024), 2)
+        # epi_agents_mem = round(sum([sys.getsizeof(i) for c in agents_epi.values() for i in c.values()]) / (1024 * 1024), 2)
+        # cat_mem = round(sum([sys.getsizeof(i) for c in vars_util.cells_agents_timesteps.values() for i in c]) / (1024 * 1024), 2)
+        # seir_state_mem = round(sum([sys.getsizeof(k) + sys.getsizeof(v) for k, v in vars_util.agents_seir_state.items()]) / (1024 * 1024), 2)
+        # inf_type_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_infection_type.values()]) / (1024 * 1024), 2)
+        # inf_sev_mem = round(sum([sys.getsizeof(s) for s in vars_util.agents_infection_severity.values()]) / (1024 * 1024), 2)
+        # dir_con_mem = round(sum([sys.getsizeof(i) for i in vars_util.directcontacts_by_simcelltype_by_day]) / (1024 * 1024), 2)
+        # dir_con_idx1_mem = round(sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024), 2)
+        # dir_con_idx2_mem = round(sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024), 2)
         time_taken = time.time() - start
 
         print("memory footprint. it_agents: {0}, epi_agents: {1}, cat: {2}, seir_state: {3}, inf_type: {4}, inf_sev: {5}, dir_con: {6}, dir_con_idx1: {7}, dir_con_idx2: {8}, time_taken: {9}".format(str(it_agents_mem), str(epi_agents_mem), str(cat_mem), str(seir_state_mem), str(inf_type_mem), str(inf_sev_mem), str(dir_con_mem), str(dir_con_idx1_mem), str(dir_con_idx2_mem), str(time_taken)))
@@ -1339,18 +1415,20 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
             f.flush()
         
         if sums is not None:
-            it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, inf_type_sum, inf_sev_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum = sums
+            it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, seir_state_trans_for_day_sum, inf_type_sum, inf_sev_sum, vacc_doses_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum = sums
             it_agents_sum += it_agents_mem
             epi_agents_sum += epi_agents_mem
             cat_sum += cat_mem
             seir_state_sum += seir_state_mem
+            seir_state_trans_for_day_sum += seir_state_trans_for_day_mem
             inf_type_sum += inf_type_mem
             inf_sev_sum += inf_sev_mem
             dir_con_sum += dir_con_mem
             dir_con_idx1_sum += dir_con_idx1_mem
             dir_con_idx2_sum += dir_con_idx2_mem
+            vacc_doses_sum += vacc_doses_mem
 
-            sums = it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, inf_type_sum, inf_sev_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum
+            sums = it_agents_sum, epi_agents_sum, cat_sum, seir_state_sum, seir_state_trans_for_day_sum, inf_type_sum, inf_sev_sum, vacc_doses_sum, dir_con_sum, dir_con_idx1_sum, dir_con_idx2_sum
 
         if df is not None:
             start = time.time()
@@ -1358,8 +1436,10 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
             epi_agents_avg = round(epi_agents_sum / day, 2)
             cat_avg = round(cat_sum / day, 2)
             seir_state_avg = round(seir_state_sum / day, 2)
+            seir_state_trans_for_day_avg = round(seir_state_trans_for_day_sum / day, 2)
             inf_type_avg = round(inf_type_sum / day, 2)
             inf_sev_avg = round(inf_sev_sum / day, 2)
+            vacc_doses_avg = round(vacc_doses_sum / day, 2)
             dir_con_avg = round(dir_con_sum / day, 2)
             dir_con_idx1_avg = round(dir_con_idx1_sum / day, 2)
             dir_con_idx2_avg = round(dir_con_idx2_sum / day, 2)
@@ -1372,10 +1452,14 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
             df.loc[day, "cells_agents_timesteps_avg"] = cat_avg
             df.loc[day, "seir_state_day"] = seir_state_mem
             df.loc[day, "seir_state_avg"] = seir_state_avg
+            df.loc[day, "seir_state_trans_for_day_day"] = seir_state_trans_for_day_mem
+            df.loc[day, "seir_state_trans_for_day_avg"] = seir_state_trans_for_day_avg
             df.loc[day, "infection_type_day"] = inf_type_mem
             df.loc[day, "infection_type_avg"] = inf_type_avg
             df.loc[day, "infection_severity_day"] = inf_sev_mem    
             df.loc[day, "infection_severity_avg"] = inf_sev_avg
+            df.loc[day, "vacc_doses_day"] = vacc_doses_mem
+            df.loc[day, "vacc_doses_avg"] = vacc_doses_avg
             df.loc[day, "direct_contacts_day"] = dir_con_mem
             df.loc[day, "direct_contacts_avg"] = dir_con_avg
             df.loc[day, "direct_contacts_index1_day"] = dir_con_idx1_mem

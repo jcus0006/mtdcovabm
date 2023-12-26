@@ -9,6 +9,7 @@ import seirstateutil, customdict
 from cellsclasses import CellType, SimCellType
 from enum import IntEnum
 import psutil
+import time
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -103,10 +104,13 @@ def sample_log_normal(mean, std, size, isInt=False):
     
     return samples
 
-def calculate_vaccination_multipliers(agents_vaccination_doses, agentid, current_day, vaccine_immunity, vaccine_asymptomatic, exponential_decay_interval):
+def calculate_vaccination_multipliers(agents_vaccination_doses, agentid, current_day, vaccine_immunity, vaccine_asymptomatic, exponential_decay_interval, accum_time=None):
     immunity_multiplier = 1.0
     asymptomatic_multiplier = 1.0
-
+    
+    if accum_time is not None:
+        start = time.time()
+    
     if agentid in agents_vaccination_doses:
         doses_days = agents_vaccination_doses[agentid]
         last_dose_day = doses_days[-1]
@@ -127,7 +131,13 @@ def calculate_vaccination_multipliers(agents_vaccination_doses, agentid, current
             immunity_multiplier = 1.0 - (vaccine_immunity ** immunity_exp_decay) # e.g. 0.9 ^ (60 / 30) = 0.9 ^ 2
             asymptomatic_multiplier = 1.0 - (vaccine_asymptomatic ** asymptomatic_exp_decay) # e.g. 0.9 ^ (60 / 30) = 0.9 ^ 2
 
-    return immunity_multiplier, asymptomatic_multiplier
+
+    if accum_time is not None:    
+        time_taken = time.time() - start
+
+        accum_time += time_taken
+
+    return immunity_multiplier, asymptomatic_multiplier, accum_time
 
 def set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets, set_working_age_bracket=True):
     age = agent["age"]
@@ -360,8 +370,10 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if agents_epi is not None:
             agents_epi_partial[uid] = agents_epi[uid]
 
-        if is_dask_task:
-            vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
+        if uid in vars_util.agents_seir_state:
+            vars_util_partial.agents_seir_state[uid] = vars_util.agents_seir_state[uid]
+        # if is_dask_task:
+        #     vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
 
             # if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
             #     vars_util_partial.agents_vaccination_doses.append(vars_util.agents_vaccination_doses[uid])
@@ -388,8 +400,10 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
         agents_partial[uid] = deepcopy(agents[uid])
         agents_epi_partial[uid] = deepcopy(agents_epi[uid])
 
-        if is_dask_full_array_mapping:
-            vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
+        if uid in vars_util.agents_seir_state[uid]:
+            vars_util_partial.agents_seir_state[uid] = vars_util.agents_seir_state[uid]
+        # if is_dask_full_array_mapping:
+        #     vars_util_partial.agents_seir_state.append(vars_util.agents_seir_state[uid])
 
             # if len(vars_util.agents_vaccination_doses) > 0: # e.g. from itinerary, not applicable
             #     vars_util_partial.agents_vaccination_doses.append(copy(vars_util.agents_vaccination_doses[uid]))
@@ -409,8 +423,8 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
         if uid in vars_util.agents_vaccination_doses:
             vars_util_partial.agents_vaccination_doses[uid] = deepcopy(vars_util.agents_vaccination_doses[uid])
 
-    if not is_dask_full_array_mapping:
-        vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
+    # if not is_dask_full_array_mapping:
+    #     vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
 
     return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
 
@@ -457,7 +471,7 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
         if agentid in vars_util_partial.agents_seir_state_transition_for_day:
             vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
-        if len(vars_util_partial.agents_seir_state) > 0:
+        if agentid in vars_util_partial.agents_seir_state:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
         if agentid in vars_util_partial.agents_infection_type:

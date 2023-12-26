@@ -87,6 +87,7 @@ class Epidemiology:
 
     def simulate_direct_contacts(self, agents_directcontacts, cellid, cell_type, day):
         updated_agents_ids = []
+
         for pairid, timesteps in agents_directcontacts.items():
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
 
@@ -189,7 +190,8 @@ class Epidemiology:
 
                     infection_multiplier = max(1, math.log(contact_duration)) # to check how this affects covasim base probs
 
-                    immunity_multiplier, asymptomatic_multiplier = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, exposed_agent_id, day, self.vaccination_immunity_multiplier, self.vaccination_asymptomatic_multiplier, self.vaccination_exp_decay_interval)
+                    # immunity_multiplier, asymptomatic_multiplier = 1, 1
+                    immunity_multiplier, asymptomatic_multiplier, _ = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, exposed_agent_id, day, self.vaccination_immunity_multiplier, self.vaccination_asymptomatic_multiplier, self.vaccination_exp_decay_interval)
                     
                     infection_probability *= infection_multiplier * susceptibility_multiplier * (1 - self.dyn_params.masks_hygiene_distancing_multiplier) * immunity_multiplier
 
@@ -217,6 +219,8 @@ class Epidemiology:
                             self.vars_util.agents_infection_type[exposed_agent_id] = agent_infection_type
                             # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
                             self.vars_util.agents_infection_severity[exposed_agent_id] = agent_infection_severity
+
+        # print(f"vaccination multiplier total time taken {vacc_mult_time_taken}")
 
         return updated_agents_ids
     
@@ -840,7 +844,8 @@ class Epidemiology:
             self.vars_util.dc_by_sct_by_day_agent2_index = self.vars_util.dc_by_sct_by_day_agent2_index[day_end_idx+1:] # np.delete(self.vars_util.dc_by_sct_by_day_agent2_index, np.s_[:day_end_idx])
             
             # delete the day_to_clean entry from day-start marker index
-            del self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[day_to_clean]
+            if day_to_clean in self.vars_util.directcontacts_by_simcelltype_by_day_start_marker: # this should only not be the case when day_to_clean is 0
+                del self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[day_to_clean]
             
             # re-compute the index
             start_index_recompute = time.time()

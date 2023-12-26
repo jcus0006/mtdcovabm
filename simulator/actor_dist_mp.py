@@ -11,6 +11,7 @@ from copy import copy, deepcopy
 import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, tourism_dist
 from util import MethodType
 import psutil
+import gc
 
 class ActorDistMP:
     def __init__(self, params):
@@ -83,7 +84,7 @@ class ActorDistMP:
 
                 agents_partial, agents_ids_by_ages_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict() # {}, {}, {}
                 vars_util_partial = vars.Vars()
-                vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
                 for hh_inst in hh_insts_partial:
@@ -129,6 +130,8 @@ class ActorDistMP:
 
             return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
         finally:
+            gc.collect()
+
             if f is not None:
                 f.close()
 
@@ -166,7 +169,7 @@ class ActorDistMP:
                 agents_partial = customdict.CustomDict()
                 vars_util_partial = vars.Vars()
 
-                vars_util_partial.agents_seir_state = vars_util.agents_seir_state  
+                # vars_util_partial.agents_seir_state = vars_util.agents_seir_state  
 
                 cells_agents_timesteps_partial = cells_agents_timesteps_dicts[process_index]
 
@@ -220,6 +223,8 @@ class ActorDistMP:
 
             return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
         finally:
+            gc.collect()
+
             if f is not None:
                 f.close()
 
@@ -341,6 +346,8 @@ def run_itinerary_single(params):
     except Exception as e:
         raise
     finally:
+        gc.collect()
+
         if f is not None:
             # Close the file
             f.close()
@@ -414,6 +421,8 @@ def run_contactnetwork_single(params):
     except Exception as e:
         raise
     finally:
+        gc.collect()
+        
         if f is not None:
             # Close the file
             f.close()

@@ -2,6 +2,7 @@ import numpy as np
 import multiprocessing as mp
 import sys
 import time
+import customdict
 
 # with this approach, agent properties are represented by indices within the different arrays
 # this class supports both multiprocessing.RawArray and Numpy arrays
@@ -68,8 +69,10 @@ class Static:
         # self.shm_busdriver = []
 
         self.manager = None # mp.manager
-        self.static_agents_dict = {} # for the time being being used for tourists only
+        self.static_agents_dict = customdict.CustomDict() # for the time being being used for tourists only
 
+    # this should be called at the beginning only, and tourists will not be included by default as of 26/12/2023
+    # in this regard use_tourists_dict should be forced, going forward
     def populate(self, data, n_locals, n_tourists, use_shm=True, use_agents_dict=False, use_tourists_dict=False, remote=False):
         start = time.time()
 
@@ -85,7 +88,7 @@ class Static:
 
         if self.use_shm:
             self.manager = mp.Manager()
-            self.static_agents_dict = self.manager.dict()
+            self.static_agents_dict = self.manager.dict() # static_agents_dict is dynamic, and this synchronizes (it will add overhead)
 
         for id, properties in data.items():
             if remote:

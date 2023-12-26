@@ -9,6 +9,7 @@ import contactnetwork, util, daskutil, vars
 import time
 from copy import deepcopy
 from util import MethodType
+import gc
 
 def contactnetwork_parallel(manager,
                             pool,
@@ -71,8 +72,8 @@ def contactnetwork_parallel(manager,
                 cells_agents_timesteps_partial = {}
                 agents_partial, agents_ids_by_ages_partial = {}, {}
                 vars_util_partial = vars.Vars()
-                vars_util_partial.agents_seir_state = vars_util.agents_seir_state # may be optimized by sending only specific day
-                vars_util_partial.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day # to check re comment in above line for this line
+                # vars_util_partial.agents_seir_state = vars_util.agents_seir_state # may be optimized by sending only specific day
+                # vars_util_partial.agents_seir_state_transition_for_day = vars_util.agents_seir_state_transition_for_day # to check re comment in above line for this line
 
                 # cells_keys = mp_cells_keys[process_index]
 
@@ -178,6 +179,12 @@ def contactnetwork_parallel(manager,
 
             if not type(result) is dict:
                 process_index, agents_epi, vars_util, _ = result
+
+                if len(vars_util.directcontacts_by_simcelltype_by_day) > 0:
+                    current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+
+                    if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+                        vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
             else:
                 exception_info = result
 
@@ -254,6 +261,8 @@ def contactnetwork_worker(params, single_proc=False):
         with open(stack_trace_log_file_name, 'w') as f: # cn_mp_stack_trace.txt
             traceback.print_exc(file=f)
     finally:
+        gc.collect()
+
         if process_counter is not None:
             process_counter.value -= 1
 

@@ -2,7 +2,7 @@ import os
 import sys
 import traceback
 from dask.distributed import get_worker
-import shutil
+import gc
 
 # agents_static_to_sync are tourists who are arriving today
 # departed_tourist_agent_ids are tourists who left the previous day
@@ -71,6 +71,8 @@ def update_tourist_data_remote(params, folder_name=None):
 
         raise
     finally:
+        gc.collect()
+
         if f is not None:
             f.flush()
             # Close the file

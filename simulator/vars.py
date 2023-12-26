@@ -35,7 +35,7 @@ class Vars:
             contact_tracing_agent_ids = set()
 
         if agents_seir_state is None:
-            agents_seir_state = []
+            agents_seir_state = customdict.CustomDict()
 
         if agents_seir_state_transition_for_day is None:
             agents_seir_state_transition_for_day = customdict.CustomDict()

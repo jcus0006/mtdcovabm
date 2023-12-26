@@ -2,7 +2,9 @@ import numpy as np
 from copy import copy
 import time
 import util, seirstateutil, tourism_dist
+from epidemiologyclasses import SEIRState
 from dask.distributed import Client, SSHCluster, as_completed
+import gc
 
 class Tourism:
     def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
@@ -137,8 +139,8 @@ class Tourism:
 
                             epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                            new_it_agent = self.it_agents[new_agent_id]
-                            new_agent_epi = self.agents_epi[new_agent_id]
+                            self.it_agents[new_agent_id] = {}
+                            self.agents_epi[new_agent_id] = {}
 
                             new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
                             new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": [], "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
@@ -188,11 +190,11 @@ class Tourism:
                         self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
                         self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
 
-                    agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
-                    agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
+                    # agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
+                    # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
-                    for index, agent_idx in enumerate(new_agent_ids):
-                        self.agents_seir_state[agent_idx] = agents_seir_state_tourists_subset[index]
+                    for id in new_agent_ids:
+                        self.agents_seir_state[id] = SEIRState(0)
 
                     # self.num_active_tourists += num_tourists_in_group
 
@@ -251,8 +253,8 @@ class Tourism:
 
                     epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                    new_it_agent = self.it_agents[new_agent_id]
-                    new_agent_epi = self.agents_epi[new_agent_id]
+                    self.it_agents[new_agent_id] = {}
+                    self.agents_epi[new_agent_id] = {}
 
                     new_it_agent = { "touristid": tourist_id, "initial_tourist": True, "itinerary": {}, "itinerary_nextday": {}}
                     new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": [], "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
@@ -299,11 +301,11 @@ class Tourism:
                 self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
                 self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
 
-            agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
-            agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
+            # agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
+            # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
-            for index, agent_idx in enumerate(new_agent_ids):
-                self.agents_seir_state[agent_idx] = agents_seir_state_tourists_subset[index]
+            for id in new_agent_ids:
+                self.agents_seir_state[id] = SEIRState(0)
 
                     # self.num_active_tourists += num_tourists_in_group
     def get_next_available_agent_id(self):
@@ -404,10 +406,16 @@ class Tourism:
 
         if len(prev_day_departing_tourists_ids) > 0:
             for agentid in prev_day_departing_tourists_ids:
-                self.it_agents[agentid] = {}
-                self.agents_epi[agentid] = {}
+                # self.it_agents[agentid] = {}
+                # self.agents_epi[agentid] = {}
+                del self.it_agents[agentid]
+                del self.agents_epi[agentid]
+                del self.agents_seir_state[agentid]
+
                 self.agents_static.delete(agentid)
                 # print(f"deleted agent {agentid} from agents_static")
     
             del self.departing_tourists_ids[day-1]
+
+            gc.collect()
 

@@ -3,8 +3,6 @@ import random
 from epidemiologyclasses import SEIRState, SEIRStateTransition, InfectionType, Severity
 
 def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_state):
-    partial_agents_seir_state = agents_seir_state[:n]
-
     for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
         seirid = seirindex + 1
 
@@ -12,26 +10,24 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 
         seirstate = SEIRState(seirid)
 
-        undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
+        undefined_ids = [id for id, x in agents_seir_state.items() if x == SEIRState.Undefined]
 
-        if len(undefined_indices) > 0:
-            undefined_indices = np.array(undefined_indices)
+        if len(undefined_ids) > 0:
+            undefined_ids = np.array(undefined_ids)
 
-        this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
+        this_state_ids = np.random.choice(undefined_ids, size=total_to_assign_this_state, replace=False)
 
-        if len(this_state_indices) > 0:
-            partial_agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
-        else:
-            partial_agents_seir_state = []
+        for id in this_state_ids:
+            agents_seir_state[id] = seirstate
 
-    undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
+    undefined_ids = [id for id, x in agents_seir_state.items() if x == SEIRState.Undefined]
 
-    for index in undefined_indices:
+    for id in undefined_ids:
         random_state = random.randint(1, 4)
 
         random_seir_state = SEIRState(random_state)
 
-        partial_agents_seir_state[index] = random_seir_state
+        agents_seir_state[id] = random_seir_state
 
     return agents_seir_state
 

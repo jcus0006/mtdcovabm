@@ -79,7 +79,7 @@ def localitinerary_parallel(client,
 
                 agents_partial, agents_ids_by_ages_partial = {}, {}
                 vars_util_partial = vars.Vars()
-                vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                 # vars_util_partial.agents_vaccination_doses = vars_util.agents_vaccination_doses
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 

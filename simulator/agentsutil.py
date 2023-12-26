@@ -17,61 +17,58 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
 
     locals_ratio_to_full_pop = n_locals / params["fullpop"]
 
-    if params["loadtourism"]:
-        # largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
-        tourists_ids = sorted(list(tourists.keys()))
-        last_possible_tourist_id = tourists_ids[-1] + 1
+    # if params["loadtourism"]:
+    #     # largest_agent_id = sorted(list(temp_agents.keys()), reverse=True)[0]
+    #     tourists_ids = sorted(list(tourists.keys()))
+    #     last_possible_tourist_id = tourists_ids[-1] + 1
 
-        for i in range(last_possible_tourist_id):
-            # largest_agent_id += 1
+    #     for i in range(last_possible_tourist_id):
+    #         # largest_agent_id += 1
 
-            # with the latest addition of December handling, each new tourist will have to be added by next index
-            # because the ids are not mapped 1 to 1 anymore: for e.g. 10000 will be 0, 10001 will be 2
-            # any handling assuming this mapping will also have to be revised
-            # yield next tourist id, and add largest_agent_id + tourist_id into temp_agents
-            # temp_agents[n_locals + tourists_ids[i]] = {}
+    #         # with the latest addition of December handling, each new tourist will have to be added by next index
+    #         # because the ids are not mapped 1 to 1 anymore: for e.g. 10000 will be 0, 10001 will be 2
+    #         # any handling assuming this mapping will also have to be revised
+    #         # yield next tourist id, and add largest_agent_id + tourist_id into temp_agents
+    #         # temp_agents[n_locals + tourists_ids[i]] = {}
 
-            # but for the time being haven't changed seir state into dict, and will simply reserve an empty dict for each tourist
-            temp_agents[n_locals + i] = {}
+    #         # but for the time being haven't changed seir state into dict, and will simply reserve an empty dict for each tourist
+    #         temp_agents[n_locals + i] = {}
 
+    #         # if (largest_agent_id - n_locals) in tourists:
+    #         #     temp_agents[largest_agent_id] = {}
 
-            # if (largest_agent_id - n_locals) in tourists:
-            #     temp_agents[largest_agent_id] = {}
-
-    agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
+    # agents_seir_state = np.array([SEIRState(0) for i in range(len(temp_agents))])
+    agents_seir_state = customdict.CustomDict({i:SEIRState(0) for i in range(n_locals)})
 
     # contactnetwork_sum_time_taken = 0
     # contactnetwork_util = contactnetwork.ContactNetwork(n_locals, n_tourists, locals_ratio_to_full_pop, agents, agents_seir_state, agents_seir_state_transition_for_day, agents_infection_type, agents_infection_severity, agents_vaccination_doses, cells, cells_agents_timesteps, contactnetworkparams, epidemiologyparams, contactnetwork_sum_time_taken, False, False, params["numprocesses"])
     # epi_util = contactnetwork_util.epi_util
 
-    for index, (agent_uid, agent) in enumerate(temp_agents.items()):
-        if index < n_locals: # ignore tourists for now
-            # agent["curr_cellid"] = -1
-            agent["res_cellid"] = -1
-            agent["work_cellid"] = -1
-            agent["school_cellid"] = -1
-            # agent["symptomatic"] = False
-            agent["tourist_id"] = None
-            agent["itinerary"] = {}
-            agent["itinerary_nextday"] = {}
-            agent["state_transition_by_day"] = []
-            # intervention_events_by_day
-            agent["test_day"] = [] # [day, timestep]
-            agent["test_result_day"] = [] # [day, timestep]
-            agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
-            agent["vaccination_days"] = [] # [[day, timestep]]
-            agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
+    for agent_uid, agent in temp_agents.items():
+        # agent["curr_cellid"] = -1
+        agent["res_cellid"] = -1
+        agent["work_cellid"] = -1
+        agent["school_cellid"] = -1
+        # agent["symptomatic"] = False
+        agent["tourist_id"] = None
+        agent["itinerary"] = {}
+        agent["itinerary_nextday"] = {}
+        agent["state_transition_by_day"] = []
+        # intervention_events_by_day
+        agent["test_day"] = [] # [day, timestep]
+        agent["test_result_day"] = [] # [day, timestep]
+        agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
+        agent["vaccination_days"] = [] # [[day, timestep]]
+        agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
 
-            if agent["empstatus"] == 0:
-                agent["working_schedule"] = {}
+        if agent["empstatus"] == 0:
+            agent["working_schedule"] = {}
 
-            agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
+        agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 
-            agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
+        agent["epi_age_bracket_index"] = util.get_sus_mort_prog_age_bracket_index(age)
 
-            agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
-        else:
-            break
+        agent = util.set_public_transport_regular(agent, itineraryparams["public_transport_usage_probability"][0])
 
         # agent["soc_rate"] = np.random.choice(sociability_rate_options, size=1, p=sociability_rate_distribution)[0]
 

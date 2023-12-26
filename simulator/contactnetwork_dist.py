@@ -12,6 +12,7 @@ import dask
 from dask.distributed import Client, get_worker, performance_report
 from copy import copy
 from util import MethodType
+import gc
 
 def contactnetwork_distributed(client: Client,
                             day, 
@@ -110,7 +111,7 @@ def contactnetwork_distributed(client: Client,
                 #     # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state) # may be optimized by sending only specific day
                 # else:
                 #     vars_util_partial.agents_seir_state = [] # to be populated hereunder    
-                vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                 cells_agents_timesteps_partial = cells_agents_timesteps_dicts[worker_index]
 
                 unique_agent_ids = set()
@@ -280,6 +281,8 @@ def contactnetwork_worker(params):
 
         return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
     finally:
+        gc.collect()
+
         if f is not None:
             # Close the file
             f.close()
