@@ -10,6 +10,7 @@ from cellsclasses import CellType, SimCellType
 from enum import IntEnum
 import psutil
 import time
+from pympler import asizeof
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -703,6 +704,16 @@ def log_memory_usage(f=None, prepend_text=None, memory_info=None):
 
     if f is not None:
         f.flush()
+
+def asizeof_formatted(data):
+    return round(asizeof.asizeof(data) / (1024 ** 2), 2)
+
+def asizeof_list_formatted(data):
+    temp_sum = 0
+    for d in data:
+        temp_sum += asizeof.asizeof(d)
+
+    return round(temp_sum / (1024 ** 2), 2)
         
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
 # def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):

@@ -51,18 +51,18 @@ def initialize_agents(agents, agents_ids_by_ages, agents_ids_by_agebrackets, tou
         agent["school_cellid"] = -1
         # agent["symptomatic"] = False
         agent["tourist_id"] = None
-        agent["itinerary"] = {}
-        agent["itinerary_nextday"] = {}
-        agent["state_transition_by_day"] = []
+        agent["itinerary"] = None
+        agent["itinerary_nextday"] = None
+        agent["state_transition_by_day"] = None
         # intervention_events_by_day
-        agent["test_day"] = [] # [day, timestep]
-        agent["test_result_day"] = [] # [day, timestep]
-        agent["quarantine_days"] = [] # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
-        agent["vaccination_days"] = [] # [[day, timestep]]
-        agent["hospitalisation_days"] = [] # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
+        agent["test_day"] = None # [day, timestep]
+        agent["test_result_day"] = None # [day, timestep]
+        agent["quarantine_days"] = None # [[[startday, timestep], [endday, timestep]]] -> [startday, timestep, endday]
+        agent["vaccination_days"] = None # [[day, timestep]]
+        agent["hospitalisation_days"] = None # [[startday, timestep], [endday, timestep]] -> [startday, timestep, endday]
 
         if agent["empstatus"] == 0:
-            agent["working_schedule"] = {}
+            agent["working_schedule"] = None
 
         agent, age, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets(agent, agents_ids_by_ages, agent_uid, age_brackets, age_brackets_workingages, agents_ids_by_agebrackets)
 

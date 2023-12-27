@@ -163,6 +163,9 @@ class Itinerary:
                 if self.agents_static.get(agentid, "empstatus") == 0: # 0: employed, 1: unemployed, 2: inactive
                     prev_working_schedule = agent_dynamic["working_schedule"]
 
+                    if prev_working_schedule is None:
+                        prev_working_schedule = {}
+
                     # employed
                     agent_dynamic["working_schedule"] = {} # {workingday:(start,end)}
 
@@ -389,7 +392,7 @@ class Itinerary:
                 hosp_start_day_ts, hosp_end_day_ts, hosp_start_day, hosp_end_day = None, None, None, None
                 quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
 
-                if len(agent_epi["hospitalisation_days"]) > 0:
+                if agent_epi["hospitalisation_days"] is not None and len(agent_epi["hospitalisation_days"]) > 0:
                     hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
 
                     # hosp_start_day = hosp_start_day_ts[0]
@@ -412,7 +415,7 @@ class Itinerary:
                     # if simday+1 == hosp_start_day:
                     #     is_nextday_quar_hosp_start_day = True
 
-                if len(agent_epi["quarantine_days"]) > 0:
+                if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
                     quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
 
                     # quar_start_day = quar_start_day_ts[0]
@@ -439,11 +442,11 @@ class Itinerary:
                     # to see how to handle the else of this, and structure accordingly
 
                 if "non_daily_activity_recurring" not in agent:
-                    agent["non_daily_activity_recurring"] = {}
+                    agent["non_daily_activity_recurring"] = None
 
                 # always reset on the next day (this is only to be referred to by the guardian and cleared on the next day)
-                if "prevday_non_daily_activity_recurring" not in agent or len(agent["prevday_non_daily_activity_recurring"]) > 0:
-                    agent["prevday_non_daily_activity_recurring"] = {}
+                if "prevday_non_daily_activity_recurring" not in agent or (agent["prevday_non_daily_activity_recurring"] is not None and len(agent["prevday_non_daily_activity_recurring"]) > 0):
+                    agent["prevday_non_daily_activity_recurring"] = None
 
                 if "non_daily_activity_recurring" in agent and agent["non_daily_activity_recurring"] is not None: # and (not is_quarantined or is_quarantine_start_day or is_quarantine_end_day)
                     non_daily_activity_recurring = copy(agent["non_daily_activity_recurring"])
@@ -458,8 +461,8 @@ class Itinerary:
                             agent["non_daily_activity_recurring"] = None
                             
                             if prevday_non_daily_end_activity == NonDailyActivity.Travel: # clear as at this point, values here would be stale
-                                agent["itinerary"] = {}
-                                agent["itinerary_nextday"] = {}
+                                agent["itinerary"] = None
+                                agent["itinerary_nextday"] = None
 
                 # first include overnight entries or sample wakeup timestep, and sample work/school start/end timesteps (if applicable)
                 # then, sample_non_daily_activity, unless recurring sampled_non_daily_activity already exists
@@ -506,8 +509,8 @@ class Itinerary:
                         departure_day = None
                         if (guardian is None or 
                             agent["prevday_non_daily_activity_recurring"] != guardian_prevday_non_daily_activity_recurring):
-                            agent["itinerary"] = {} # {timestep: cellindex}
-                            agent["itinerary_nextday"] = {}
+                            agent["itinerary"] = None # {timestep: cellindex}
+                            agent["itinerary_nextday"] = None
                             
                             prevday_non_daily_activity_recurring_keys = list(agent["prevday_non_daily_activity_recurring"].keys())
                             departure_day = prevday_non_daily_activity_recurring_keys[0]
@@ -603,7 +606,7 @@ class Itinerary:
 
                                     self.vars_util.agents_seir_state_transition_for_day[agentid] = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
                     else:
-                        if len(agent["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
+                        if agent["itinerary_nextday"] is not None and len(agent["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
                             # get morning sleeptimestep
                             worked_overnight = False
                             activity_overnight = False
@@ -642,8 +645,8 @@ class Itinerary:
 
                     if not is_arrivalday: # or (is_quarantine_hospital_start_day or is_quarantine_hospital_end_day)
                         # initialise "itinerary" and "itinerary_nextday" for today/overnight, accordingly
-                        agent["itinerary"] = {} # {timestep: cellindex}
-                        agent["itinerary_nextday"] = {}
+                        agent["itinerary"] = None # {timestep: cellindex}
+                        agent["itinerary_nextday"] = None
 
                     # add overnight values into "itinerary" dict
                     if overnight_end_work_ts is not None:
@@ -1026,15 +1029,16 @@ class Itinerary:
 
                                     if wakeup_ts is not None and work_ts is not None and end_work_ts is not None and sleep_ts is not None:
                                         break
+                                
+                                if agent["itinerary_nextday"] is not None:
+                                    for timestep, (action, cellid) in agent["itinerary_nextday"].items():
+                                        if action == Action.Home:
+                                            overnight_end_work_ts = timestep
+                                        elif action == Action.Sleep:
+                                            sleep_ts = 143 + timestep
 
-                                for timestep, (action, cellid) in agent["itinerary_nextday"].items():
-                                    if action == Action.Home:
-                                        overnight_end_work_ts = timestep
-                                    elif action == Action.Sleep:
-                                        sleep_ts = 143 + timestep
-
-                                    if overnight_end_work_ts is not None and sleep_ts is not None:
-                                        break
+                                        if overnight_end_work_ts is not None and sleep_ts is not None:
+                                            break
                                 
                                 if wakeup_ts is None and wakeup_timestep is not None:
                                     wakeup_ts = wakeup_timestep
@@ -1073,13 +1077,14 @@ class Itinerary:
 
                                     if wakeup_ts is not None and sleep_ts is not None:
                                         break
-
-                                for timestep, (action, cellid) in agent["itinerary_nextday"].items():
-                                    if action == Action.Sleep:
-                                        sleep_ts = 143
-                                        overnight_sleep_ts = timestep
-                                        sleep_ts += overnight_sleep_ts
-                                        break
+                                
+                                if agent["itinerary_nextday"] is not None:
+                                    for timestep, (action, cellid) in agent["itinerary_nextday"].items():
+                                        if action == Action.Sleep:
+                                            sleep_ts = 143
+                                            overnight_sleep_ts = timestep
+                                            sleep_ts += overnight_sleep_ts
+                                            break
 
                                 if wakeup_ts is None and wakeup_timestep is not None:
                                     wakeup_ts = wakeup_timestep
@@ -1228,7 +1233,7 @@ class Itinerary:
                     if temp_is_quarantined and not is_quarantined:
                         is_quarantined = True
 
-                if len(agent_epi["quarantine_days"]) > 0:
+                if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
                     agent_epi["prev_day_quarantine_days"] = copy(agent_epi["quarantine_days"])
                     
                 if sampled_non_daily_activity != NonDailyActivity.Travel or is_departureday or is_arrivalday: # is_arrivalday
@@ -1306,8 +1311,6 @@ class Itinerary:
         guardian_prevday_non_daily_activity_recurring = None
         guardian_itinerary = None
         guardian_itinerary_nextday = None
-
-        # gc.collect()
 
     def update_cell_agents_timesteps(self, itinerary, agentids, rescellids):
         # fill in cells_agents_timesteps
@@ -1579,6 +1582,13 @@ class Itinerary:
                                 agent_epi["prev_day_quarantine_days"] = copy(agent_epi["quarantine_days"])
 
                             self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [res_cellid])
+
+                            # clear all itinerary entries apart from last 1 for following day
+                            agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
+                            last_timestep = agent_itinerary_timesteps[-1]
+                            for timestep in agent_itinerary_timesteps:
+                                if timestep != last_timestep:
+                                    del agent["itinerary"][timestep]
                     else:
                         for accinfoindex, accinfo in enumerate(accominfo):
                             accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
@@ -1620,6 +1630,13 @@ class Itinerary:
                                 if tourists_group["reftourid"] == tourist_id: # if reference tourist id is being handled as a single tourist, copy his itineraries to the tourists_group
                                     tourists_group["itinerary"] = copy(agent["itinerary"])
                                     tourists_group["itinerary_nextday"] = copy(agent["itinerary_nextday"])
+
+                                # clear all itinerary entries apart from last 1 for following day
+                                agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
+                                last_timestep = agent_itinerary_timesteps[-1]
+                                for timestep in agent_itinerary_timesteps:
+                                    if timestep != last_timestep:
+                                        del agent["itinerary"][timestep]
         except Exception as e:
             with open(stack_trace_log_file_name, 'w') as f:
                 traceback.print_exc(file=f)
@@ -1644,25 +1661,27 @@ class Itinerary:
         prev_night_airport_cellid = None
 
         if is_arrivalday:
-            agent_group["itinerary"] = {} # {timestep: cellindex}
-            agent_group["itinerary_nextday"] = {}
+            agent_group["itinerary"] = None # {timestep: cellindex}
+            agent_group["itinerary_nextday"] = None
             
             checkin_timestep = arr_dep_ts + airport_duration
 
             airport_timestep_range = range(arr_dep_ts, checkin_timestep + 1)
 
             self.sample_airport_activities(agent_group, res_cell_id, airport_timestep_range, True, False, groupid)
+        
+        prev_day_itinerary, prev_day_last_event = None, None
+        if "initial_tourist" not in agent_group and not is_arrivalday:
+            prev_day_itinerary = agent_group["itinerary"]
+            # prev_day_itinerary_nextday = agent["itinerary_nextday"]
 
-        prev_day_itinerary = agent_group["itinerary"]
-        prev_day_itinerary_nextday = agent_group["itinerary_nextday"]
+            prev_day_itinerary_timesteps = list(prev_day_itinerary.keys()) # should only be the last timestep of the previous day
+            # prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
 
-        prev_day_last_event = None
-        # if not initial tourist and not arrival day; or initial tourist and have previous day itinerary (on day 1 there won't be)
-        if ("initial_tourist" not in agent_group and not is_arrivalday) or len(prev_day_itinerary) > 0:
-            prev_day_itinerary_timesteps = sorted(prev_day_itinerary.keys(), reverse=True)
-            prev_day_last_ts = prev_day_itinerary_timesteps[0]
-            prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
-            prev_day_last_event = prev_day_last_ts, prev_day_last_action, prev_day_last_cell
+            if len(prev_day_itinerary_timesteps) > 0:
+                prev_day_last_ts = prev_day_itinerary_timesteps[0]
+                prev_day_last_action, prev_day_last_cell = prev_day_itinerary[prev_day_last_ts]
+                prev_day_last_event = prev_day_last_ts, prev_day_last_action, prev_day_last_cell
 
         is_quarantined_or_hospitalised, is_quarantined, is_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day = agent_quar_hosp
 
@@ -1680,7 +1699,7 @@ class Itinerary:
                 else:
                     wakeup_timestep = checkin_timestep
             else:
-                if len(agent_group["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
+                if agent_group["itinerary_nextday"] is not None and len(agent_group["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
                     # get morning sleeptimestep
                     activity_overnight = False
                     return_home_ts = None
@@ -1706,25 +1725,27 @@ class Itinerary:
 
                     if same_day_sleep_hour is None and return_home_ts is None:
                         # get previous night sleeptimestep
+                        if agent_group["itinerary"] is not None:
+                            for timestep, (action, _) in agent_group["itinerary"].items():
+                                if action == Action.Sleep:
+                                    prev_night_sleep_timestep = timestep
+                                    prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
+                                    break
+
+                    if activity_overnight and return_home_ts is not None:
+                        overnight_end_activity_ts = return_home_ts
+                else:
+                    # get previous night sleeptimestep
+                    if agent_group["itinerary"] is not None:
                         for timestep, (action, _) in agent_group["itinerary"].items():
                             if action == Action.Sleep:
                                 prev_night_sleep_timestep = timestep
                                 prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
                                 break
 
-                    if activity_overnight and return_home_ts is not None:
-                        overnight_end_activity_ts = return_home_ts
-                else:
-                    # get previous night sleeptimestep
-                    for timestep, (action, _) in agent_group["itinerary"].items():
-                        if action == Action.Sleep:
-                            prev_night_sleep_timestep = timestep
-                            prev_night_sleep_hour = self.get_hour_by_timestep(prev_night_sleep_timestep)
-                            break
-
                 if not is_arrivalday:
-                    agent_group["itinerary"] = {} # {timestep: cellindex}
-                    agent_group["itinerary_nextday"] = {}
+                    agent_group["itinerary"] = None # {timestep: cellindex}
+                    agent_group["itinerary_nextday"] = None
 
                 # add overnight values into "itinerary" dict
                 if overnight_end_activity_ts is not None:
@@ -1861,13 +1882,14 @@ class Itinerary:
 
                     if start_ts is not None and wakeup_ts is not None and end_ts is not None:
                         break
-
-                for timestep, (action, cellid) in agent_group["itinerary_nextday"].items():
-                    if action == Action.Sleep:
-                        end_ts = 143
-                        overnight_sleep_ts = timestep
-                        end_ts += overnight_sleep_ts
-                        break
+                
+                if agent_group["itinerary_nextday"] is not None:
+                    for timestep, (action, cellid) in agent_group["itinerary_nextday"].items():
+                        if action == Action.Sleep:
+                            end_ts = 143
+                            overnight_sleep_ts = timestep
+                            end_ts += overnight_sleep_ts
+                            break
 
                 if start_ts is None and wakeup_ts is not None:
                     start_ts = wakeup_ts
@@ -2155,7 +2177,7 @@ class Itinerary:
                     arr_dep_ts = ts
                     break
 
-        if len(agent_epi["test_result_day"]) > 0:
+        if agent_epi["test_result_day"] is not None and len(agent_epi["test_result_day"]) > 0:
             test_result_day = agent_epi["test_result_day"][0]
 
             if day == test_result_day:
@@ -2186,11 +2208,11 @@ class Itinerary:
 
                         is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent_epi)
             elif day > test_result_day:
-                agent_epi["test_result_day"] = []
+                agent_epi["test_result_day"] = None
 
         hospitalisation_ts = None
         hospitalisation_end_day = False
-        if len(agent_epi["hospitalisation_days"]) > 0:
+        if agent_epi["hospitalisation_days"] is not None and len(agent_epi["hospitalisation_days"]) > 0:
             start_day, start_ts, end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][1], agent_epi["hospitalisation_days"][2]
             # start_day, start_ts = start_day_ts[0], start_day_ts[1]
             # end_day, end_ts = end_day_ts[0], end_day_ts[1]
@@ -2242,15 +2264,15 @@ class Itinerary:
 
                         self.add_to_itinerary(agent, hospitalisation_ts, Action.Hospital, sampled_hospital_cellid)
 
-                        agent["itinerary_nextday"] = {}
+                        agent["itinerary_nextday"] = None
             elif end_day == day:
                 hospitalisation_end_day = True
-                agent_epi["hospitalisation_days"] = []
+                agent_epi["hospitalisation_days"] = None
                 # agent["deleted_hospital_on"] = day
         
         quarantine_ts = None
         quarantine_end_day = False
-        if len(agent_epi["quarantine_days"]) > 0:
+        if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
             start_day, start_ts, end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][1], agent_epi["quarantine_days"][2]
             # start_day, start_ts = start_day_ts[0], start_day_ts[1]
             # end_day, end_ts = end_day_ts[0], end_day_ts[1]
@@ -2300,10 +2322,10 @@ class Itinerary:
                         agent["itinerary_nextday"] = {}
             elif end_day == day:
                 quarantine_end_day = True
-                agent_epi["quarantine_days"] = []
+                agent_epi["quarantine_days"] = None
                 # agent["deleted_quarantine_on"] = day
 
-        if len(agent_epi["test_day"]) > 0:
+        if agent_epi["test_day"] is not None and len(agent_epi["test_day"]) > 0:
             test_day = agent_epi["test_day"][0]
 
             if day == test_day:
@@ -2331,7 +2353,7 @@ class Itinerary:
             elif day > test_day:
                 agent_epi["test_day"] = []
 
-        if not is_tourist and "vaccination_days" in agent_epi and len(agent_epi["vaccination_days"]) > 0: # does not apply for tourists
+        if not is_tourist and "vaccination_days" in agent_epi and agent_epi["vaccination_days"] is not None and len(agent_epi["vaccination_days"]) > 0: # does not apply for tourists
             vaccination_day_ts = agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] # get last date, in case of more than 1 dose (right now only 1 dose)
             vaccination_day, vaccination_ts = vaccination_day_ts[0], vaccination_day_ts[1]
             
@@ -2366,7 +2388,7 @@ class Itinerary:
                     if is_arrival_day_today and start_ts < arr_dep_ts: # re-scheduling not applicable for tourists leaving Malta (out of scope)
                         agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] = [day + 1, start_ts]
             elif day > vaccination_day:
-                agent_epi["vaccination_days"] = [] # for now this is acceptable because there cannot be double vaccinations dated scheduled. but would be a problem if it overwrites multiple dates
+                agent_epi["vaccination_days"] = None # for now this is acceptable because there cannot be double vaccinations dated scheduled. but would be a problem if it overwrites multiple dates
 
         return agent, agent_epi, is_hospital_startday, is_quarantine_startday
 
@@ -2428,6 +2450,9 @@ class Itinerary:
     def add_to_itinerary(self, agent, timestep, action, cellid, next_day=False):
         cellid = int(cellid)
         timestep = int(timestep)
+
+        if agent["itinerary"] is None:
+            agent["itinerary"] = {}
         
         if not next_day:
             if timestep not in agent["itinerary"]:
@@ -2448,6 +2473,9 @@ class Itinerary:
                         timestep -= 143
                         self.add_to_itinerary(agent, timestep, action, cellid, True)
         else:
+            if agent["itinerary_nextday"] is None:
+                agent["itinerary_nextday"] = {}
+
             if timestep not in agent["itinerary_nextday"]:
                 agent["itinerary_nextday"][timestep] = (action, cellid)
             else:

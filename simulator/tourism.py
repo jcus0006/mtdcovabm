@@ -139,8 +139,8 @@ class Tourism:
 
                             epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                            self.it_agents[new_agent_id] = {}
-                            self.agents_epi[new_agent_id] = {}
+                            self.it_agents[new_agent_id] = None
+                            self.agents_epi[new_agent_id] = None
 
                             new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
                             new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": [], "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
@@ -253,8 +253,8 @@ class Tourism:
 
                     epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
-                    self.it_agents[new_agent_id] = {}
-                    self.agents_epi[new_agent_id] = {}
+                    self.it_agents[new_agent_id] = None
+                    self.agents_epi[new_agent_id] = None
 
                     new_it_agent = { "touristid": tourist_id, "initial_tourist": True, "itinerary": {}, "itinerary_nextday": {}}
                     new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": [], "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
@@ -284,8 +284,8 @@ class Tourism:
                 tourists_group["res_cell_ids"] = res_cell_ids
                 tourists_group["pub_transp_reg"] = True
                 tourists_group["initial_tourist"] = True
-                tourists_group["itinerary"] = {}
-                tourists_group["itinerary_nextday"] = {}
+                tourists_group["itinerary"] = None
+                tourists_group["itinerary_nextday"] = None
 
                 avg_age = round(sum(ages) / num_tourists_in_group)
 

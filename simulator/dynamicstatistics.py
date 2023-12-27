@@ -3,11 +3,10 @@ from vars import Vars
 import time
 
 class DynamicStatistics:
-    def __init__(self, n_locals, n_tourists, n_tourists_initial, vars_util: Vars):
+    def __init__(self, n_locals, n_tourists, n_tourists_initial):
         self.n_locals = n_locals # ok
         self.n_tourists = n_tourists # ok
         self.n_tourists_initial = n_tourists_initial
-        self.vars_util = vars_util # ok
         self.tourists_active_ids = [] # ok
         self.total_active_tourists = 0 # ok
         self.total_arriving_tourists = 0 # ok
@@ -41,7 +40,7 @@ class DynamicStatistics:
         self.new_hospitalized = 0
         self.average_contacts_per_person = 0
 
-    def refresh_rates(self, day, arr_tourists, dep_tourists, tourists_active_ids): # optimised
+    def refresh_rates(self, day, arr_tourists, dep_tourists, tourists_active_ids, vars_util): # optimised
         start = time.time()
 
         self.tourists_active_ids = tourists_active_ids
@@ -49,9 +48,9 @@ class DynamicStatistics:
         # deceased
         prev_deceased = self.total_deceased
 
-        n_deceased = sum([1 for state in self.vars_util.agents_seir_state.values() if state == SEIRState.Deceased])
-        # n_deceased = sum([1 for index, state in enumerate(self.vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
-        # n_deceased += sum([1 for tourist_id in self.tourists_active_ids if self.vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
+        n_deceased = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Deceased])
+        # n_deceased = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
+        # n_deceased += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
         
         if day == 1:
             self.new_deaths = n_deceased
@@ -63,9 +62,9 @@ class DynamicStatistics:
         # exposed
         prev_exposed = self.total_exposed
 
-        n_exposed = sum([1 for state in self.vars_util.agents_seir_state.values() if state == SEIRState.Exposed])
-        # n_exposed = sum([1 for index, state in enumerate(self.vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Exposed])
-        # n_exposed += sum([1 for tourist_id in self.tourists_active_ids if self.vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Exposed])
+        n_exposed = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Exposed])
+        # n_exposed = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Exposed])
+        # n_exposed += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Exposed])
 
         if day == 1:
             self.new_exposed = n_exposed
@@ -77,9 +76,9 @@ class DynamicStatistics:
         # susceptible
         prev_susceptible = self.total_susceptible
 
-        n_susceptible = sum([1 for state in self.vars_util.agents_seir_state.values() if state == SEIRState.Susceptible])
-        # n_susceptible = sum([1 for index, state in enumerate(self.vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Susceptible])
-        # n_susceptible += sum([1 for tourist_id in self.tourists_active_ids if self.vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Susceptible])
+        n_susceptible = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Susceptible])
+        # n_susceptible = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Susceptible])
+        # n_susceptible += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Susceptible])
 
         if day == 1:
             self.new_susceptible = n_susceptible
@@ -91,9 +90,9 @@ class DynamicStatistics:
         # infectious
         prev_infectious = self.total_infectious
 
-        n_infectious = sum([1 for state in self.vars_util.agents_seir_state.values() if state == SEIRState.Infectious])
-        # n_infectious = sum([1 for index, state in enumerate(self.vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
-        # n_infectious += sum([1 for tourist_id in self.tourists_active_ids if self.vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
+        n_infectious = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Infectious])
+        # n_infectious = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
+        # n_infectious += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
         
         if day == 1:
             self.new_infectious = n_infectious
@@ -104,9 +103,9 @@ class DynamicStatistics:
 
         prev_recovered = self.total_recovered
 
-        n_recovered = sum([1 for state in self.vars_util.agents_seir_state.values() if state == SEIRState.Recovered])
-        # n_recovered = sum([1 for index, state in enumerate(self.vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Recovered])
-        # n_recovered += sum([1 for tourist_id in self.tourists_active_ids if self.vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Recovered])
+        n_recovered = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Recovered])
+        # n_recovered = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Recovered])
+        # n_recovered += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Recovered])
 
         if day == 1:
             self.new_recovered = n_recovered

@@ -37,10 +37,11 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 #   - clear agent["state_transition_by_day"] for day
 def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, agentindex, day):
     today_index = -1
-    for index, day_entry in enumerate(agent["state_transition_by_day"]): # should always be a short list
-        if day_entry[0] == day:
-            today_index = index
-            break
+    if agent["state_transition_by_day"] is not None:
+        for index, day_entry in enumerate(agent["state_transition_by_day"]): # should always be a short list
+            if day_entry[0] == day:
+                today_index = index
+                break
     
     if today_index > -1:
         _, seir_state_transition, timestep = agent["state_transition_by_day"][today_index]

@@ -1,7 +1,10 @@
 from dynamicstatistics import DynamicStatistics
+import util
+import sys
+from pympler import asizeof
 
 class DynamicParams:
-    def __init__(self, n_locals, n_tourists, n_tourists_initial, epidemiologyparams, vars_util):
+    def __init__(self, n_locals, n_tourists, n_tourists_initial, epidemiologyparams):
         self.n_locals = n_locals
         self.n_tourists = n_tourists # total tourists
         self.n_tourists_initial = n_tourists_initial
@@ -27,7 +30,7 @@ class DynamicParams:
         self.num_vaccinations_today = 0
 
         # daily refreshed statistics here
-        self.statistics = DynamicStatistics(n_locals, n_tourists, n_tourists_initial, vars_util)
+        self.statistics = DynamicStatistics(n_locals, n_tourists, n_tourists_initial)
 
     def to_dict(self):
         return {"n_locals": self.n_locals, 
@@ -47,18 +50,18 @@ class DynamicParams:
                 "num_agents_to_be_vaccinated": self.num_agents_to_be_vaccinated,
                 "infectious_rate": self.statistics.infectious_rate}
     
-    def refresh_dynamic_parameters(self, day, num_arr_tourists, num_dep_tourists, tourists_active_ids, force_infectious_rate_refresh=True):
+    def refresh_dynamic_parameters(self, day, num_arr_tourists, num_dep_tourists, tourists_active_ids, vars_util, force_infectious_rate_refresh=True):
         infectious_rate_refreshed = False
 
         if force_infectious_rate_refresh:
-            self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids)
+            self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids, vars_util)
             infectious_rate_refreshed = True
 
         if len(self.masks_hygiene_distancing_infectiousrate_thresholds) == 0: # if both are present, default to infectiousrate thresholds
             self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(day, self.masks_hygiene_distancing_day_thresholds)
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids)
+                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids, vars_util)
                 infectious_rate_refreshed = True
 
             self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(self.statistics.infectious_rate, self.masks_hygiene_distancing_infectiousrate_thresholds)
@@ -67,7 +70,7 @@ class DynamicParams:
             self.vaccination_propensity = self.get_value_by_rate_in_threshold(day, self.vaccination_day_thresholds)
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids)
+                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids, vars_util)
                 infectious_rate_refreshed = True
 
             self.vaccination_propensity = self.get_value_by_rate_in_threshold(self.statistics.infectious_rate, self.vaccination_infectiousrate_thresholds)        
@@ -80,7 +83,7 @@ class DynamicParams:
             self.contact_tracing_enabled = day >= contacttracing_threshold
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids)
+                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids, vars_util)
                 infectious_rate_refreshed = True
             
             quarantine_threshold, testing_threshold, contacttracing_threshold = self.intervention_infectiousrate_thresholds[0], self.intervention_infectiousrate_thresholds[1], self.intervention_infectiousrate_thresholds[2]
@@ -97,7 +100,7 @@ class DynamicParams:
             self.entertainment_lockdown = day >= entertainment_threshold
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids)
+                self.statistics.refresh_rates(day, num_arr_tourists, num_dep_tourists, tourists_active_ids, vars_util)
                 infectious_rate_refreshed = True
             
             workplaces_threshold, schools_threshold, entertainment_threshold = self.lockdown_infectiousrate_thresholds[0], self.lockdown_infectiousrate_thresholds[1], self.lockdown_infectiousrate_thresholds[2]

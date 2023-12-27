@@ -239,6 +239,9 @@ class Epidemiology:
 
         incremental_days += exp_to_inf_days
 
+        if agent_state_transition_by_day is None:
+            agent_state_transition_by_day = []
+
         agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.ExposedToInfectious, sampled_exposed_timestep])
 
         symptomatic_rand = random.random()
@@ -942,6 +945,9 @@ class Epidemiology:
                 for agentid in sampled_to_vaccinate_ids:
                     agent = self.agents_epi[agentid]
                     agent_vaccination_days = agent["vaccination_days"]
+
+                    if agent_vaccination_days is None:
+                        agent_vaccination_days = []
 
                     sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
 

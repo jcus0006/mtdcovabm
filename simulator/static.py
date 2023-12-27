@@ -86,8 +86,8 @@ class Static:
         self.use_agents_dict = use_agents_dict
         self.use_tourists_dict = use_tourists_dict
 
-        if self.use_shm:
-            self.manager = mp.Manager()
+        if remote and self.use_shm: # Dask use_mp case
+            self.manager = mp.Manager()            
             self.static_agents_dict = self.manager.dict() # static_agents_dict is dynamic, and this synchronizes (it will add overhead)
 
         for id, properties in data.items():
@@ -96,7 +96,7 @@ class Static:
 
             use_arrays = (id < self.n_locals and not self.use_agents_dict) or not self.use_tourists_dict
 
-            if len(properties) > 0:
+            if properties is not None and len(properties) > 0:
                 if use_arrays:
                     self.age.append(properties["age"] if "age" in properties else None)
                     self.sc_student.append(properties["sc_student"] if "sc_student" in properties else None)
@@ -147,6 +147,55 @@ class Static:
 
         time_taken = time.time() - start
         print("agents_mp populate time taken: " + str(time_taken))
+        # self.convert_to_ndarray()
+
+    def populate_shm(self, data):
+        start = time.time()
+
+        for id, properties in data.items():
+            use_arrays = (id < self.n_locals and not self.use_agents_dict) or not self.use_tourists_dict
+
+            if len(properties) > 0:
+                if use_arrays:
+                    self.set(id, "age", properties["age"] if "age" in properties else -1)
+                    self.set(id, "sc_student", properties["sc_student"] if "sc_student" in properties and properties["sc_student"] is not None else -1)
+                    self.set(id, "empstatus", properties["empstatus"] if "empstatus" in properties and properties["empstatus"] is not None else -1)
+                    self.set(id, "empind", properties["empind"] if "empind" in properties and properties["empind"] is not None else -1)
+                    self.set(id, "empftpt", properties["empftpt"] if "empftpt" in properties and properties["empftpt"] is not None else -1)
+                    self.set(id, "res_cellid", properties["res_cellid"])
+                    self.set(id, "work_cellid", properties["work_cellid"])
+                    self.set(id, "school_cellid", properties["school_cellid"])
+                    self.set(id, "age_bracket_index", properties["age_bracket_index"] if "age_bracket_index" in properties and properties["age_bracket_index"] is not None else -1)
+                    self.set(id, "epi_age_bracket_index", properties["epi_age_bracket_index"] if "epi_age_bracket_index" in properties and properties["epi_age_bracket_index"] is not None else -1)
+                    self.set(id, "working_age_bracket_index", properties["working_age_bracket_index"] if "working_age_bracket_index" in properties and properties["working_age_bracket_index"] is not None else -1)
+                    self.set(id, "soc_rate", properties["soc_rate"] if "soc_rate" in properties and properties["soc_rate"] is not None else 0.0)
+                    self.set(id, "guardian_id", properties["guardian_id"] if "guardian_id" in properties and properties["guardian_id"] is not None else -1)
+                    self.set(id, "isshiftbased", properties["isshiftbased"] if "isshiftbased" in properties and properties["isshiftbased"] is not None else -1)
+                    self.set(id, "pub_transp_reg", properties["pub_transp_reg"])
+                    self.set(id, "ent_activity", properties["ent_activity"] if "ent_activity" in properties and properties["ent_activity"] is not None else -1)
+                else:
+                    self.static_agents_dict[id] = properties
+            else:
+                if use_arrays:
+                    self.set(id, "age", -1)
+                    self.set(id, "sc_student", -1)
+                    self.set(id, "empstatus", -1)
+                    self.set(id, "empind", -1)
+                    self.set(id, "empftpt", -1)
+                    self.set(id, "res_cellid", -1)
+                    self.set(id, "work_cellid", -1)
+                    self.set(id, "school_cellid", -1)
+                    self.set(id, "age_bracket_index", -1)
+                    self.set(id, "epi_age_bracket_index", -1)
+                    self.set(id, "working_age_bracket_index", -1)
+                    self.set(id, "soc_rate", 0.0)
+                    self.set(id, "guardian_id", -1)
+                    self.set(id, "isshiftbased", -1)
+                    self.set(id, "pub_transp_reg", -1)
+                    self.set(id, "ent_activity", -1)
+
+        time_taken = time.time() - start
+        print("agents_mp shm populate time taken: " + str(time_taken))
         # self.convert_to_ndarray()
 
     def convert_to_shared_memory_readonly(self, loadall=False, itinerary=False, contactnetwork=False, clear_normal_memory=False):
