@@ -675,10 +675,10 @@ class Epidemiology:
                                 quarantine_reference_quar_days = None
                                 positive_contact_agent = None
 
-                                if index in sampled_quarantine_indices and contact_id not in quarantine_scheduled_ids:
+                                if index in sampled_quarantine_indices and contact_id not in quarantine_scheduled_ids and contact_id in self.agents_epi: # tourists may have left
                                     positive_contact_agent = self.agents_epi[contact_id]
 
-                                    if positive_contact_agent is not None and len(positive_contact_agent) > 0: # tourists may have left
+                                    if positive_contact_agent is not None and len(positive_contact_agent) > 0:
                                         sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                         quarantine_scheduled, quar_days = self.schedule_quarantine(contact_id, day, sampled_timestep, QuarantineType.PositiveContact, agent=positive_contact_agent)
 
@@ -688,11 +688,11 @@ class Epidemiology:
 
                                             updated_agent_ids.add(contact_id)
 
-                                if index in sampled_test_indices and contact_id not in test_scheduled_ids:
+                                if index in sampled_test_indices and contact_id not in test_scheduled_ids and contact_id in self.agents_epi: # tourists may have left
                                     if positive_contact_agent is None:
                                         positive_contact_agent = self.agents_epi[contact_id]
 
-                                    if positive_contact_agent is not None and len(positive_contact_agent) > 0: # tourists may have left
+                                    if positive_contact_agent is not None and len(positive_contact_agent) > 0:
                                         sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                         test_scheduled, _, _ = self.schedule_test(positive_contact_agent, contact_id, day, sampled_timestep, QuarantineType.PositiveContact)
 
@@ -779,10 +779,10 @@ class Epidemiology:
                                                 for sec_index, sec_contact_id in enumerate(secondary_contact_ids):
                                                     secondary_contact_agent = None
 
-                                                    if sec_index in sampled_sec_quarantine_indices and sec_contact_id not in quarantine_scheduled_ids:
+                                                    if sec_index in sampled_sec_quarantine_indices and sec_contact_id not in quarantine_scheduled_ids and sec_contact_id in self.agents_epi: # tourists may have left
                                                         secondary_contact_agent = self.agents_epi[sec_contact_id]
 
-                                                        if secondary_contact_agent is not None and len(secondary_contact_agent) > 0: # tourists may have left
+                                                        if secondary_contact_agent is not None and len(secondary_contact_agent) > 0:
                                                             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                                             quarantine_scheduled, quar_days = self.schedule_quarantine(sec_contact_id, quar_start_day, quar_start_timestep, QuarantineType.SecondaryContact, quar_end_day, agent=secondary_contact_agent)
 
@@ -794,11 +794,11 @@ class Epidemiology:
 
                                                                 updated_agent_ids.add(sec_contact_id)
 
-                                                    if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids:
+                                                    if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids and sec_contact_id in self.agents_epi: # tourists may have left
                                                         if secondary_contact_agent is None:
                                                             secondary_contact_agent = self.agents_epi[sec_contact_id]
                                                         
-                                                        if secondary_contact_agent is not None and len(secondary_contact_agent) > 0: # tourists may have left
+                                                        if secondary_contact_agent is not None and len(secondary_contact_agent) > 0:
                                                             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                                                             test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, sec_contact_id, day, sampled_timestep, QuarantineType.SecondaryContact)
 

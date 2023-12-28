@@ -27,7 +27,7 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
             "simulationdays": 3, # 365/20
             "loadagents": True,
@@ -42,15 +42,15 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 100000, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 400000, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 6, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
+            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
@@ -70,10 +70,11 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [4], # 3, 11
-            # "dask_nodes": ["192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            # "dask_nodes_n_workers": [4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
+            # "dask_nodes": ["localhost"], # 192.168.1.24
+            # "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            "dask_nodes_n_workers": [3, 4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
@@ -89,7 +90,7 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "mp_6p_100k_3d_nonetest.txt"
+            "logfilename": "dask_5n_20w_500k_3d_opt.txt"
         }
 
 # Load configuration
@@ -955,7 +956,7 @@ def main():
             cluster = SSHCluster(dask_nodes, 
                             connect_options={"known_hosts": None},
                             worker_options={"n_workers": num_workers, "nthreads": num_threads, "local_directory": config["worker_working_directory"] }, # "memory_limit": "3GB" (in worker_options)
-                            scheduler_options={"port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"] }, # local_directory in scheduler_options has no effect
+                            scheduler_options={"host": params["dask_scheduler_host"], "port": 0, "dashboard_address": ":8797", "local_directory": config["scheduler_working_directory"] }, # local_directory in scheduler_options has no effect
                             worker_class=worker_class, 
                             remote_python=config["worker_remote_python"])
             
