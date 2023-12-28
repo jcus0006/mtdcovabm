@@ -2356,7 +2356,7 @@ class Itinerary:
                     if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
                         agent_epi["test_day"] = [day + 1, start_ts]
             elif day > test_day:
-                agent_epi["test_day"] = []
+                agent_epi["test_day"] = None
 
         if not is_tourist and "vaccination_days" in agent_epi and agent_epi["vaccination_days"] is not None and len(agent_epi["vaccination_days"]) > 0: # does not apply for tourists
             vaccination_day_ts = agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] # get last date, in case of more than 1 dose (right now only 1 dose)

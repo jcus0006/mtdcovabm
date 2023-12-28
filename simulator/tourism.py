@@ -143,7 +143,7 @@ class Tourism:
                             self.agents_epi[new_agent_id] = None
 
                             new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
-                            new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": [], "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
+                            new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
 
                             age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
 
@@ -257,7 +257,7 @@ class Tourism:
                     self.agents_epi[new_agent_id] = None
 
                     new_it_agent = { "touristid": tourist_id, "initial_tourist": True, "itinerary": {}, "itinerary_nextday": {}}
-                    new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": [], "test_day": [], "test_result_day": [], "quarantine_days": [], "hospitalisation_days": []}
+                    new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
 
                     age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
 

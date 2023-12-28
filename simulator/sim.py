@@ -15,6 +15,7 @@ from cells import Cells
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from actor_dist_mp import ActorDistMP
 from dynamicparams import DynamicParams
+from agents_epi import AgentsEpi
 import multiprocessing as mp
 from dask.distributed import Client, Worker, SSHCluster, performance_report
 # from dask.distributed import WorkerPlugin
@@ -29,7 +30,7 @@ import psutil
 
 params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 1, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -44,13 +45,13 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "visualise": False,
             "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
             "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 1, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "numprocesses": 4, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
@@ -90,7 +91,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "dask_5n_20w_500k_3d_opt.txt"
+            "logfilename": "new_agents_epi_test.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -1585,6 +1586,12 @@ def main():
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.statistics.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
             if f is not None:
                 f.flush()
+
+            # agents_epi_util = AgentsEpi.convert_agents_epi(agents_epi)
+
+            # current_size = util.asizeof_formatted(agents_epi)
+            # new_size = util.asizeof_formatted(agents_epi_util.agents_epi)
+            # print(f"agents epi current size {current_size} vs new size {new_size}")
 
             perf_timings_df.to_csv(perf_timings_file_name, index_label="day")
             mem_logs_df.to_csv(mem_logs_file_name, index_label="day")
