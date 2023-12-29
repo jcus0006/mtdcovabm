@@ -347,6 +347,7 @@ class Itinerary:
                 working_age_bracket_index = self.agents_static.get(agentid, "working_age_bracket_index")
 
                 is_departureday, is_arrivalday, is_work_or_school_day = False, False, False
+                quar_days, hosp_days = None, None
                 sampled_non_daily_activity = None
                 prevday_non_daily_end_activity = None
                 wakeup_timestep, sleep_timestep = None, None
@@ -1206,7 +1207,7 @@ class Itinerary:
                 elif is_departureday:
                     arr_dep_ts = sampled_departure_timestep
 
-                agent, temp_is_hospitalised, temp_is_quarantined, guardian_hosp_days, guardian_quar_days = self.sample_intervention_activities(agentid,
+                agent, temp_is_hospitalised, temp_is_quarantined, hosp_days, quar_days = self.sample_intervention_activities(agentid,
                                                                                                                                             agent, 
                                                                                                                                             agentindex, 
                                                                                                                                             res_cellid,
@@ -1263,15 +1264,14 @@ class Itinerary:
                     print("something wrong, itinerary empty")
 
                 if agent_is_guardian:
+                    guardian_hosp_days = copy(hosp_days)
+                    guardian_quar_days = copy(quar_days)
                     # guardian_hosp_days = copy(agent_epi["hospitalisation_days"])
                     # guardian_quar_days = copy(agent_epi["quarantine_days"])
                     guardian_non_daily_activity_recurring = copy(agent["non_daily_activity_recurring"])
                     guardian_prevday_non_daily_activity_recurring = copy(agent["prevday_non_daily_activity_recurring"])
                     guardian_itinerary = copy(agent["itinerary"])
                     guardian_itinerary_nextday = copy(agent["itinerary_nextday"])
-                else:
-                    guardian_hosp_days = None
-                    guardian_quar_days = None
 
                 agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
                 last_timestep = agent_itinerary_timesteps[-1]
