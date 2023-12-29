@@ -77,7 +77,7 @@ class AgentsEpi:
 
     # danger - this might be slow
     def delete_agent(self, id):
-        start = time.time()
+        # start = time.time()
         days = list(self.agents_epi.keys())
 
         for day in days:
@@ -86,8 +86,8 @@ class AgentsEpi:
             if id in agent_props:
                 del agent_props[id]
 
-        time_taken = time.time() - start
-        print(f"delete_agent from agents_epi {time_taken}")
+        # time_taken = time.time() - start
+        # print(f"delete_agent from agents_epi {time_taken}")
 
     # would crash if the value within the passed key is None and is not an array
     # would convert any None property to an array, even if it is not meant to be an array

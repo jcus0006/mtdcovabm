@@ -405,6 +405,7 @@ class Tourism:
                 f.flush()
 
         if len(prev_day_departing_tourists_ids) > 0:
+            start_prev_day_del = time.time()
             for agentid in prev_day_departing_tourists_ids:
                 del self.it_agents[agentid]
                 # del self.agents_epi_util[agentid] # 
@@ -417,6 +418,8 @@ class Tourism:
                 # print(f"deleted agent {agentid} from agents_static")
     
             del self.departing_tourists_ids[day-1]
+            time_taken_prev_day_del = time.time() - start_prev_day_del
+            print(f"deleting departuring tourists from main node, time_taken: {time_taken_prev_day_del}")
 
             gc.collect()
 
