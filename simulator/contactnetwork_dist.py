@@ -17,7 +17,7 @@ import gc
 def contactnetwork_distributed(client: Client,
                             day, 
                             weekday, 
-                            agents_epi,
+                            agents_epi_util,
                             vars_util,
                             dynparams,              
                             dask_mode=0,
@@ -96,9 +96,9 @@ def contactnetwork_distributed(client: Client,
             dask_params, futures, delayed_computations = [], [], []
 
             cat_size = util.asizeof_formatted(vars_util.cells_agents_timesteps)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
+            agents_epi_util_size = util.asizeof_formatted(agents_epi_util)
             vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"cat size: {cat_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
+            print(f"cat size: {cat_size}, agents_epi size: {agents_epi_util_size}, vars_util size: {vars_util_size}")
 
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
@@ -126,7 +126,7 @@ def contactnetwork_distributed(client: Client,
 
                 unique_agent_ids = sorted(list(unique_agent_ids))
 
-                agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_epi, vars_util, agents_partial, vars_util_partial, is_dask_task=dask_full_array_mapping)
+                agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(day, unique_agent_ids, agents_epi_util, vars_util, agents_partial, vars_util_partial, is_dask_task=dask_full_array_mapping)
 
                 # if not dask_full_array_mapping:
                 #     mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)
@@ -203,7 +203,7 @@ def contactnetwork_distributed(client: Client,
             else:
                 method_type = MethodType.ContactNetworkDistMP
 
-            _, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken)
+            _, agents_epi_util, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi_util, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken)
                 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
@@ -234,7 +234,7 @@ def contactnetwork_worker(params):
     try:
         main_start = time.time()
 
-        day, weekday, agents_epi, vars_util, dyn_params, process_index, log_file_name = params
+        day, weekday, agents_epi_util, vars_util, dyn_params, process_index, log_file_name = params
 
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_cn_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
         log_file_name = log_file_name.replace(".txt", "") + "_cn_" + str(day) + "_" + str(process_index) + ".txt"
@@ -262,7 +262,7 @@ def contactnetwork_worker(params):
                                                             n_tourists, 
                                                             locals_ratio_to_full_pop, 
                                                             agents_static,
-                                                            agents_epi,
+                                                            agents_epi_util,
                                                             vars_util,
                                                             cells_type,
                                                             indids_by_cellid,
@@ -274,7 +274,7 @@ def contactnetwork_worker(params):
                                                             dyn_params, 
                                                             process_index=process_index)
 
-        _, _, agents_epi_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
+        _, updated_agent_ids, agents_epi_util_partial, vars_util = contact_network_util.simulate_contact_network(day, weekday)
         
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
@@ -284,7 +284,7 @@ def contactnetwork_worker(params):
         main_time_taken = time.time() - main_start
         # print("process " + str(process_index) + " ended at " + str(time.time()))
 
-        return process_index, agents_epi_partial, vars_util, main_time_taken
+        return process_index, updated_agent_ids, agents_epi_util_partial, vars_util, main_time_taken
     except Exception as e:
         # log on the node where it happened
         actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")

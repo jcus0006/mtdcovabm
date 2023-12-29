@@ -7,7 +7,7 @@ from dask.distributed import Client, SSHCluster, as_completed
 import gc
 
 class Tourism:
-    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
+    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi_util, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -29,7 +29,7 @@ class Tourism:
         self.tourists = tourists
         self.agents_static = agents_static
         self.it_agents = it_agents
-        self.agents_epi = agents_epi
+        self.agents_epi_util = agents_epi_util
         self.agents_seir_state = agents_seir_state
         self.touristsgroupsdays = touristsgroupsdays
         self.touristsgroups = touristsgroups
@@ -58,7 +58,7 @@ class Tourism:
         if len(tourist_groupids_by_nextday):
             self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, f)
         
-        return self.it_agents, self.agents_epi, self.tourists, self.cells, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
+        return self.it_agents, self.tourists, self.cells, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
     def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, f):
         for tour_group_id in tourist_groupids:
@@ -140,15 +140,15 @@ class Tourism:
                             epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
                             self.it_agents[new_agent_id] = None
-                            self.agents_epi[new_agent_id] = None
+                            # self.agents_epi_util[new_agent_id] = None
 
                             new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
-                            new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
+                            # new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
 
                             age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
 
                             self.it_agents[new_agent_id] = new_it_agent
-                            self.agents_epi[new_agent_id] = new_agent_epi          
+                            # self.agents_epi_util[new_agent_id] = new_agent_epi          
 
                             # stbd_exists = "state_transition_by_day" in self.agents_epi[new_agent_id]
                             # print(f"new agent id {new_agent_id} tourist id {tourist_id} state_transition_by_day exists {str(stbd_exists)}")
@@ -254,15 +254,15 @@ class Tourism:
                     epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
 
                     self.it_agents[new_agent_id] = None
-                    self.agents_epi[new_agent_id] = None
+                    # self.agents_epi_util[new_agent_id] = None
 
                     new_it_agent = { "touristid": tourist_id, "initial_tourist": True, "itinerary": {}, "itinerary_nextday": {}}
-                    new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
+                    # new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
 
                     age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
 
                     self.it_agents[new_agent_id] = new_it_agent
-                    self.agents_epi[new_agent_id] = new_agent_epi          
+                    # self.agents_epi_util[new_agent_id] = new_agent_epi          
 
                     if not self.agents_static.use_tourists_dict:
                         self.agents_static.set(new_agent_id, "age", tourist["age"])
@@ -406,10 +406,11 @@ class Tourism:
 
         if len(prev_day_departing_tourists_ids) > 0:
             for agentid in prev_day_departing_tourists_ids:
-                # self.it_agents[agentid] = {}
-                # self.agents_epi[agentid] = {}
                 del self.it_agents[agentid]
-                del self.agents_epi[agentid]
+                # del self.agents_epi_util[agentid] # 
+
+                self.agents_epi_util.delete_agent(agentid)
+                
                 del self.agents_seir_state[agentid]
 
                 self.agents_static.delete(agentid)

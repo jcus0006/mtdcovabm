@@ -84,7 +84,7 @@ def localitinerary_parallel(client,
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
                 for hh_inst in hh_insts_partial:
-                    agents_partial, agents_ids_by_ages_partial, vars_util_partial, _ = util.split_dicts_by_agentsids(hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial, is_itinerary=True)                  
+                    agents_partial, agents_ids_by_ages_partial, vars_util_partial, _ = util.split_dicts_by_agentsids(day, hh_inst["resident_uids"], agents_dynamic, vars_util, agents_partial, vars_util_partial, is_itinerary=True)                  
 
                 tourists_active_ids = []
                 tourists = None # to do - to handle

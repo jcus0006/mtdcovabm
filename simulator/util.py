@@ -364,12 +364,14 @@ def get_sus_mort_prog_age_bracket_index(age):
         else:
             return 9
         
-def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False, agents_epi=None, agents_epi_partial=None):
+def split_dicts_by_agentsids(day, agents_ids, agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_task=False, agents_epi_util=None, agents_epi_util_partial=None):
+    agents_partial_is_agent_epi_util = agents_epi_util is None
     for uid in agents_ids:
-        agents_partial[uid] = agents[uid]
+        if not agents_partial_is_agent_epi_util:
+            agents_partial[uid] = agents[uid]
 
-        if agents_epi is not None:
-            agents_epi_partial[uid] = agents_epi[uid]
+        # if agents_epi_util is not None:
+        #     agents_epi_util_partial[uid] = agents_epi_util[uid]
 
         if uid in vars_util.agents_seir_state:
             vars_util_partial.agents_seir_state[uid] = vars_util.agents_seir_state[uid]
@@ -394,12 +396,17 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if uid in vars_util.agents_vaccination_doses:
             vars_util_partial.agents_vaccination_doses[uid] = vars_util.agents_vaccination_doses[uid]
 
-    return agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial
+    if agents_epi_util is not None:
+        agents_epi_util_partial = agents_epi_util.partialize(day, agents_ids, agents_epi_util_partial)
+    else:
+        agents_partial = agents.partialize(day, agents_ids, agents_partial)
 
-def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
+    return agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_util_partial
+
+def split_dicts_by_agentsids_copy(day, agents_ids, agents, agents_epi_util, vars_util, agents_partial, agents_epi_util_partial, vars_util_partial, agents_ids_by_ages=None, agents_ids_by_ages_partial=None, is_itinerary=False, is_dask_full_array_mapping=False):
     for uid in agents_ids:
         agents_partial[uid] = deepcopy(agents[uid])
-        agents_epi_partial[uid] = deepcopy(agents_epi[uid])
+        # agents_epi_partial[uid] = deepcopy(agents_epi[uid])
 
         if uid in vars_util.agents_seir_state[uid]:
             vars_util_partial.agents_seir_state[uid] = vars_util.agents_seir_state[uid]
@@ -427,22 +434,24 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
     # if not is_dask_full_array_mapping:
     #     vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
 
-    return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
+    agents_epi_util_partial = agents_epi_util.partialize(day, agents_ids, agents_epi_util_partial, True)
 
-def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, contact_tracing=False):
+    return agents_partial, agents_epi_util_partial, agents_ids_by_ages_partial, vars_util_partial
+
+def sync_state_info_by_agentsids(day, agents_ids, agents, agents_epi_util, vars_util, agents_partial, agents_epi_util_partial, vars_util_partial, contact_tracing=False):
     # updated_count = 0
     for agentindex, agentid in enumerate(agents_ids):
         curr_agent = agents_partial[agentid]
-        curr_agent_epi = agents_epi_partial[agentid]
+        # curr_agent_epi = agents_epi_partial[agentid]
         
         if not contact_tracing:
             agents[agentid] = curr_agent
-            agents_epi[agentid] = curr_agent_epi
-        else:
-            main_agent = agents_epi[agentid] # may also add handling to update only the updated fields rather than all fields that can be updated
-            main_agent["test_day"] = curr_agent_epi["test_day"]
-            main_agent["test_result_day"] = curr_agent_epi["test_result_day"]
-            main_agent["quarantine_days"] = curr_agent_epi["quarantine_days"]
+            # agents_epi[agentid] = curr_agent_epi
+        # else:
+        #     main_agent = agents_epi[agentid] # may also add handling to update only the updated fields rather than all fields that can be updated
+        #     main_agent["test_day"] = curr_agent_epi["test_day"]
+        #     main_agent["test_result_day"] = curr_agent_epi["test_result_day"]
+        #     main_agent["quarantine_days"] = curr_agent_epi["quarantine_days"]
 
         if not contact_tracing:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
@@ -458,16 +467,16 @@ def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agen
 
         # updated_count += 1  
 
+    agents_epi_util.sync(day, agents_epi_util_partial)
     # print("synced " + str(updated_count) + " agents")
     
-    return agents, agents_epi, vars_util
+    return agents, agents_epi_util, vars_util
 
-def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+def sync_state_info_by_agentsids_cn(day, agents_ids, agents_epi_util, vars_util, agents_epi_util_partial, vars_util_partial):
     # updated_count = 0
     for _, agentid in enumerate(agents_ids):
-        curr_agent_epi = agents_epi_partial[agentid]
-        
-        agents_epi[agentid] = curr_agent_epi
+        # curr_agent_epi = agents_epi_partial[agentid]
+        # agents_epi[agentid] = curr_agent_epi
 
         if agentid in vars_util_partial.agents_seir_state_transition_for_day:
             vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
@@ -486,18 +495,21 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
 
         # updated_count += 1  
 
+    agents_epi_util.sync(day, agents_epi_util_partial)
     # print("synced " + str(updated_count) + " agents")
     
-    return agents_epi, vars_util
+    return agents_epi_util, vars_util
 
-def sync_state_info_by_agentsids_ct(agents_ids, agents_epi, agents_epi_partial):
+def sync_state_info_by_agentsids_ct(day, agents_epi_util, agents_epi_util_partial):
     # updated_count = 0
-    for _, agentid in enumerate(agents_ids):
-        curr_agent_epi = agents_epi_partial[agentid]
+    # for _, agentid in enumerate(agents_ids):
+    #     curr_agent_epi = agents_epi_partial[agentid]
         
-        agents_epi[agentid] = curr_agent_epi
+    #     agents_epi[agentid] = curr_agent_epi
+
+    agents_epi_util.sync(day, agents_epi_util_partial)
     
-    return agents_epi
+    return agents_epi_util
 
 def sync_state_info_sets(day, vars_util, vars_util_partial):
     if len(vars_util_partial.contact_tracing_agent_ids) > 0:

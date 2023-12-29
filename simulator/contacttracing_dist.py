@@ -13,12 +13,13 @@ import dask
 from dask.distributed import Client, get_worker, performance_report
 from copy import copy
 from util import MethodType
+from agents_epi import AgentsEpi
 import gc
 
 def contacttracing_distributed(client: Client,
                             day, 
                             epidemiologyutil: Epidemiology,
-                            agents_epi,
+                            agents_epi_util,
                             vars_util,
                             dynparams,              
                             dask_mode=0,
@@ -97,7 +98,7 @@ def contacttracing_distributed(client: Client,
                     if f is not None:
                         f.flush()
 
-                    params = (day, agents_epi, vars_util_partial, dynparams, worker_index, log_file_name)
+                    params = (day, agents_epi_util, vars_util_partial, dynparams, worker_index, log_file_name)
 
                     if dask_mode == 0:
                         future = client.submit(contacttracing_worker, params)
@@ -129,7 +130,7 @@ def contacttracing_distributed(client: Client,
                 f.flush()
 
             start = time.time()
-            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactTracingDist, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
+            _, agents_epi_util, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactTracingDist, day, futures, None, agents_epi_util, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping)
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -159,7 +160,7 @@ def contacttracing_worker(params):
         main_start = time.time()
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
-        day, agents_epi, vars_util, dyn_params, process_index, log_file_name = params
+        day, agents_epi_util, vars_util, dyn_params, process_index, log_file_name = params
 
         original_stdout = sys.stdout
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_ct_mp_stack_trace_" + str(day) + "_" + str(process_index) + ".txt"
@@ -184,7 +185,7 @@ def contacttracing_worker(params):
                                         n_tourists,
                                         locals_ratio_to_full_pop,
                                         agents_static,
-                                        agents_epi,
+                                        agents_epi_util,
                                         vars_util,
                                         cells_households,
                                         cells_institutions,
@@ -192,13 +193,15 @@ def contacttracing_worker(params):
                                         dyn_params,
                                         process_index)
 
-        process_index, updated_agents_ids, agents_epi, vars_util = epidemiology_util.contact_tracing(day, True)
+        process_index, updated_agents_ids, agents_epi_util, vars_util = epidemiology_util.contact_tracing(day, True)
         
         main_time_taken = time.time() - main_start
 
-        agents_epi_partial = {agentid:agents_epi[agentid] for agentid in updated_agents_ids}
+        agents_epi_util_partial = AgentsEpi()
+        agents_epi_util_partial = agents_epi_util.partialize(day, updated_agents_ids, agents_epi_util_partial)
+        # agents_epi_partial = {agentid:agents_epi_util[agentid] for agentid in updated_agents_ids}
         
-        print("updated_agent_ids len: {0}, agents_epi_partial len: {1}, main_time_taken: {2}".format(str(len(updated_agents_ids)), str(len(agents_epi_partial)), str(main_time_taken)))
+        print("updated_agent_ids len: {0}, agents_epi_util_partial len: {1}, main_time_taken: {2}".format(str(len(updated_agents_ids)), str(len(agents_epi_util_partial)), str(main_time_taken)))
 
         # vars_util.directcontacts_by_simcelltype_by_day = []
         # vars_util.dc_by_sct_by_day_agent1_index = []
@@ -210,7 +213,7 @@ def contacttracing_worker(params):
         # vars_util.agents_infection_severity = customdict.CustomDict()
         # vars_util.agents_vaccination_doses = []
 
-        return process_index, agents_epi_partial, main_time_taken
+        return process_index, agents_epi_util_partial, main_time_taken
     except Exception as e:
        # log on the node where it happened
         actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")

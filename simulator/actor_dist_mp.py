@@ -12,6 +12,7 @@ import util, daskutil, shared_mp, customdict, vars, itinerary, contactnetwork, t
 from util import MethodType
 import psutil
 import gc
+from agents_epi import AgentsEpi
 
 class ActorDistMP:
     def __init__(self, params):
@@ -51,7 +52,7 @@ class ActorDistMP:
         try:
             main_start = time.time()
 
-            day, weekday, weekdaystr, hh_insts, it_agents, agents_epi, vars_util, dynparams, log_file_name = params
+            day, weekday, weekdaystr, hh_insts, it_agents, agents_epi_util, vars_util, dynparams, log_file_name = params
 
             worker = get_worker()
             agents_ids_by_ages = worker.data["agents_ids_by_ages"]
@@ -82,13 +83,13 @@ class ActorDistMP:
                 start_partial = time.time()
                 hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc]      
 
-                agents_partial, agents_ids_by_ages_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict() # {}, {}, {}
+                agents_partial, agents_ids_by_ages_partial, agents_epi_util_partial = customdict.CustomDict(), customdict.CustomDict(), AgentsEpi() # {}, {}, {}
                 vars_util_partial = vars.Vars()
                 # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
                 for hh_inst in hh_insts_partial:
-                    agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages, agents_ids_by_ages_partial, True, False, agents_epi, agents_epi_partial)                  
+                    agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_util_partial = util.split_dicts_by_agentsids(day, hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, agents_ids_by_ages, agents_ids_by_ages_partial, True, False, agents_epi_util, agents_epi_util_partial)                  
 
                 # remote_index = (self.worker_index, process_index)
                 params = (day, 
@@ -96,7 +97,7 @@ class ActorDistMP:
                         weekdaystr, 
                         hh_insts_partial, 
                         agents_partial,
-                        agents_epi_partial,
+                        agents_epi_util_partial,
                         deepcopy(vars_util_partial), # deepcopy(vars_util_partial) - without this was causing some nasty issues with multiprocessing (maybe with Dask it is fine)
                         dynparams, 
                         process_index, 
@@ -113,14 +114,14 @@ class ActorDistMP:
 
             util.log_memory_usage(f, "After assigning work. ")
 
-            it_agents, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, workers_remote_time_taken)
+            it_agents, agents_epi_util, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi_util, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, workers_remote_time_taken)
                 
             util.log_memory_usage(f, "After syncing results. ")
 
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
 
-            return self.worker_index, it_agents, agents_epi, vars_util, workers_remote_time_taken
+            return self.worker_index, it_agents, agents_epi_util, vars_util, workers_remote_time_taken
         except Exception as e:
             # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
@@ -145,7 +146,7 @@ class ActorDistMP:
         try:
             main_start = time.time()
 
-            day, weekday, agents_epi, vars_util, dynparams, log_file_name = params
+            day, weekday, agents_epi_util, vars_util, dynparams, log_file_name = params
 
             stack_trace_log_file_name = os.path.join(self.folder_name, "cn_main_mp_stack_trace_" + str(day) + ".txt")
             task_results_stack_trace_log_file_name = os.path.join(self.folder_name, "cn_main_mp_task_results_stack_trace_" + str(day) + ".txt")
@@ -166,7 +167,7 @@ class ActorDistMP:
                 start = time.time()
 
                 cells_agents_timesteps_partial = customdict.CustomDict()
-                agents_partial = customdict.CustomDict()
+                agents_epi_util_partial = AgentsEpi()
                 vars_util_partial = vars.Vars()
 
                 # vars_util_partial.agents_seir_state = vars_util.agents_seir_state  
@@ -180,14 +181,14 @@ class ActorDistMP:
 
                 unique_agent_ids = sorted(list(unique_agent_ids))
 
-                agents_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(unique_agent_ids, agents_epi, vars_util, agents_partial, vars_util_partial, is_dask_task=False)
+                agents_epi_util_partial, _, vars_util_partial, _ = util.split_dicts_by_agentsids(day, unique_agent_ids, agents_epi_util, vars_util, agents_epi_util_partial, vars_util_partial, is_dask_task=False)
 
                 # mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), unique_agent_ids, invert=True)        
                 # vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
         
                 vars_util_partial.cells_agents_timesteps = cells_agents_timesteps_partial
 
-                params = (day, weekday, agents_partial, vars_util_partial, dynparams, process_index, self.folder_name, log_file_name)
+                params = (day, weekday, agents_epi_util_partial, vars_util_partial, dynparams, process_index, self.folder_name, log_file_name)
                 
                 imap_params.append(params)
 
@@ -199,7 +200,7 @@ class ActorDistMP:
             
             util.log_memory_usage(f, "After assigning work. ")
 
-            _, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, workers_remote_time_taken)
+            _, agents_epi_util, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi_util, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, workers_remote_time_taken)
                 
             util.log_memory_usage(f, "After syncing results. ")
 
@@ -213,7 +214,7 @@ class ActorDistMP:
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
 
-            return self.worker_index, agents_epi, vars_util, workers_remote_time_taken
+            return self.worker_index, agents_epi_util, vars_util, workers_remote_time_taken
         except Exception as e:
             # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
@@ -266,7 +267,7 @@ def run_itinerary_single(params):
         from shared_mp import cells_accommodation
         from shared_mp import agents_static
 
-        day, weekday, weekdaystr, hh_insts, agents_dynamic, agents_epi, vars_util_mp, dyn_params, worker_index, folder_name, log_file_name = params
+        day, weekday, weekdaystr, hh_insts, agents_dynamic, agents_epi_util, vars_util_mp, dyn_params, worker_index, folder_name, log_file_name = params
 
         stack_trace_log_file_name = os.path.join(folder_name, "it_mp_stack_trace_" + str(day) + "_" + str(worker_index) + ".txt")
         log_file_name = os.path.join(folder_name, "it_mp_" + str(day) + "_" + str(worker_index) + ".txt")
@@ -284,7 +285,7 @@ def run_itinerary_single(params):
                                             locals_ratio_to_full_pop, 
                                             agents_static,
                                             agents_dynamic, 
-                                            agents_epi,
+                                            agents_epi_util,
                                             agents_ids_by_ages,
                                             vars_util_mp,
                                             cells_industries_by_indid_by_wpid, 
@@ -342,7 +343,7 @@ def run_itinerary_single(params):
 
         util.log_memory_usage(f, "After processing itinerary. ")
 
-        return worker_index, agents_dynamic, agents_epi, vars_util_mp, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
+        return worker_index, agents_dynamic, agents_epi_util, vars_util_mp, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
         raise
     finally:
@@ -377,7 +378,7 @@ def run_contactnetwork_single(params):
         from shared_mp import cells_accommodation
         from shared_mp import agents_static
 
-        day, weekday, agents_epi, vars_util, dyn_params, worker_index, folder_name, log_file_name = params
+        day, weekday, agents_epi_util, vars_util, dyn_params, worker_index, folder_name, log_file_name = params
 
         stack_trace_log_file_name = os.path.join(folder_name, "cn_mp_stack_trace_" + str(day) + "_" + str(worker_index) + ".txt")
         log_file_name = os.path.join(folder_name, "cn_mp_" + str(day) + "_" + str(worker_index) + ".txt")
@@ -392,7 +393,7 @@ def run_contactnetwork_single(params):
                                                             n_tourists, 
                                                             locals_ratio_to_full_pop, 
                                                             agents_static,
-                                                            agents_epi,
+                                                            agents_epi_util,
                                                             vars_util,
                                                             cells_type,
                                                             indids_by_cellid,
@@ -404,7 +405,7 @@ def run_contactnetwork_single(params):
                                                             dyn_params, 
                                                             process_index=worker_index)
 
-        _, _, agents_epi, vars_util = contact_network_util.simulate_contact_network(day, weekday)
+        _, _, agents_epi_util, vars_util = contact_network_util.simulate_contact_network(day, weekday)
         
         util.log_memory_usage(f, "After processing contact network. ") 
 
@@ -417,7 +418,7 @@ def run_contactnetwork_single(params):
 
         util.log_memory_usage(f, "After cleaning data structures. ")
 
-        return worker_index, agents_epi, vars_util, main_time_taken
+        return worker_index, agents_epi_util, vars_util, main_time_taken
     except Exception as e:
         raise
     finally:

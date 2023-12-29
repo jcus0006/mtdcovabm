@@ -7,6 +7,7 @@ from copy import copy
 import util, seirstateutil
 from epidemiology import Epidemiology
 from epidemiologyclasses import SEIRState, InfectionType, QuarantineType
+from agents_epi import HospQuarDays, TestDay
 import os
 import traceback
 
@@ -19,7 +20,7 @@ class Itinerary:
                 locals_ratio_to_full_pop,
                 agents_static,
                 it_agents, 
-                agents_epi,
+                agents_epi_util,
                 agents_ids_by_ages,          
                 vars_util,
                 cells_industries_by_indid_by_wpid, 
@@ -46,7 +47,7 @@ class Itinerary:
 
         self.vars_util = vars_util
         # self.cells_agents_timesteps = cells_agents_timesteps # to be filled in during itinerary generation. key is cellid, value is (agentid, starttimestep, endtimestep)
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi, self.vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi_util, self.vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index)
 
         # self.sync_queue = sync_queue
         # self.comm = comm
@@ -58,7 +59,7 @@ class Itinerary:
         self.n_tourists = n_tourists
         self.agents_static = agents_static
         self.it_agents = it_agents
-        self.agents_epi = agents_epi
+        self.agents_epi_util = agents_epi_util
         self.agents_ids_by_ages = agents_ids_by_ages
         self.tourists = tourists
         self.industries = cells_industries_by_indid_by_wpid
@@ -304,7 +305,7 @@ class Itinerary:
                     # self.working_schedule_interprocess_communication_aggregated_time += time_taken
 
     def generate_local_itinerary(self, simday, weekday, resident_uids):
-        guardian_id, guardian_hospitalisation_days, guardian_quarantine_days, guardian_non_daily_activity_recurring, guardian_prevday_non_daily_activity_recurring, guardian_itinerary, guardian_itinerary_nextday = None, None, None, None, None, None, None
+        guardian_id, guardian_hosp_days, guardian_quar_days, guardian_non_daily_activity_recurring, guardian_prevday_non_daily_activity_recurring, guardian_itinerary, guardian_itinerary_nextday = None, None, None, None, None, None, None
         res_cellid = None
 
         cohab_agents_ids_by_ages = {}
@@ -322,7 +323,7 @@ class Itinerary:
 
         for agentindex, (agentid, age) in enumerate(cohab_agents_ids_by_ages):
             agent = self.it_agents[agentid]
-            agent_epi = self.agents_epi[agentid]
+            # agent_epi = self.agents_epi_util[agentid]
 
             agent_seir_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid) #agentindex
 
@@ -335,7 +336,7 @@ class Itinerary:
                     res_cellid = self.agents_static.get(agentid, "res_cellid")
 
                  # this updates the state, infection type and severity, if relevant for the current day! (such that the itinenary may also handle public health interventions)
-                new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentindex, simday)
+                new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, self.agents_epi_util, agentindex, simday)
 
                 if new_states is not None:
                     new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
@@ -375,14 +376,14 @@ class Itinerary:
                 guardian = None
                 is_guardian_quarantined, is_guardian_hospitalised = False, False
                 if age < 15 and guardian_id is not None:
-                    if guardian_hospitalisation_days is not None and len(guardian_hospitalisation_days) > 0:
-                        hosp_start_day, hosp_end_day = guardian_hospitalisation_days[0], guardian_hospitalisation_days[2]
+                    if guardian_hosp_days is not None and len(guardian_hosp_days) > 0:
+                        hosp_start_day, hosp_end_day = guardian_hosp_days[0], guardian_hosp_days[2]
 
                         if simday >= hosp_start_day and simday <= hosp_end_day:
                             is_guardian_hospitalised = True
 
-                    if guardian_quarantine_days is not None and len(guardian_quarantine_days) > 0:
-                        quar_start_day, quar_end_day = guardian_quarantine_days[0], guardian_quarantine_days[2]
+                    if guardian_quar_days is not None and len(guardian_quar_days) > 0:
+                        quar_start_day, quar_end_day = guardian_quar_days[0], guardian_quar_days[2]
 
                         if simday >= quar_start_day and simday <= quar_end_day:
                             is_guardian_quarantined = True
@@ -392,54 +393,51 @@ class Itinerary:
                 hosp_start_day_ts, hosp_end_day_ts, hosp_start_day, hosp_end_day = None, None, None, None
                 quar_start_day_ts, quar_end_day_ts, quar_start_day, quar_end_day = None, None, None, None
 
-                if agent_epi["hospitalisation_days"] is not None and len(agent_epi["hospitalisation_days"]) > 0:
-                    hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
-
-                    # hosp_start_day = hosp_start_day_ts[0]
-                    # hosp_end_day = hosp_end_day_ts[0]
-
-                    if simday >= hosp_start_day and simday <= hosp_end_day:
-                        # print("is hospitalised")
+                hospitalisation_days = self.agents_epi_util.get(simday, agentid, "hospitalisation_days")
+                if hospitalisation_days is not None:
+                    if hospitalisation_days[0] == HospQuarDays.Ongoing:
                         is_hospitalised = True
                         is_quarantined_or_hospitalised = True
-
-                    if simday == hosp_start_day:
+                    elif hospitalisation_days[0] == HospQuarDays.Start:
                         is_quarantine_hospital_start_day = True
-
-                    if simday == hosp_end_day:
+                    else:
                         is_quarantine_hospital_end_day = True
 
-                    # if simday == hosp_end_day + 1:
-                    #     is_prevday_quar_hosp_end_day = True
+                    # hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
 
-                    # if simday+1 == hosp_start_day:
-                    #     is_nextday_quar_hosp_start_day = True
+                    # if simday >= hosp_start_day and simday <= hosp_end_day:
+                    #     # print("is hospitalised")
+                    #     is_hospitalised = True
+                    #     is_quarantined_or_hospitalised = True
 
-                if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
-                    quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
+                    # if simday == hosp_start_day:
+                    #     is_quarantine_hospital_start_day = True
 
-                    # quar_start_day = quar_start_day_ts[0]
-                    # quar_end_day = quar_end_day_ts[0]
+                    # if simday == hosp_end_day:
+                    #     is_quarantine_hospital_end_day = True
 
-                    if simday >= quar_start_day and simday <= quar_end_day:
-                        # print("is quarantined")
+                quarantine_days = self.agents_epi_util.get(simday, agentid, "quarantine_days")
+                if quarantine_days is not None:
+                    if quarantine_days[0] == HospQuarDays.Ongoing:
                         is_quarantined = True
                         is_quarantined_or_hospitalised = True
-
-                    if simday == quar_start_day:
+                    elif quarantine_days[0] == HospQuarDays.Start:
                         is_quarantine_hospital_start_day = True
-
-                    if simday == quar_end_day:
+                    else:
                         is_quarantine_hospital_end_day = True
 
-                    # if simday == quar_end_day + 1:
-                    #     is_prevday_quar_hosp_end_day = True
+                    # quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
 
-                    # if simday+1 == quar_start_day:
-                    #     is_nextday_quar_hosp_start_day = True
+                    # if simday >= quar_start_day and simday <= quar_end_day:
+                    #     # print("is quarantined")
+                    #     is_quarantined = True
+                    #     is_quarantined_or_hospitalised = True
 
-                    # if is_quarantined_start_day or is_quarantined_end_day still to handle as per usual
-                    # to see how to handle the else of this, and structure accordingly
+                    # if simday == quar_start_day:
+                    #     is_quarantine_hospital_start_day = True
+
+                    # if simday == quar_end_day:
+                    #     is_quarantine_hospital_end_day = True
 
                 if "non_daily_activity_recurring" not in agent:
                     agent["non_daily_activity_recurring"] = None
@@ -569,14 +567,14 @@ class Itinerary:
 
                             sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0] # sample a day at random from the travel duration.
 
-                            agent_state_transition_by_day = agent_epi["state_transition_by_day"]
+                            # agent_state_transition_by_day = agent_epi["state_transition_by_day"]
                             agent_epi_age_bracket_index = self.agents_static.get(agentid, "epi_age_bracket_index")
-                            agent_quarantine_days = agent_epi["quarantine_days"]
+                            # agent_quarantine_days = agent_epi["quarantine_days"]
 
-                            if agent_state_transition_by_day is None:
-                                agent_state_transition_by_day = []
+                            # if agent_state_transition_by_day is None:
+                            #     agent_state_transition_by_day = []
 
-                            agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
+                            seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(simday, agentid, sampled_day, self.potential_timesteps, agent_epi_age_bracket_index, asymptomatic_multiplier)
 
                             if inf_type != InfectionType.Undefined:
                                 self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
@@ -586,19 +584,19 @@ class Itinerary:
                                 # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
                             
                                 # immediately clear any events that happened prior to today as they would not be relevant anymore
-                                delete_indices = []
-                                for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
-                                    if day_entry[0] < simday: # day is first index
-                                        delete_indices.append(day_entry_index)
+                                # delete_indices = []
+                                # for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
+                                #     if day_entry[0] < simday: # day is first index
+                                #         delete_indices.append(day_entry_index)
 
-                                if len(delete_indices) > 0:
-                                    agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
+                                # if len(delete_indices) > 0:
+                                #     agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
 
-                                agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                                # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
                                         
                                 # this updates the state, infection type and severity, if relevant for the current day! (such that the itineray may also handle public health interventions)
                                 # itinerary would have already tried to update agent state in the beginning for normal cases. this needs to be done again for returning agents
-                                new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentindex, simday)
+                                new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, self.agents_epi_util, agentindex, simday)
 
                                 if new_states is not None:
                                     new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
@@ -1208,23 +1206,22 @@ class Itinerary:
                 elif is_departureday:
                     arr_dep_ts = sampled_departure_timestep
 
-                agent, agent_epi, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid,
-                                                                                                                agent, 
-                                                                                                                agent_epi,
-                                                                                                                agentindex, 
-                                                                                                                res_cellid,
-                                                                                                                simday, 
-                                                                                                                wakeup_timestep, 
-                                                                                                                sleep_timestep, 
-                                                                                                                start_work_school_ts, 
-                                                                                                                end_work_school_ts, 
-                                                                                                                work_school_cellid, 
-                                                                                                                work_school_action, 
-                                                                                                                is_departureday, 
-                                                                                                                is_arrivalday, 
-                                                                                                                arr_dep_ts, 
-                                                                                                                currently_on_travel_vacation, 
-                                                                                                                False)
+                agent, temp_is_hospitalised, temp_is_quarantined, guardian_hosp_days, guardian_quar_days = self.sample_intervention_activities(agentid,
+                                                                                                                                            agent, 
+                                                                                                                                            agentindex, 
+                                                                                                                                            res_cellid,
+                                                                                                                                            simday, 
+                                                                                                                                            wakeup_timestep, 
+                                                                                                                                            sleep_timestep, 
+                                                                                                                                            start_work_school_ts, 
+                                                                                                                                            end_work_school_ts, 
+                                                                                                                                            work_school_cellid, 
+                                                                                                                                            work_school_action, 
+                                                                                                                                            is_departureday, 
+                                                                                                                                            is_arrivalday, 
+                                                                                                                                            arr_dep_ts, 
+                                                                                                                                            currently_on_travel_vacation, 
+                                                                                                                                            False)
 
                 if temp_is_hospitalised or temp_is_quarantined:
                     is_quarantined_or_hospitalised = True
@@ -1235,9 +1232,6 @@ class Itinerary:
 
                     if temp_is_quarantined and not is_quarantined:
                         is_quarantined = True
-
-                if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
-                    agent_epi["prev_day_quarantine_days"] = copy(agent_epi["quarantine_days"])
                     
                 if sampled_non_daily_activity != NonDailyActivity.Travel or is_departureday or is_arrivalday: # is_arrivalday
                     if sampled_non_daily_activity != NonDailyActivity.Sick and guardian is None:
@@ -1269,12 +1263,15 @@ class Itinerary:
                     print("something wrong, itinerary empty")
 
                 if agent_is_guardian:
-                    guardian_hospitalisation_days = copy(agent_epi["hospitalisation_days"])
-                    guardian_quarantine_days = copy(agent_epi["quarantine_days"])
+                    # guardian_hosp_days = copy(agent_epi["hospitalisation_days"])
+                    # guardian_quar_days = copy(agent_epi["quarantine_days"])
                     guardian_non_daily_activity_recurring = copy(agent["non_daily_activity_recurring"])
                     guardian_prevday_non_daily_activity_recurring = copy(agent["prevday_non_daily_activity_recurring"])
                     guardian_itinerary = copy(agent["itinerary"])
                     guardian_itinerary_nextday = copy(agent["itinerary_nextday"])
+                else:
+                    guardian_hosp_days = None
+                    guardian_quar_days = None
 
                 agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
                 last_timestep = agent_itinerary_timesteps[-1]
@@ -1308,8 +1305,8 @@ class Itinerary:
                 #             (len(test_itinerarynextday_keys) > 2 and agent["itinerary_nextday"][test_itinerarynextday_keys[0]][0] == Action.LocalActivity and agent["itinerary_nextday"][test_itinerarynextday_keys[1]][0] == Action.Sleep)):
                 #                 print("to check")
 
-        guardian_hospitalisation_days = None
-        guardian_quarantine_days = None
+        guardian_hosp_days = None
+        guardian_quar_days = None
         guardian_non_daily_activity_recurring = None
         guardian_prevday_non_daily_activity_recurring = None
         guardian_itinerary = None
@@ -1462,7 +1459,7 @@ class Itinerary:
 
                     if not is_arrivalnextday:
                         agent = self.it_agents[agentid]
-                        agent_epi = self.agents_epi[agentid]
+                        # agent_epi = self.agents_epi_util[agentid]
 
                         if is_arrivalday:
                             # sample tourist entry infection probability
@@ -1473,15 +1470,15 @@ class Itinerary:
 
                                 sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0] # sample a day at random from the previous 14 days
 
-                                agent_state_transition_by_day = agent_epi["state_transition_by_day"]
+                                # agent_state_transition_by_day = agent_epi["state_transition_by_day"]
                                 agent_epi_age_bracket_index = self.agents_static.get(agentid, "epi_age_bracket_index")
-                                agent_quarantine_days = agent_epi["quarantine_days"]
+                                # agent_quarantine_days = agent_epi["quarantine_days"]
 
-                                if agent_state_transition_by_day is None:
-                                    agent_state_transition_by_day = []
+                                # if agent_state_transition_by_day is None:
+                                #     agent_state_transition_by_day = []
 
                                 # agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
-                                agent_state_transition_by_day, seir_state, inf_type, inf_sev, _  = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                                seir_state, inf_type, inf_sev, _  = self.epi_util.simulate_seir_state_transition(simday, agentid, sampled_day, self.potential_timesteps, agent_epi_age_bracket_index)
                         
                                 if inf_type != InfectionType.Undefined:
                                     self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
@@ -1491,59 +1488,71 @@ class Itinerary:
                                     # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
 
                                     # immediately clear any events that happened prior to today as they would not be relevant anymore
-                                    delete_indices = []
-                                    for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
-                                        if day_entry[0] < simday: # day is first index
-                                            delete_indices.append(day_entry_index)
+                                    # delete_indices = []
+                                    # for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
+                                    #     if day_entry[0] < simday: # day is first index
+                                    #         delete_indices.append(day_entry_index)
 
-                                    if len(delete_indices) > 0:
-                                        agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
+                                    # if len(delete_indices) > 0:
+                                    #     agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
 
-                                    agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                                    # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
 
                         # this updates the state, infection type and severity, if relevant for the current day! (such that the itinerary may also handle public health interventions)
-                        new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentid, simday) # agentid is guaranteed to be agentindex here
+                        new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, self.agents_epi_util, agentid, simday) # agentid is guaranteed to be agentindex here
 
                         if new_states is not None:
                             new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
 
                             self.vars_util.agents_seir_state_transition_for_day[agentid] = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
 
-                        if agent_epi["hospitalisation_days"] is not None and len(agent_epi["hospitalisation_days"]) > 0:
-                            hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
-
-                            # hosp_start_day = hosp_start_day_ts[0]
-                            # hosp_end_day = hosp_end_day_ts[0]
-
-                            if simday >= hosp_start_day and simday <= hosp_end_day:
-                                # print("is hospitalised")
-                                is_group_activity_for_day = False
+                        hospitalisation_days = self.agents_epi_util.get(simday, agentid, "hospitalisation_days")
+                        if hospitalisation_days is not None:
+                            if hospitalisation_days[0] == HospQuarDays.Ongoing:
                                 is_hospitalised = True
                                 is_quarantined_or_hospitalised = True
-
-                            if simday == hosp_start_day:
+                            elif hospitalisation_days[0] == HospQuarDays.Start:
                                 is_quarantine_hospital_start_day = True
-
-                            if simday == hosp_end_day:
+                            else:
                                 is_quarantine_hospital_end_day = True
 
-                        if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
-                            quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
+                            # hosp_start_day, hosp_end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][2]
 
-                            # quar_start_day = quar_start_day_ts[0]
-                            # quar_end_day = quar_end_day_ts[0]
+                            # if simday >= hosp_start_day and simday <= hosp_end_day:
+                            #     # print("is hospitalised")
+                            #     is_group_activity_for_day = False
+                            #     is_hospitalised = True
+                            #     is_quarantined_or_hospitalised = True
 
-                            if simday >= quar_start_day and simday <= quar_end_day:
-                                # print("is quarantined")
-                                is_group_activity_for_day = False
+                            # if simday == hosp_start_day:
+                            #     is_quarantine_hospital_start_day = True
+
+                            # if simday == hosp_end_day:
+                            #     is_quarantine_hospital_end_day = True
+
+                        quarantine_days = self.agents_epi_util.get(simday, agentid, "quarantine_days")
+                        if quarantine_days is not None:
+                            if quarantine_days[0] == HospQuarDays.Ongoing:
                                 is_quarantined = True
                                 is_quarantined_or_hospitalised = True
-
-                            if simday == quar_start_day:
+                            elif quarantine_days[0] == HospQuarDays.Start:
                                 is_quarantine_hospital_start_day = True
-
-                            if simday == quar_end_day:
+                            else:
                                 is_quarantine_hospital_end_day = True
+
+                            # quar_start_day, quar_end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][2]
+
+                            # if simday >= quar_start_day and simday <= quar_end_day:
+                            #     # print("is quarantined")
+                            #     is_group_activity_for_day = False
+                            #     is_quarantined = True
+                            #     is_quarantined_or_hospitalised = True
+
+                            # if simday == quar_start_day:
+                            #     is_quarantine_hospital_start_day = True
+
+                            # if simday == quar_end_day:
+                            #     is_quarantine_hospital_end_day = True
 
                     agents_quar_hosp[agentid] = [is_quarantined_or_hospitalised, is_quarantined, is_hospitalised, is_quarantine_hospital_start_day, is_quarantine_hospital_end_day]
 
@@ -1559,30 +1568,26 @@ class Itinerary:
                             agent["itinerary"] = copy(tourists_group["itinerary"])
                             agent["itinerary_nextday"] = copy(tourists_group["itinerary_nextday"])
 
-                            agent, agent_epi, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
-                                                                                                                            agent,
-                                                                                                                            agent_epi, 
-                                                                                                                            agentid, # agentid guaranteed to be agentindex here
-                                                                                                                            res_cellid,
-                                                                                                                            simday, 
-                                                                                                                            wakeup_timestep, 
-                                                                                                                            sleep_timestep, 
-                                                                                                                            is_departure_day_today= is_departureday, 
-                                                                                                                            is_arrival_day_today= is_arrivalday, 
-                                                                                                                            arr_dep_ts= arr_dep_ts, 
-                                                                                                                            currently_on_travel_vacation= False, 
-                                                                                                                            is_tourist= True)
+                            agent, _, _, _, _ = self.sample_intervention_activities(agentid, 
+                                                                                                                agent,
+                                                                                                                agentid, # agentid guaranteed to be agentindex here
+                                                                                                                res_cellid,
+                                                                                                                simday, 
+                                                                                                                wakeup_timestep, 
+                                                                                                                sleep_timestep, 
+                                                                                                                is_departure_day_today= is_departureday, 
+                                                                                                                is_arrival_day_today= is_arrivalday, 
+                                                                                                                arr_dep_ts= arr_dep_ts, 
+                                                                                                                currently_on_travel_vacation= False, 
+                                                                                                                is_tourist= True)
                             
                             # just for debugging purposes
-                            if temp_is_hospitalised or temp_is_quarantined:
-                                if temp_is_hospitalised:
-                                    is_hospitalised = True
+                            # if temp_is_hospitalised or temp_is_quarantined:
+                            #     if temp_is_hospitalised:
+                            #         is_hospitalised = True
 
-                                if temp_is_quarantined:
-                                    is_quarantined = True
-
-                            if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
-                                agent_epi["prev_day_quarantine_days"] = copy(agent_epi["quarantine_days"])
+                            #     if temp_is_quarantined:
+                            #         is_quarantined = True
 
                             self.update_cell_agents_timesteps(agent["itinerary"], [agentid], [res_cellid])
 
@@ -1606,9 +1611,8 @@ class Itinerary:
 
                                 agent, wakeup_timestep, sleep_timestep = self.handle_tourism_itinerary(simday, weekday, agent, accomid, accomtype, is_arrivalday, is_departureday, is_departurenextday, arr_dep_ts, arr_dep_time, dep_nextday_time, airport_duration, groupid, is_group_activity_for_day, agent_quar_hosp, tourist["agentid"])
 
-                                agent, agent_epi, temp_is_hospitalised, temp_is_quarantined = self.sample_intervention_activities(agentid, 
+                                agent, _, _, _, _ = self.sample_intervention_activities(agentid, 
                                                                                                                     agent,
-                                                                                                                    agent_epi, 
                                                                                                                     agentid, # agentid guaranteed to be agentindex here
                                                                                                                     res_cellid,
                                                                                                                     simday, 
@@ -1621,12 +1625,12 @@ class Itinerary:
                                                                                                                     is_tourist= True)
                                 
                                 # just for debugging purposes
-                                if temp_is_hospitalised or temp_is_quarantined:
-                                    if temp_is_hospitalised:
-                                        is_hospitalised = True
+                                # if temp_is_hospitalised or temp_is_quarantined:
+                                #     if temp_is_hospitalised:
+                                #         is_hospitalised = True
 
-                                    if temp_is_quarantined:
-                                        is_quarantined = True
+                                #     if temp_is_quarantined:
+                                #         is_quarantined = True
 
                                 self.update_cell_agents_timesteps(agent["itinerary"], [tourist["agentid"]], [res_cellid])
 
@@ -2162,12 +2166,13 @@ class Itinerary:
     # in test/vaccine cases, introduce the vaccine activity and sample a test/vaccine cell randomly
     # if test/vaccine start ts coincides with work or school, and if after start_ts + 6 ts (1 hour) work/school would not have ended, 
     # agent goes back to work/school accordingly, otherwise, goes back home, then activites continue as per usual
-    def sample_intervention_activities(self, agentid, agent, agent_epi, agentindex, res_cellid, day, wakeup_ts, sleep_ts=None, start_work_school_ts=None, end_work_school_ts=None, work_school_cellid=None, work_school_action=None, is_departure_day_today=False, is_arrival_day_today=False, arr_dep_ts=None, currently_on_travel_vacation=False, is_tourist=False):
+    def sample_intervention_activities(self, agentid, agent, agentindex, res_cellid, day, wakeup_ts, sleep_ts=None, start_work_school_ts=None, end_work_school_ts=None, work_school_cellid=None, work_school_action=None, is_departure_day_today=False, is_arrival_day_today=False, arr_dep_ts=None, currently_on_travel_vacation=False, is_tourist=False):
         # test_result_day: [day,timestep]
         # quarantine_days: [[startday,timestep], [endday, timestep]]
         # test_day: [day,timestep]
         # vaccination_days: [[day,timestep]]
 
+        hosp_days, quar_days = None, None
         is_quarantine_startday, is_hospital_startday = False, False
 
         if (is_arrival_day_today or is_departure_day_today) and arr_dep_ts is None:
@@ -2179,51 +2184,48 @@ class Itinerary:
                 if action == Action.Airport:
                     arr_dep_ts = ts
                     break
+        
+        test_result_day = self.agents_epi_util.get(day, agentid, "test_result_day")
 
-        if agent_epi["test_result_day"] is not None and len(agent_epi["test_result_day"]) > 0:
-            test_result_day = agent_epi["test_result_day"][0]
+        if test_result_day is not None:
+            start_ts = test_result_day # this is an integer not an array
 
-            if day == test_result_day:
-                start_ts = agent_epi["test_result_day"][1]
+            seir_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid) #agentindex
+            
+            if seir_state == SEIRState.Exposed or seir_state == SEIRState.Infectious: # this mostly handles asymptomatic cases
+                false_negative_rand = random.random()
 
-                seir_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, agentid) #agentindex
-                
-                if seir_state == SEIRState.Exposed or seir_state == SEIRState.Infectious: # this mostly handles asymptomatic cases
-                    false_negative_rand = random.random()
+                is_false_negative = False
+                if false_negative_rand < self.epi_util.testing_false_negative_rate:
+                    is_false_negative = True
 
-                    is_false_negative = False
-                    if false_negative_rand < self.epi_util.testing_false_negative_rate:
-                        is_false_negative = True
+                if not is_false_negative:
+                    self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
 
-                    if not is_false_negative:
-                        self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
+                    is_quarantine_startday, quar_days = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive)
+            else:
+                false_positive_rand = random.random()
 
-                        is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent_epi)
-                else:
-                    false_positive_rand = random.random()
+                is_false_positive = False
+                if false_positive_rand < self.epi_util.testing_false_positive_rate:
+                    is_false_positive = True
 
-                    is_false_positive = False
-                    if false_positive_rand < self.epi_util.testing_false_positive_rate:
-                        is_false_positive = True
+                if is_false_positive:
+                    self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts))
 
-                    if is_false_positive:
-                        self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts))
-
-                        is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent_epi)
-            elif day > test_result_day:
-                agent_epi["test_result_day"] = None
+                    is_quarantine_startday, quar_days = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive)
 
         hospitalisation_ts = None
         hospitalisation_end_day = False
-        if agent_epi["hospitalisation_days"] is not None and len(agent_epi["hospitalisation_days"]) > 0:
-            start_day, start_ts, end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][1], agent_epi["hospitalisation_days"][2]
-            # start_day, start_ts = start_day_ts[0], start_day_ts[1]
-            # end_day, end_ts = end_day_ts[0], end_day_ts[1]
+        hospitalisation_day = self.agents_epi_util.get(day, agentid, "hospitalisation_days")
+
+        if hospitalisation_day is not None:
+            # start_day, start_ts, end_day = agent_epi["hospitalisation_days"][0], agent_epi["hospitalisation_days"][1], agent_epi["hospitalisation_days"][2]
             
-            if start_day == day:
+            if hospitalisation_day[0] == HospQuarDays.Start:
                 cancel_itinerary_beyond_hospitalisation_ts = True
 
-                hospitalisation_ts = start_ts
+                hospitalisation_ts = hospitalisation_day[1]
                 
                 cancel_vacation = False
                 if not is_tourist and is_departure_day_today and hospitalisation_ts < arr_dep_ts:
@@ -2234,9 +2236,21 @@ class Itinerary:
                         if hospitalisation_ts < arr_dep_ts:
                             hospitalisation_ts = arr_dep_ts
                     else:
-                        # this would be the case where arrival is beyond midnight quarantine starts from previous day at 6am
-                        hospitalisation_days = [start_day+1, 36, end_day+1]
-                        agent_epi = self.epi_util.schedule_hospitalisation(agent_epi, hospitalisation_days)
+                        # this would be the case where arrival is beyond midnight, and hence, hospitalization starts from next day at 6am
+                        # before we had the end_day readily available and we could simply increment it, 
+                        # but for optimization purposes we are only including the data for a particular day remotely
+                        # as a workaround, we can re-sample the hospitalization duration with the same parameters as would have been done previously
+                        # the value will not necessarily be the same, but this should not make a huge difference
+                        # in this particular day hospitalisation will be ignored, because the agent arrived later than midnight
+                        # when synced, the current day will be removed, and any further data will be overwritten accordingly
+
+                        sev_to_rec_days = util.sample_log_normal(self.epi_util.sev_to_rec_mean, self.epi_util.sev_to_rec_std, 1, True)
+
+                        end_hosp_day = day + sev_to_rec_days
+
+                        hospitalisation_days = [day+1, 36, end_hosp_day]
+                        self.epi_util.schedule_hospitalisation(agentid, hospitalisation_days)
+                        hosp_days = hospitalisation_days
                         cancel_itinerary_beyond_hospitalisation_ts = False
 
                 if cancel_vacation:
@@ -2269,22 +2283,21 @@ class Itinerary:
                         self.add_to_itinerary(agent, hospitalisation_ts, Action.Hospital, sampled_hospital_cellid)
 
                         agent["itinerary_nextday"] = None
-            elif end_day == day:
+            elif hospitalisation_day[0] == HospQuarDays.End:
                 hospitalisation_end_day = True
-                agent_epi["hospitalisation_days"] = None
-                # agent["deleted_hospital_on"] = day
+                # agent_epi["hospitalisation_days"] = Nones
         
         quarantine_ts = None
         quarantine_end_day = False
-        if agent_epi["quarantine_days"] is not None and len(agent_epi["quarantine_days"]) > 0:
-            start_day, start_ts, end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][1], agent_epi["quarantine_days"][2]
-            # start_day, start_ts = start_day_ts[0], start_day_ts[1]
-            # end_day, end_ts = end_day_ts[0], end_day_ts[1]
+        quarantine_day = self.agents_epi_util.get(day, agentid, "quarantine_days")
+
+        if quarantine_day is not None:
+            # start_day, start_ts, end_day = agent_epi["quarantine_days"][0], agent_epi["quarantine_days"][1], agent_epi["quarantine_days"][2]
             
-            if start_day == day or hospitalisation_end_day and day <= end_day:
+            if quarantine_day[0] == HospQuarDays.Start or (hospitalisation_end_day and quarantine_day[0] == HospQuarDays.Ongoing):
                 cancel_itinerary_beyond_quarantine_ts = True
 
-                quarantine_ts = start_ts
+                quarantine_ts = quarantine_day[1]
                 
                 cancel_vacation = False
                 if not is_tourist and is_departure_day_today and quarantine_ts < arr_dep_ts:
@@ -2295,9 +2308,16 @@ class Itinerary:
                         if quarantine_ts < arr_dep_ts:
                             quarantine_ts = arr_dep_ts
                     else:
-                        agent_epi["updated_quarantine"] = day
-                        # this would be the case where arrival is beyond midnight quarantine starts from previous day at 6am
-                        agent_epi = self.epi_util.update_quarantine(agent_epi, start_day+1, 36, end_day+1, 36)
+                        # this would be the case where arrival is beyond midnight, and hence, quarantine starts from next day at 6am
+                        # before we had the end_day readily available and we could simply increment it, 
+                        # but for optimization purposes we are only including the data for a particular day remotely
+                        # as a workaround, we can re-sample the hospitalization duration with the same parameters as would have been done previously
+                        # the value will not necessarily be the same, but this should not make a huge difference
+                        # in this particular day, quarantine will be ignored, because the agent arrived later than midnight
+                        # when synced, the current day will be removed, and any further data will be overwritten accordingly
+
+                        _, quar_days = self.epi_util.schedule_quarantine(agentid, day + 1, 36, QuarantineType.Symptomatic)
+                        # agent_epi = self.epi_util.update_quarantine(agent_epi, start_day + 1, 36, end_day + 1, 36)
                         cancel_itinerary_beyond_quarantine_ts = False
 
                 if cancel_itinerary_beyond_quarantine_ts and hospitalisation_ts is not None:
@@ -2325,17 +2345,19 @@ class Itinerary:
                         self.add_to_itinerary(agent, quarantine_ts, Action.Home, res_cellid)
 
                         agent["itinerary_nextday"] = {}
-            elif end_day == day:
+            elif quarantine_day[0] == HospQuarDays.End:
                 quarantine_end_day = True
-                agent_epi["quarantine_days"] = None
+                # agent_epi["quarantine_days"] = None
                 # agent["deleted_quarantine_on"] = day
 
-        if agent_epi["test_day"] is not None and len(agent_epi["test_day"]) > 0:
-            test_day = agent_epi["test_day"][0]
+        test_day = self.agents_epi_util.get(day, agentid, "test_day")
+        if test_day is not None:
+            # test_day = agent_epi["test_day"][0]
 
-            if day == test_day:
+            if test_day[0] == TestDay.Actual:
                 reschedule_test = False
-                start_ts = agent_epi["test_day"][1]
+                start_ts = test_day[1]
+                # start_ts = agent_epi["test_day"][1]
                 
                 if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
                     reschedule_test = True
@@ -2354,17 +2376,21 @@ class Itinerary:
                     self.modify_wakeup_sleep_work_school_for_interventions(agent, res_cellid, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts)
                 else:
                     if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
-                        agent_epi["test_day"] = [day + 1, start_ts]
-            elif day > test_day:
-                agent_epi["test_day"] = None
+                        self.agents_epi_util.set_test_range(day + 1, start_ts, 5, agentid) # this will simply set new dates; it will not delete existing ones, the existing ones will be ignored and will be deleted automatically by means of clean-up
+                        # agent_epi["test_day"] = [day + 1, start_ts]
+            # elif day > test_day:
+            #     agent_epi["test_day"] = None
 
-        if not is_tourist and "vaccination_days" in agent_epi and agent_epi["vaccination_days"] is not None and len(agent_epi["vaccination_days"]) > 0: # does not apply for tourists
-            vaccination_day_ts = agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] # get last date, in case of more than 1 dose (right now only 1 dose)
-            vaccination_day, vaccination_ts = vaccination_day_ts[0], vaccination_day_ts[1]
+        # if not is_tourist and "vaccination_days" in agent_epi and agent_epi["vaccination_days"] is not None and len(agent_epi["vaccination_days"]) > 0: # does not apply for tourists
+        if not is_tourist:
+            vaccination_day = self.agents_epi_util.get(day, agentid, "vaccination_days")
+
+            # vaccination_day_ts = agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] # get last date, in case of more than 1 dose (right now only 1 dose)
+            # vaccination_day, vaccination_ts = vaccination_day_ts[0], vaccination_day_ts[1]
             
-            if day == vaccination_day:
+            if vaccination_day is not None:
                 reschedule_test = False
-                start_ts = vaccination_ts
+                start_ts = vaccination_day
 
                 if currently_on_travel_vacation or (is_departure_day_today and start_ts > arr_dep_ts) or (is_arrival_day_today and start_ts < arr_dep_ts):
                     reschedule_test = True
@@ -2391,11 +2417,12 @@ class Itinerary:
                     self.vars_util.agents_vaccination_doses[agentid] = agent_vaccination_doses
                 else:
                     if is_arrival_day_today and start_ts < arr_dep_ts: # re-scheduling not applicable for tourists leaving Malta (out of scope)
-                        agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] = [day + 1, start_ts]
-            elif day > vaccination_day:
-                agent_epi["vaccination_days"] = None # for now this is acceptable because there cannot be double vaccinations dated scheduled. but would be a problem if it overwrites multiple dates
+                        self.agents_epi_util.set(day + 1, agentid, "vaccination_days", start_ts) # this will simply set new dates; it will not delete existing ones, the existing ones will be ignored and will be deleted automatically by means of clean-up
+                        # agent_epi["vaccination_days"][len(agent_epi["vaccination_days"]) - 1] = [day + 1, start_ts]
+            # elif day > vaccination_day:
+            #     agent_epi["vaccination_days"] = None # for now this is acceptable because there cannot be double vaccinations dated scheduled. but would be a problem if it overwrites multiple dates
 
-        return agent, agent_epi, is_hospital_startday, is_quarantine_startday
+        return agent, is_hospital_startday, is_quarantine_startday, hosp_days, quar_days
 
     def modify_wakeup_sleep_work_school_for_interventions(self, agent, res_cellid, start_ts, wakeup_ts, sleep_ts, start_work_school_ts, end_work_school_ts, work_school_cellid, work_school_action, quarantine_ts):
         if wakeup_ts is not None and start_ts < wakeup_ts: # if test start ts before wakeup

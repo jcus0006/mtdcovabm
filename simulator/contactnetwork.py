@@ -6,6 +6,7 @@ from copy import deepcopy
 import util
 from cellsclasses import CellType, SimCellType
 from epidemiology import Epidemiology
+from agents_epi import AgentsEpi
 import matplotlib.pyplot as plt
 
 class ContactNetwork:
@@ -14,7 +15,7 @@ class ContactNetwork:
                 n_tourists, 
                 locals_ratio_to_full_pop, 
                 agents_static,
-                agents_epi, 
+                agents_epi_util, 
                 vars_util, 
                 cells_type, 
                 indids_by_cellid,
@@ -29,7 +30,7 @@ class ContactNetwork:
                 maintain_directcontacts_count=False, 
                 process_index=-1):
         self.agents_static = agents_static
-        self.agents_epi = agents_epi
+        self.agents_epi_util = agents_epi_util
 
         self.cells_type = cells_type
         self.indids_by_cellid = indids_by_cellid
@@ -59,7 +60,7 @@ class ContactNetwork:
         
         # it is possible that this may need to be extracted out of the contact network and handled at the next step
         # because it could be impossible to parallelise otherwise
-        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
+        self.epi_util = Epidemiology(epidemiologyparams, n_locals, n_tourists, locals_ratio_to_full_pop, agents_static, agents_epi_util, vars_util, cells_households, cells_institutions, cells_accommodation, dynparams, process_index, self.agents_seir_indices)
 
     # full day, all cells context
     def simulate_contact_network(self, day, weekday):
@@ -116,12 +117,14 @@ class ContactNetwork:
         avg_time_taken = self.contactnetwork_sum_time_taken / day
         print("simulate_contact_network for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken) + ", process index: " + str(self.process_index))
 
-        agents_partial = {agentid:self.agents_epi[agentid] for agentid in updated_agents_ids}
+        agents_epi_util_partial = AgentsEpi()
+        agents_epi_util_partial = self.agents_epi_util.partialize(day, updated_agents_ids, agents_epi_util_partial)
+        # agents_partial = {agentid:self.agents_epi_util[agentid] for agentid in updated_agents_ids}
 
         if self.process_index != -1: # if -1 would already be assigned above
             self.vars_util.directcontacts_by_simcelltype_by_day = agents_directcontacts_by_simcelltype_by_day
 
-        return self.process_index, updated_agents_ids, agents_partial, self.vars_util
+        return self.process_index, updated_agents_ids, agents_epi_util_partial, self.vars_util
     
     # full day, single cell context
     def simulate_contact_network_by_cellid(self, cellid, day):
@@ -234,9 +237,12 @@ class ContactNetwork:
 
                     avg_contacts_by_age_activity = self.ageactivitycontactmatrix[age_bracket_index, 2 + ageactivitycontact_cm_activityid]
 
-                    timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
+                    timestep_multiplier = 1.0
+                    
+                    if agent_timestep_count != avg_agents_timestep_counts and avg_agents_timestep_counts > 1:
+                        timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
 
-                    potential_contacts_count_multiplier = 1
+                    potential_contacts_count_multiplier = 1.0
                     
                     if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
                         potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)

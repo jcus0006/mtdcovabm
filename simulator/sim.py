@@ -28,9 +28,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 1, # 365/20
+            "simulationdays": 365, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -43,9 +43,9 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 4, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
+            "numprocesses": 6, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -91,7 +91,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "new_agents_epi_test.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "mp_6p_10k_365d_agentsepi.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -1089,15 +1089,17 @@ def main():
 
         memory_sums = general_sum_mem, it_agents_sum_mem, working_schedule_sum_mem, itinerary_sum_mem, itinerary_nextday_sum_mem, non_daily_activity_recurring_sum_mem, prevday_non_daily_activity_recurring_sum_mem, tourist_id_sum_mem, initial_tourist_sum_mem, epi_agents_sum_mem, state_transition_by_day_sum_mem, test_day_sum_mem, test_result_day_sum_mem, hospitalisation_days_sum_mem, quarantine_days_sum_mem, vaccination_days_sum_mem, vars_util_sum_mem, cat_agents_sum_mem, seir_state_sum_mem, seir_state_trans_for_day_sum_mem, inf_type_sum_mem, inf_sev_sum_mem, vacc_doses_sum_mem, dir_con_sum_mem, dir_con_idx1_sum_mem, dir_con_idx2_sum_mem
 
-        epi_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days", "vaccination_days"]
+        # epi_keys = ["state_transition_by_day", "test_day", "test_result_day", "hospitalisation_days", "quarantine_days", "vaccination_days"]
         it_keys = ["working_schedule", "non_daily_activity_recurring", "prevday_non_daily_activity_recurring", "itinerary", "itinerary_next_day"]
         
         # new - partialising agents for multiprocessing
-        agents_epi = customdict.CustomDict({
-            key: {
-                inner_key: value[inner_key] for inner_key in epi_keys if inner_key in value
-            } for key, value in agents_dynamic.items()
-        })
+        # agents_epi = customdict.CustomDict({
+        #     key: {
+        #         inner_key: value[inner_key] for inner_key in epi_keys if inner_key in value
+        #     } for key, value in agents_dynamic.items()
+        # })
+
+        agents_epi_util = AgentsEpi()
                 
         it_agents = customdict.CustomDict({
             key: {
@@ -1105,10 +1107,11 @@ def main():
             } for key, value in agents_dynamic.items()
         })
 
-        agents_epi_size = util.asizeof_formatted(agents_epi) # mem: agents_epi_size
+        # agents_epi_size = util.asizeof_formatted(agents_epi) # mem: agents_epi_size
         it_agents_size = util.asizeof_formatted(it_agents) # mem: it_agents_size
 
-        print(f"agents_epi size {agents_epi_size}, it_agents size: {it_agents_size}")
+        print(f"it_agents size: {it_agents_size}")
+        # print(f"agents_epi size {agents_epi_size}, it_agents size: {it_agents_size}")
 
         del agents_dynamic
 
@@ -1116,7 +1119,7 @@ def main():
 
         if params["loadtourism"]:
             util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
-            tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution) 
+            tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi_util, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution) 
             tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
             util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
         
@@ -1158,7 +1161,7 @@ def main():
                                                     locals_ratio_to_full_pop,
                                                     agents_static,
                                                     it_agents, # it_agents
-                                                    agents_epi, # agents_epi ?
+                                                    agents_epi_util, 
                                                     agents_ids_by_ages,
                                                     vars_util,
                                                     cells_industries_by_indid_by_wpid,
@@ -1185,7 +1188,7 @@ def main():
                 util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
 
                 start = time.time()
-                it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
+                it_agents, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
                 print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
                 if f is not None:
                     f.flush()
@@ -1241,7 +1244,7 @@ def main():
                                                         n_tourists,
                                                         locals_ratio_to_full_pop,
                                                         it_agents,
-                                                        agents_epi,
+                                                        agents_epi_util,
                                                         agents_ids_by_ages,
                                                         vars_util,
                                                         cells_industries_by_indid_by_wpid,
@@ -1279,7 +1282,7 @@ def main():
                                                                             weekday,
                                                                             weekdaystr,
                                                                             it_agents,
-                                                                            agents_epi,
+                                                                            agents_epi_util,
                                                                             vars_util,
                                                                             dyn_params,
                                                                             params["keep_processes_open"],
@@ -1296,7 +1299,7 @@ def main():
                                                                                         weekday,
                                                                                         weekdaystr,
                                                                                         it_agents,
-                                                                                        agents_epi,
+                                                                                        agents_epi_util,
                                                                                         vars_util,
                                                                                         dyn_params,
                                                                                         params["keep_processes_open"],
@@ -1312,7 +1315,7 @@ def main():
                                                                                 weekday,
                                                                                 weekdaystr,
                                                                                 it_agents,
-                                                                                agents_epi,
+                                                                                agents_epi_util,
                                                                                 vars_util,
                                                                                 dyn_params,
                                                                                 params["keep_processes_open"],
@@ -1328,7 +1331,7 @@ def main():
                                                                     weekday, 
                                                                     weekdaystr, 
                                                                     it_agents,
-                                                                    agents_epi,
+                                                                    agents_epi_util,
                                                                     vars_util,
                                                                     dyn_params, 
                                                                     hh_insts, 
@@ -1387,7 +1390,7 @@ def main():
                                                                 n_locals, 
                                                                 n_tourists, 
                                                                 locals_ratio_to_full_pop, 
-                                                                agents_epi, 
+                                                                agents_epi_util, 
                                                                 vars_util,
                                                                 cells_type, 
                                                                 indids_by_cellid,
@@ -1408,7 +1411,7 @@ def main():
                         contactnetwork_dist.contactnetwork_distributed(client,
                                                                 day,
                                                                 weekday,
-                                                                agents_epi,
+                                                                agents_epi_util,
                                                                 vars_util,
                                                                 dyn_params,
                                                                 params["dask_mode"],
@@ -1462,7 +1465,7 @@ def main():
                                                     n_tourists, 
                                                     locals_ratio_to_full_pop,
                                                     agents_static,
-                                                    agents_epi, 
+                                                    agents_epi_util, 
                                                     vars_util, 
                                                     cells_households, 
                                                     cells_institutions, 
@@ -1488,14 +1491,14 @@ def main():
                 #                                         log_file_name)
 
                 if not params["contacttracing_distributed"]:
-                    _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
+                    _, _updated_agent_ids, agents_epi_util, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
                 else:
                     vars_util.reset_daily_structures()
 
                     contacttracing_dist.contacttracing_distributed(client, 
                                                                 day, 
                                                                 epi_util,
-                                                                agents_epi, 
+                                                                agents_epi_util, 
                                                                 vars_util, 
                                                                 dyn_params, 
                                                                 params["dask_mode"],
@@ -1567,7 +1570,7 @@ def main():
 
             mem_start = time.time()
             util.log_memory_usage(f, "Loaded data. Before calculating memory info ")
-            memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
+            memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi_util, vars_util, memory_sums, f, mem_logs_df)
             util.log_memory_usage(f, "Loaded data. After calculating memory info ")
             mem_time_taken = time.time() - mem_start
             print("log memory info time_taken: " + str(mem_time_taken))
@@ -1612,7 +1615,7 @@ def main():
 
             client.shutdown()
 
-def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util, sums=None, f=None, df=None):
+def calculate_memory_info(day, log_memory_info, it_agents, agents_epi_util, vars_util, sums=None, f=None, df=None):
     if log_memory_info:
         start = time.time()
         memory_info = psutil.virtual_memory()
@@ -1628,13 +1631,19 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
         tour_ids_mem = util.asizeof_formatted([props["tourist_id"] for props in it_agents.values() if "tourist_id" in props])
         initial_tourist_mem = util.asizeof_formatted([props["initial_tourist"] for props in it_agents.values() if "initial_tourist" in props])
         
-        epi_agents_mem = util.asizeof_formatted(agents_epi)
-        state_transition_by_day_mem = util.asizeof_formatted([props["state_transition_by_day"] for props in agents_epi.values() if "state_transition_by_day" in props])
-        test_day_mem = util.asizeof_formatted([props["test_day"] for props in agents_epi.values() if "test_day" in props])
-        test_result_day_mem = util.asizeof_formatted([props["test_result_day"] for props in agents_epi.values() if "test_result_day" in props])
-        hosp_days_mem = util.asizeof_formatted([props["hospitalisation_days"] for props in agents_epi.values() if "hospitalisation_days" in props])
-        quar_days_mem = util.asizeof_formatted([props["quarantine_days"] for props in agents_epi.values() if "quarantine_days" in props])
-        vacc_days_mem = util.asizeof_formatted([props["vaccination_days"] for props in agents_epi.values() if "vaccination_days" in props])
+        epi_agents_mem = util.asizeof_formatted(agents_epi_util)
+        state_transition_by_day_mem = 0
+        test_day_mem = 0
+        test_result_day_mem = 0
+        hosp_days_mem = 0
+        quar_days_mem = 0
+        vacc_days_mem = 0
+        # state_transition_by_day_mem = util.asizeof_formatted([props["state_transition_by_day"] for props in agents_epi_util.values() if "state_transition_by_day" in props])
+        # test_day_mem = util.asizeof_formatted([props["test_day"] for props in agents_epi_util.values() if "test_day" in props])
+        # test_result_day_mem = util.asizeof_formatted([props["test_result_day"] for props in agents_epi_util.values() if "test_result_day" in props])
+        # hosp_days_mem = util.asizeof_formatted([props["hospitalisation_days"] for props in agents_epi_util.values() if "hospitalisation_days" in props])
+        # quar_days_mem = util.asizeof_formatted([props["quarantine_days"] for props in agents_epi_util.values() if "quarantine_days" in props])
+        # vacc_days_mem = util.asizeof_formatted([props["vaccination_days"] for props in agents_epi_util.values() if "vaccination_days" in props])
         
         vars_util_mem = util.asizeof_formatted(vars_util)
         cat_mem = util.asizeof_formatted(vars_util.cells_agents_timesteps)
