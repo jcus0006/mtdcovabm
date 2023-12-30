@@ -70,11 +70,13 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
-            # "dask_nodes": ["localhost"], # 192.168.1.24
-            # "dask_nodes_n_workers": [4], # 3, 11
-            "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
-            "dask_nodes_n_workers": [3, 4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
+            "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
+            "dask_nodes": ["localhost"], # 192.168.1.24
+            "dask_nodes_n_workers": [4], # 3, 11
+            # "dask_scheduler_node": "localhost",
+            # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
+            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes_n_workers": [3, 4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
             # "dask_nodes_time_taken": [0.13, 0.24, 0.15, 0.13, 0.15, 0.21], # [0.13, 0.24, 0.15, 0.21, 0.13, 0.15] - refined / [0.17, 0.22, 0.15, 0.20, 0.12, 0.14] - varied - used on day 1 and adapted dynamically. If specified, and dask_nodes_cpu_scores is None, will be used as inverted weights for load balancing
@@ -90,7 +92,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "mp_8p_quicktest.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "mp_8p_quicktest_v2.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration

@@ -104,7 +104,7 @@ def convert_state_transition_to_new_state(current_seir_state, current_infection_
             if current_infection_type == InfectionType.PreAsymptomatic:
                 new_infection_type = InfectionType.Asymptomatic
             # if PreSymptomatic, infection type will already be assigned, but is only to be considered infectious, if SEIR State is Infectious
-            return SEIRState.Infectious, new_infection_type, current_infection_severity
+            return SEIRState.Infectious, new_infection_type, Severity.Mild
         case SEIRStateTransition.InfectiousToSymptomatic:
             new_infection_type = current_infection_type
             if current_infection_type == InfectionType.PreSymptomatic:
@@ -125,7 +125,7 @@ def convert_state_transition_to_new_state(current_seir_state, current_infection_
             return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
         case SEIRStateTransition.CriticalToRecovery:
             return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-        case SEIRStateTransition.RecoveredToExposed:
-            return SEIRState.Exposed, current_infection_type, current_infection_severity
+        case SEIRStateTransition.RecoveredToSusceptible:
+            return SEIRState.Susceptible, current_infection_type, current_infection_severity
         case _:
             return SEIRState.Undefined, InfectionType.Undefined, Severity.Undefined

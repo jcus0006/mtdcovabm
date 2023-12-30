@@ -6,7 +6,7 @@ from copy import deepcopy
 from copy import copy
 import util, seirstateutil
 from epidemiology import Epidemiology
-from epidemiologyclasses import SEIRState, InfectionType, QuarantineType
+from epidemiologyclasses import SEIRState, InfectionType, Severity, QuarantineType
 import os
 import traceback
 
@@ -104,6 +104,7 @@ class Itinerary:
         self.potential_timesteps = np.arange(144)
 
         self.tourist_entry_infection_probability = epidemiologyparams["tourist_entry_infection_probability"] 
+        self.pre_exposure_days = epidemiologyparams["pre_exposure_days"]
 
         self.working_schedule_interprocess_communication_aggregated_time = 0
         self.itinerary_interprocess_communication_aggregated_time = 0
@@ -333,6 +334,25 @@ class Itinerary:
 
                 if res_cellid is None:
                     res_cellid = self.agents_static.get(agentid, "res_cellid")
+
+                if simday == 1 and agent_seir_state == SEIRState.Infectious:
+                    # assume infection happened in the previous 14 days, sample an "exposed" start day in the last 14 days to simulate the seir state transitioning trajectory
+                    potential_days = np.arange(simday - self.pre_exposure_days, simday) # agent would have been exposed on a particular day/timestamp during the previous 14 days (until day 0, i.e. last day before sim start)
+
+                    sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0]
+
+                    agent_state_transition_by_day = agent_epi["state_transition_by_day"]
+                    agent_epi_age_bracket_index = self.agents_static.get(agentid, "epi_age_bracket_index")
+                    agent_quarantine_days = agent_epi["quarantine_days"]
+
+                    if agent_state_transition_by_day is None:
+                        agent_state_transition_by_day = []
+                    
+                    agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(simday, agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+
+                    self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
+                    self.vars_util.agents_infection_type[agentid] = inf_type
+                    self.vars_util.agents_infection_severity[agentid] = inf_sev
 
                  # this updates the state, infection type and severity, if relevant for the current day! (such that the itinenary may also handle public health interventions)
                 new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentindex, simday)
@@ -576,34 +596,33 @@ class Itinerary:
                             if agent_state_transition_by_day is None:
                                 agent_state_transition_by_day = []
 
-                            agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
+                            agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(simday, agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
 
-                            if inf_type != InfectionType.Undefined:
-                                self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
-                                self.vars_util.agents_infection_type[agentid] = inf_type
-                                self.vars_util.agents_infection_severity[agentid] = inf_sev
+                            self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
+                            self.vars_util.agents_infection_type[agentid] = inf_type
+                            self.vars_util.agents_infection_severity[agentid] = inf_sev
 
-                                # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
-                            
-                                # immediately clear any events that happened prior to today as they would not be relevant anymore
-                                delete_indices = []
-                                for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
-                                    if day_entry[0] < simday: # day is first index
-                                        delete_indices.append(day_entry_index)
+                            # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
+                        
+                            # immediately clear any events that happened prior to today as they would not be relevant anymore
+                            # delete_indices = []
+                            # for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
+                            #     if day_entry[0] < simday: # day is first index
+                            #         delete_indices.append(day_entry_index)
 
-                                if len(delete_indices) > 0:
-                                    agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
+                            # if len(delete_indices) > 0:
+                            #     agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
 
-                                agent_epi["state_transition_by_day"] = agent_state_transition_by_day
-                                        
-                                # this updates the state, infection type and severity, if relevant for the current day! (such that the itineray may also handle public health interventions)
-                                # itinerary would have already tried to update agent state in the beginning for normal cases. this needs to be done again for returning agents
-                                new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentindex, simday)
+                            # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                                    
+                            # this updates the state, infection type and severity, if relevant for the current day! (such that the itineray may also handle public health interventions)
+                            # itinerary would have already tried to update agent state in the beginning for normal cases. this needs to be done again for returning agents
+                            new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentindex, simday)
 
-                                if new_states is not None:
-                                    new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
+                            if new_states is not None:
+                                new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep = new_states[0], new_states[1], new_states[2], new_states[3], new_states[4], new_states[5]
 
-                                    self.vars_util.agents_seir_state_transition_for_day[agentid] = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
+                                self.vars_util.agents_seir_state_transition_for_day[agentid] = [new_seir_state, old_seir_state, new_infection_type, new_infection_severity, seir_state_transition, new_state_timestep]
                     else:
                         if agent["itinerary_nextday"] is not None and len(agent["itinerary_nextday"]) > 0: # overnight itinerary (scheduled from previous day; to include into "itinerary" dict)
                             # get morning sleeptimestep
@@ -1464,14 +1483,14 @@ class Itinerary:
                         agent = self.it_agents[agentid]
                         agent_epi = self.agents_epi[agentid]
 
-                        if is_arrivalday:
+                        if is_arrivalday or (simday == 1 and agent["initial_tourist"]):
                             # sample tourist entry infection probability
                             exposed_rand = random.random()
 
                             if exposed_rand < self.tourist_entry_infection_probability:                 
-                                potential_days = np.arange(arrivalday-14, arrivalday+1) # assume tourist might have been exposed in the previous 14 days from arriving
+                                potential_days = np.arange(arrivalday-self.pre_exposure_days, arrivalday+1) # assume tourist might have been exposed in the previous X days from arriving
 
-                                sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0] # sample a day at random from the previous 14 days
+                                sampled_day = self.rng.choice(potential_days, size=1, replace=False)[0] # sample a day at random from the previous X days
 
                                 agent_state_transition_by_day = agent_epi["state_transition_by_day"]
                                 agent_epi_age_bracket_index = self.agents_static.get(agentid, "epi_age_bracket_index")
@@ -1481,25 +1500,24 @@ class Itinerary:
                                     agent_state_transition_by_day = []
 
                                 # agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
-                                agent_state_transition_by_day, seir_state, inf_type, inf_sev, _  = self.epi_util.simulate_seir_state_transition(agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
+                                agent_state_transition_by_day, seir_state, inf_type, inf_sev, _  = self.epi_util.simulate_seir_state_transition(simday, agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
                         
-                                if inf_type != InfectionType.Undefined:
-                                    self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
-                                    self.vars_util.agents_infection_type[agentid] = inf_type
-                                    self.vars_util.agents_infection_severity[agentid] = inf_sev
+                                self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
+                                self.vars_util.agents_infection_type[agentid] = inf_type
+                                self.vars_util.agents_infection_severity[agentid] = inf_sev
 
-                                    # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
+                                # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
 
-                                    # immediately clear any events that happened prior to today as they would not be relevant anymore
-                                    delete_indices = []
-                                    for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
-                                        if day_entry[0] < simday: # day is first index
-                                            delete_indices.append(day_entry_index)
+                                # immediately clear any events that happened prior to today as they would not be relevant anymore
+                                # delete_indices = []
+                                # for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
+                                #     if day_entry[0] < simday: # day is first index
+                                #         delete_indices.append(day_entry_index)
 
-                                    if len(delete_indices) > 0:
-                                        agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
+                                # if len(delete_indices) > 0:
+                                #     agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
 
-                                    agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                                # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
 
                         # this updates the state, infection type and severity, if relevant for the current day! (such that the itinerary may also handle public health interventions)
                         new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentid, simday) # agentid is guaranteed to be agentindex here
