@@ -2324,7 +2324,7 @@ class Itinerary:
 
                         self.add_to_itinerary(agent, quarantine_ts, Action.Home, res_cellid)
 
-                        agent["itinerary_nextday"] = {}
+                        agent["itinerary_nextday"] = None
             elif end_day == day:
                 quarantine_end_day = True
                 agent_epi["quarantine_days"] = None

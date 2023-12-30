@@ -6,10 +6,11 @@ class DynamicStatistics:
     def __init__(self, n_locals, n_tourists, n_tourists_initial):
         self.n_locals = n_locals # ok
         self.n_tourists = n_tourists # ok
-        self.n_tourists_initial = n_tourists_initial
+        self.n_tourists_initial = n_tourists_initial # ok
         self.tourists_active_ids = [] # ok
         self.total_active_tourists = 0 # ok
         self.total_arriving_tourists = 0 # ok
+        self.total_arriving_nextday_tourists = 0 # ok
         self.total_departing_tourists = 0 # ok
         self.total_active_population = self.n_locals + n_tourists_initial
         self.total_exposed = 0 # ok
@@ -40,11 +41,11 @@ class DynamicStatistics:
         self.new_hospitalized = 0
         self.average_contacts_per_person = 0
 
-    def refresh_rates(self, day, arr_tourists, dep_tourists, tourists_active_ids, vars_util): # optimised
+    def refresh_rates(self, day, arr_tourists, arr_nextday_tourists, dep_tourists, tourists_active_ids, vars_util): # optimised
         start = time.time()
 
         self.tourists_active_ids = tourists_active_ids
-
+        
         # deceased
         prev_deceased = self.total_deceased
 
@@ -118,6 +119,7 @@ class DynamicStatistics:
         print("refresh infectious rate (compr) time taken: " + str(time_taken))
 
         self.total_arriving_tourists = arr_tourists 
+        self.total_arriving_nextday_tourists = arr_nextday_tourists
         self.total_departing_tourists = dep_tourists
         self.total_active_tourists = len(self.tourists_active_ids)
         
@@ -132,6 +134,7 @@ class DynamicStatistics:
         df.loc[day, "total_locals"] = self.n_locals
         df.loc[day, "total_active_tourists"] = self.total_active_tourists
         df.loc[day, "total_arriving_tourists"] = self.total_arriving_tourists
+        df.loc[day, "total_arriving_nextday_tourists"] = self.total_arriving_nextday_tourists
         df.loc[day, "total_departing_tourists"] = self.total_departing_tourists
         df.loc[day, "total_exposed"] = self.total_exposed
         df.loc[day, "total_susceptible"] = self.total_susceptible
