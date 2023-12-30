@@ -207,7 +207,7 @@ def contactnetwork_parallel(manager,
             result = contactnetwork_worker(params, True)
 
             if not type(result) is dict:
-                process_index, agents_epi_util, vars_util, _ = result
+                process_index, _, agents_epi_util, vars_util, _ = result
 
                 if len(vars_util.directcontacts_by_simcelltype_by_day) > 0:
                     current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
@@ -245,28 +245,29 @@ def contactnetwork_worker(params, single_proc=False):
         start = time.time()
         pre_mem_info = psutil.virtual_memory()
         static_agents_dict = None
+        is_single_proc = False
 
         # sync_queue, day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_cn, cell_agents_timesteps, tourists_active_ids, cells_mp, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter = params
         if len(params) >= 20:  # sp
             if len(params) == 21:
                 day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_epi_util, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name, agents_static, is_single_proc = params
             else:
-                is_single_proc = False
                 day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_epi_util, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name, static_agents_dict = params
         else:
             day, weekday, agents_epi_util, vars_util, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name, static_agents_dict = params
 
-        from shared_mp import n_locals
-        from shared_mp import n_tourists
-        from shared_mp import locals_ratio_to_full_pop
-        from shared_mp import contactnetworkparams
-        from shared_mp import epidemiologyparams
-        from shared_mp import cells_type
-        from shared_mp import indids_by_cellid
-        from shared_mp import cells_households
-        from shared_mp import cells_institutions
-        from shared_mp import cells_accommodation
-        from shared_mp import agents_static
+        if not is_single_proc:
+            from shared_mp import n_locals
+            from shared_mp import n_tourists
+            from shared_mp import locals_ratio_to_full_pop
+            from shared_mp import contactnetworkparams
+            from shared_mp import epidemiologyparams
+            from shared_mp import cells_type
+            from shared_mp import indids_by_cellid
+            from shared_mp import cells_households
+            from shared_mp import cells_institutions
+            from shared_mp import cells_accommodation
+            from shared_mp import agents_static
 
         if static_agents_dict is not None:
             agents_static.static_agents_dict = static_agents_dict

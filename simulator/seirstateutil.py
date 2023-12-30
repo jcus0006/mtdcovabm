@@ -48,8 +48,15 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
     if resp is not None:
         seir_state_transition, timestep = resp[0], resp[1] # agent["state_transition_by_day"][today_index]
         current_seir_state = agents_seir_state_get(agents_seir_state, agentid) #agentindex
-        current_infection_type = agents_infection_type[agentid]
-        current_infection_severity = agents_infection_severity[agentid]
+        
+        current_infection_type = InfectionType.Undefined
+        current_infection_severity = Severity.Undefined
+
+        if agentid in agents_infection_type:
+            current_infection_type = agents_infection_type[agentid]
+
+        if agentid in agents_infection_severity:
+            current_infection_severity = agents_infection_severity[agentid]
 
         new_seir_state, new_infection_type, new_infection_severity = convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition)
 
@@ -106,7 +113,7 @@ def convert_state_transition_to_new_state(current_seir_state, current_infection_
             if current_infection_type == InfectionType.PreAsymptomatic:
                 new_infection_type = InfectionType.Asymptomatic
             # if PreSymptomatic, infection type will already be assigned, but is only to be considered infectious, if SEIR State is Infectious
-            return SEIRState.Infectious, new_infection_type, current_infection_severity
+            return SEIRState.Infectious, new_infection_type, Severity.Mild
         case SEIRStateTransition.InfectiousToSymptomatic:
             new_infection_type = current_infection_type
             if current_infection_type == InfectionType.PreSymptomatic:
@@ -127,7 +134,32 @@ def convert_state_transition_to_new_state(current_seir_state, current_infection_
             return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
         case SEIRStateTransition.CriticalToRecovery:
             return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-        case SEIRStateTransition.RecoveredToExposed:
-            return SEIRState.Exposed, current_infection_type, current_infection_severity
+        case SEIRStateTransition.RecoveredToSusceptible:
+            return SEIRState.Susceptible, current_infection_type, current_infection_severity
         case _:
             return SEIRState.Undefined, InfectionType.Undefined, Severity.Undefined
+        
+def get_previous_state_from_seir_state_transition(seir_state_transition):
+    match seir_state_transition:
+        case SEIRStateTransition.ExposedToInfectious:
+            return SEIRState.Exposed
+        case SEIRStateTransition.InfectiousToSymptomatic:
+            return SEIRState.Infectious
+        case SEIRStateTransition.SymptomaticToSevere:
+            return SEIRState.Infectious
+        case SEIRStateTransition.SevereToCritical:
+            return SEIRState.Infectious
+        case SEIRStateTransition.CriticalToDeath:
+            return SEIRState.Infectious
+        case SEIRStateTransition.AsymptomaticToRecovery:
+            return SEIRState.Infectious
+        case SEIRStateTransition.MildToRecovery:
+            return SEIRState.Infectious
+        case SEIRStateTransition.SevereToRecovery:
+            return SEIRState.Infectious
+        case SEIRStateTransition.CriticalToRecovery:
+            return SEIRState.Infectious
+        case SEIRStateTransition.RecoveredToSusceptible:
+            return SEIRState.Recovered
+        case _:
+            return SEIRState.Undefined

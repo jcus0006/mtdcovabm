@@ -12,6 +12,7 @@ import dask
 from dask.distributed import Client, get_worker, performance_report
 from copy import copy
 from util import MethodType
+from agents_epi import AgentsEpi
 import gc
 
 def contactnetwork_distributed(client: Client,
@@ -108,7 +109,7 @@ def contactnetwork_distributed(client: Client,
                 # cells_partial = {}
 
                 cells_agents_timesteps_partial = customdict.CustomDict()
-                agents_partial = customdict.CustomDict()
+                agents_partial = AgentsEpi()
                 vars_util_partial = vars.Vars()
 
                 # if not dask_full_array_mapping:
@@ -151,8 +152,9 @@ def contactnetwork_distributed(client: Client,
 
                 cat_partial_size = util.asizeof_formatted(vars_util_partial.cells_agents_timesteps)
                 vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                agents_partial_size = util.asizeof_formatted(agents_partial)
                 dyn_params_size = util.asizeof_formatted(dynparams)
-                print(f"cat size: {cat_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
+                print(f"cat size: {cat_partial_size}, vars_util size: {vars_util_partial_size}, agents partial size: {agents_partial_size}, dyn_params size: {dyn_params_size}")
 
                 if not use_mp:
                     if dask_mode == 0:

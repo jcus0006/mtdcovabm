@@ -526,7 +526,7 @@ def localitinerary_distributed(client: Client,
                     # start_partial = time.time()
                     hh_insts_partial = [hh_insts[index] for index in mp_hh_inst_ids_this_proc]      
 
-                    agents_partial, agents_ids_by_ages_partial, agents_epi_util_partial = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+                    agents_partial, agents_ids_by_ages_partial, agents_epi_util_partial = customdict.CustomDict(), customdict.CustomDict(), AgentsEpi()
                     vars_util_partial = vars.Vars()
 
                     # if not dask_full_array_mapping:

@@ -36,7 +36,7 @@ class Epidemiology:
         durations_days_distribution_parameters = epidemiologyparams["durations_days_distribution_parameters"]
 
         exp_to_inf_dist_params, inf_to_symp_dist_params, symp_to_severe_dist_params, sev_to_cri_dist_params, cri_to_death_dist_params = durations_days_distribution_parameters[0], durations_days_distribution_parameters[1], durations_days_distribution_parameters[2], durations_days_distribution_parameters[3], durations_days_distribution_parameters[4]
-        asymp_to_rec_dist_params, mild_to_rec_dist_params, sev_to_rec_dist_params, cri_to_rec_dist_params, rec_to_exp_min_max = durations_days_distribution_parameters[5], durations_days_distribution_parameters[6], durations_days_distribution_parameters[7], durations_days_distribution_parameters[8], durations_days_distribution_parameters[9]
+        asymp_to_rec_dist_params, mild_to_rec_dist_params, sev_to_rec_dist_params, cri_to_rec_dist_params, rec_to_sus_min_max = durations_days_distribution_parameters[5], durations_days_distribution_parameters[6], durations_days_distribution_parameters[7], durations_days_distribution_parameters[8], durations_days_distribution_parameters[9]
         self.exp_to_inf_mean, self.exp_to_inf_std = exp_to_inf_dist_params[0], exp_to_inf_dist_params[1]
         self.inf_to_symp_mean, self.inf_to_symp_std = inf_to_symp_dist_params[0], inf_to_symp_dist_params[1]
         self.symp_to_sev_mean, self.symp_to_sev_std = symp_to_severe_dist_params[0], symp_to_severe_dist_params[1]
@@ -46,7 +46,7 @@ class Epidemiology:
         self.mild_to_rec_mean, self.mild_to_rec_std = mild_to_rec_dist_params[0], mild_to_rec_dist_params[1]
         self.sev_to_rec_mean, self.sev_to_rec_std = sev_to_rec_dist_params[0], sev_to_rec_dist_params[1]
         self.cri_to_rec_mean, self.cri_to_rec_std = cri_to_rec_dist_params[0], cri_to_rec_dist_params[1]
-        self.rec_to_exp_mean, self.rec_to_exp_std = rec_to_exp_min_max[0], rec_to_exp_min_max[1]
+        self.rec_to_sus_mean, self.rec_to_sus_std = rec_to_sus_min_max[0], rec_to_sus_min_max[1]
 
         # intervention parameters
         self.testing_after_symptoms_probability = epidemiologyparams["testing_after_symptoms_probability"]
@@ -207,18 +207,24 @@ class Epidemiology:
                         # agent_state_transition_by_day = exposed_agent_epi["state_transition_by_day"]
                         # agent_quarantine_days = exposed_agent_epi["quarantine_days"]
 
-                        agent_seir_state, agent_infection_type, agent_infection_severity, recovered = self.simulate_seir_state_transition(day, exposed_agent_id, incremental_days, overlapping_timesteps, agent_epi_age_bracket_index, asymptomatic_multiplier)
+                        agent_seir_state, agent_infection_type, agent_infection_severity, _ = self.simulate_seir_state_transition(day, exposed_agent_id, incremental_days, overlapping_timesteps, agent_epi_age_bracket_index, asymptomatic_multiplier)
 
                         # self.agents_mp.set(exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day)
                         # self.sync_queue.put(["a", exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day]) # updated by ref in agent           
 
+                        self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, exposed_agent_id, self.agents_seir_indices)
+                        
                         if agent_infection_type != InfectionType.Undefined:
-                            # self.sync_queue.put(["v", exposed_agent_id, "agents_seir_state", agent_seir_state])
-                            self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, agent_seir_state, exposed_agent_id, self.agents_seir_indices)
-                            # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_type", agent_infection_type])
                             self.vars_util.agents_infection_type[exposed_agent_id] = agent_infection_type
-                            # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
+                        else:
+                            if exposed_agent_id in self.vars_util.agents_infection_type:
+                                del self.vars_util.agents_infection_type[exposed_agent_id]
+
+                        if agent_infection_severity != InfectionType.Undefined:
                             self.vars_util.agents_infection_severity[exposed_agent_id] = agent_infection_severity
+                        else:
+                            if exposed_agent_id in self.vars_util.agents_infection_severity:
+                                del self.vars_util.agents_infection_severity[exposed_agent_id]
 
         # print(f"vaccination multiplier total time taken {vacc_mult_time_taken}")
 
@@ -230,8 +236,12 @@ class Epidemiology:
         start_hosp_day, end_hosp_day = None, None
         
         seir_state = SEIRState.Exposed
-        infection_severity = Severity.Undefined
         infection_type = InfectionType.Undefined
+        infection_severity = Severity.Undefined
+
+        # exposed would be prior to day 1 (and hence would not be accurate), reset to the PREVIOUS states of first set SEIRStateTransition
+        reset_states = incremental_days < 1 
+        curr_seir_state, curr_inf_type, curr_inf_sev = None, None, None
 
         sampled_exposed_timestep = np.random.choice(overlapping_timesteps, size=1)[0]
         
@@ -242,8 +252,18 @@ class Epidemiology:
         # if agent_state_transition_by_day is None:
         #     agent_state_transition_by_day = []
 
-        if incremental_days > current_day:
+        if incremental_days >= current_day:
             self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.ExposedToInfectious, sampled_exposed_timestep])
+            
+            if reset_states:
+                if curr_seir_state is None:
+                    curr_seir_state = SEIRState.Exposed # was Infectious
+
+                if curr_inf_type is None:
+                    curr_inf_type = InfectionType.PreAsymptomatic
+
+                if curr_inf_sev is None:
+                    curr_inf_sev = InfectionType.Undefined
         # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.ExposedToInfectious, sampled_exposed_timestep])
 
         symptomatic_rand = random.random()
@@ -258,8 +278,18 @@ class Epidemiology:
             incremental_days += inf_to_symp_days
             symptomatic_day = incremental_days
 
-            if incremental_days > current_day:
+            if incremental_days >= current_day:
                 self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.InfectiousToSymptomatic, sampled_exposed_timestep])
+
+                if reset_states:
+                    if curr_seir_state is None:
+                        curr_seir_state = SEIRState.Infectious
+
+                    if curr_inf_type is None:
+                        curr_inf_type = InfectionType.PreSymptomatic
+
+                    if curr_inf_sev is None:
+                        curr_inf_sev = Severity.Undefined
             # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.InfectiousToSymptomatic, sampled_exposed_timestep]) 
 
             severe_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.SevereProbability][agent_epi_age_bracket_index]
@@ -273,8 +303,18 @@ class Epidemiology:
 
                 start_hosp_day = incremental_days
 
-                if incremental_days > current_day:
+                if incremental_days >= current_day:
                     self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.SymptomaticToSevere, sampled_exposed_timestep])
+
+                    if reset_states:
+                        if curr_seir_state is None:
+                            curr_seir_state = SEIRState.Infectious
+
+                        if curr_inf_type is None:
+                            curr_inf_type = InfectionType.Symptomatic
+
+                        if curr_inf_sev is None:
+                            curr_inf_sev = Severity.Mild
                 # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.SymptomaticToSevere, sampled_exposed_timestep]) 
 
                 critical_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.CriticalProbability][agent_epi_age_bracket_index]
@@ -286,8 +326,18 @@ class Epidemiology:
 
                     incremental_days += sev_to_cri_days
 
-                    if incremental_days > current_day:
+                    if incremental_days >= current_day:
                         self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.SevereToCritical, sampled_exposed_timestep])
+
+                        if reset_states:
+                            if curr_seir_state is None:
+                                curr_seir_state = SEIRState.Infectious
+
+                            if curr_inf_type is None:
+                                curr_inf_type = InfectionType.Symptomatic
+
+                            if curr_inf_sev is None:
+                                curr_inf_sev = Severity.Severe
                     # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.SevereToCritical, sampled_exposed_timestep]) 
 
                     deceased_probability = self.susceptibility_progression_mortality_probs_by_age[EpidemiologyProbabilities.DeceasedProbability][agent_epi_age_bracket_index]
@@ -301,8 +351,18 @@ class Epidemiology:
 
                         end_hosp_day = incremental_days
 
-                        if incremental_days > current_day:
+                        if incremental_days >= current_day:
                             self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.CriticalToDeath, sampled_exposed_timestep])
+
+                            if reset_states:
+                                if curr_seir_state is None:
+                                    curr_seir_state = SEIRState.Infectious
+
+                                if curr_inf_type is None:
+                                    curr_inf_type = InfectionType.Symptomatic
+
+                                if curr_inf_sev is None:
+                                    curr_inf_sev = Severity.Critical
                         # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.CriticalToDeath, sampled_exposed_timestep]) 
                     else:
                         # critical
@@ -312,8 +372,18 @@ class Epidemiology:
 
                         end_hosp_day = incremental_days
 
-                        if incremental_days > current_day:
+                        if incremental_days >= current_day:
                             self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.CriticalToRecovery, sampled_exposed_timestep])
+
+                            if reset_states:
+                                if curr_seir_state is None:
+                                    curr_seir_state = SEIRState.Infectious
+
+                                if curr_inf_type is None:
+                                    curr_inf_type = InfectionType.Symptomatic
+
+                                if curr_inf_sev is None:
+                                    curr_inf_sev = Severity.Critical
                         # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.CriticalToRecovery, sampled_exposed_timestep]) 
 
                         recovered = True
@@ -325,8 +395,18 @@ class Epidemiology:
 
                     end_hosp_day = incremental_days
 
-                    if incremental_days > current_day:
+                    if incremental_days >= current_day:
                         self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.SevereToRecovery, sampled_exposed_timestep])
+                        if reset_states:
+                            if curr_seir_state is None:
+                                curr_seir_state = SEIRState.Infectious
+
+                            if curr_inf_type is None:
+                                curr_inf_type = InfectionType.Symptomatic
+
+                            if curr_inf_sev is None:
+                                curr_inf_sev = Severity.Severe
+
                     # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.SevereToRecovery, sampled_exposed_timestep])
 
                     recovered = True
@@ -336,33 +416,71 @@ class Epidemiology:
 
                 incremental_days += mild_to_rec_days
                 
-                if incremental_days > current_day:
+                if incremental_days >= current_day:
                     self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.MildToRecovery, sampled_exposed_timestep])
+
+                    if reset_states:
+                        if curr_seir_state is None:
+                            curr_seir_state = SEIRState.Infectious
+
+                        if curr_inf_type is None:
+                            curr_inf_type = InfectionType.Symptomatic
+
+                        if curr_inf_sev is None:
+                            curr_inf_sev = Severity.Mild
                 # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.MildToRecovery, sampled_exposed_timestep])
 
                 recovered = True
         else:
             # asymptomatic
             infection_type = InfectionType.PreAsymptomatic # Pre-Asymptomatic is infectious, but only applies with Infectious state (and not Exposed)                        
-            
+
             asymp_to_rec_days = util.sample_log_normal(self.asymp_to_rec_mean, self.asymp_to_rec_std, 1, True)
 
             incremental_days += asymp_to_rec_days
             
-            if incremental_days > current_day:
+            if incremental_days >= current_day:
                 self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.AsymptomaticToRecovery, sampled_exposed_timestep])
+
+                if reset_states:
+                    if curr_seir_state is None:
+                        curr_seir_state = SEIRState.Infectious
+
+                    if curr_inf_type is None:
+                        curr_inf_type = InfectionType.Asymptomatic
+
+                    if curr_inf_sev is None:
+                        curr_inf_sev = Severity.Undefined
             # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.AsymptomaticToRecovery, sampled_exposed_timestep])
 
             recovered = True
 
         if recovered: # else means deceased
-            rec_to_exp_days = util.sample_log_normal(self.rec_to_exp_mean, self.rec_to_exp_std, 1, True)
+            rec_to_sus_days = util.sample_log_normal(self.rec_to_sus_mean, self.rec_to_sus_std, 1, True)
 
-            incremental_days += rec_to_exp_days
+            incremental_days += rec_to_sus_days
 
-            if incremental_days > current_day:
-                self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.RecoveredToExposed, sampled_exposed_timestep])
+            if incremental_days >= current_day:
+                self.agents_epi_util.set(incremental_days, exposed_agent_id, "state_transition", [SEIRStateTransition.RecoveredToSusceptible, sampled_exposed_timestep])
+
+                if reset_states:
+                    if curr_seir_state is None:
+                        curr_seir_state = SEIRState.Recovered
+
+                    if curr_inf_type is None:
+                        curr_inf_type = InfectionType.Undefined
+
+                    if curr_inf_sev is None:
+                        curr_inf_sev = Severity.Undefined
             # agent_state_transition_by_day.append([incremental_days, SEIRStateTransition.RecoveredToExposed, sampled_exposed_timestep])
+
+        if reset_states: # overwrite for cases when agents were exposed prior to sim start
+            if curr_seir_state is not None:
+                seir_state = curr_seir_state
+            if curr_inf_type is not None:
+                infection_type = curr_inf_type
+            if curr_inf_sev is not None:
+                infection_severity = curr_inf_sev
 
         if start_hosp_day is not None and start_hosp_day > current_day:
             hospitalisation_days = [start_hosp_day, sampled_exposed_timestep, end_hosp_day]
@@ -389,7 +507,7 @@ class Epidemiology:
                 sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
                     
                 self.schedule_quarantine(exposed_agent_id, start_quarantine_day, sampled_timestep, QuarantineType.Symptomatic)
-                
+
         return seir_state, infection_type, infection_severity, recovered
     
     def schedule_test(self, agent_id, day, start_timestep, quarantine_type):
@@ -406,10 +524,10 @@ class Epidemiology:
 
             #     raise ValueError("test_day not in agent {0}, existing_keys: {1}".format(str(agent_id), keys_in_agent))
             
-            test_day = self.agents_epi_util.get(day, agent_id, "test_day") # agent["test_day"]  
+            existing_test_day = self.agents_epi_util.get(day, agent_id, "test_day") # agent["test_day"]  
             # test_day = self.agents_mp.get(agent_id, "test_day")
 
-            test_already_scheduled = test_day is not None # would be either today or 5 days backwards / forwards from day
+            test_already_scheduled = existing_test_day is not None # would be either today or 5 days backwards / forwards from day
             # if test_day is not None and len(test_day) > 0:
             #     if abs(test_day[0] - day) < 5:
             #         test_already_scheduled = True
@@ -461,7 +579,7 @@ class Epidemiology:
         return test_scheduled, test_day, test_result_day
     
     # if end_day is not None, assume static start_day and end_day
-    def schedule_quarantine(self, agent_id, start_day, start_timestep, quarantine_type, end_day=None): # True if positive
+    def schedule_quarantine(self, agent_id, start_day, start_timestep, quarantine_type, end_day=None, reschedule=False): # True if positive
         quarantine_scheduled = False
         quarantine_days = None
 
@@ -487,9 +605,12 @@ class Epidemiology:
                 #         quarantine_days = self.agents_epi_util[agent_id]["quarantine_days"]
                 #     else:
                 #         quarantine_days = agent["quarantine_days"]
-                quarantine_days = self.agents_epi_util.get(start_day, agent_id, "quarantine_days")
-                
-                to_schedule_quarantine = quarantine_days is None # do not re-schedule existing quarantine
+                if reschedule:
+                    to_schedule_quarantine = True
+                else:
+                    existing_quar_days = self.agents_epi_util.get(start_day, agent_id, "quarantine_days")
+                    
+                    to_schedule_quarantine = existing_quar_days is None # do not re-schedule existing quarantine
 
                 # if quarantine_days is not None and len(quarantine_days) > 0: # to clear quarantine_days when ready from quaratine (in itinerary)
                 #     st_day = quarantine_days[0]

@@ -36,15 +36,16 @@ class EpidemiologyProbabilities(IntEnum):
 # to handle - mask-wearing + quarantine + testing + vaccination + contact tracing
 class SEIRStateTransition(IntEnum):
     ExposedToInfectious = 0, # in the case of a direct contact, (base_prob * susc_multiplier) chance of being exposed: if exposed (infected, not yet infectious), sample ExpToInfDays
-    InfectiousToSymptomatic = 1, # if exposed/infected, compute symptomatic_probability: if symptomatic, assign "Presymptomatic", sample InfToSymp, assign "Mild" after InfToSymp, else, assign "Asymptomatic"
-    SymptomaticToSevere = 2, # if symptomatic, compute severe_probability: if severe, sample SympToSev, assign "Severe" after InfToSymp + SympToSev
-    SevereToCritical = 3, # if severe, compute critical_probability: if critical, sample SevToCri, assign "Critical" after InfToSymp + SympToSev + SevToCri
-    CriticalToDeath = 4, # if critical, compute death_probability: if dead, sample CriToDea, send to "dead cell" after InfToSymp + SympToSev + SevToCri + CriToDea
-    AsymptomaticToRecovery = 5, # if asymptomatic (not symptomatic), sample AsympToRec, assign "Recovered" after AsympToRec
-    MildToRecovery = 6, # if mild, sample MildToRec, assign "Recovered" after MildToRec
-    SevereToRecovery = 7, # if severe, sample SevToRec, assign "Recovered" after SevToRec
-    CriticalToRecovery = 8 # if critical, sample CriToRec, assign "Recovered" after CriToRec
-    RecoveredToExposed = 9 # if recovered, sample RecToExp (uniform from range e.g. 30-90 days), assign "Exposed" after RecToExp
+    InfectiousToSymptomatic = 1, # if exposed/infected, compute symptomatic_probability: if symptomatic, assign "Presymptomatic", sample InfToSymp, assign "Mild" after InfToSymp, 
+    InfectiousToAsymptomatic = 2, # else, if "Asymptomatic"
+    SymptomaticToSevere = 3, # if symptomatic, compute severe_probability: if severe, sample SympToSev, assign "Severe" after InfToSymp + SympToSev
+    SevereToCritical = 4, # if severe, compute critical_probability: if critical, sample SevToCri, assign "Critical" after InfToSymp + SympToSev + SevToCri
+    CriticalToDeath = 5, # if critical, compute death_probability: if dead, sample CriToDea, send to "dead cell" after InfToSymp + SympToSev + SevToCri + CriToDea
+    AsymptomaticToRecovery = 6, # if asymptomatic (not symptomatic), sample AsympToRec, assign "Recovered" after AsympToRec
+    MildToRecovery = 7, # if mild, sample MildToRec, assign "Recovered" after MildToRec
+    SevereToRecovery = 8, # if severe, sample SevToRec, assign "Recovered" after SevToRec
+    CriticalToRecovery = 9 # if critical, sample CriToRec, assign "Recovered" after CriToRec
+    RecoveredToSusceptible = 10 # if recovered, sample RecToExp (uniform from range e.g. 30-90 days), assign "Susceptible" after RecToSus
 
 class QuarantineType(IntEnum):
     Symptomatic = 0, # there's a probabiliy that someone feels symptoms and quarantines immediately without having received a test result
