@@ -439,6 +439,8 @@ def localitinerary_worker(params, single_proc=False):
 
         use_mp = False
         agents_static = None
+        static_agents_dict = None
+        
         # sync_queue, day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_itinerary, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dyn_params, tourists_active_ids, process_index, process_counter = params
         if len(params) > 32:
             use_mp = True # could likely be in else of line 409
@@ -468,33 +470,32 @@ def localitinerary_worker(params, single_proc=False):
 
         worker = None
         if use_mp:
-            if use_shm:
-                if agents_static is None:
-                    from shared_mp import agents_ids_by_ages
-                    from shared_mp import timestepmins
-                    from shared_mp import n_locals
-                    from shared_mp import n_tourists
-                    from shared_mp import locals_ratio_to_full_pop
+            if agents_static is None:
+                from shared_mp import agents_ids_by_ages
+                from shared_mp import timestepmins
+                from shared_mp import n_locals
+                from shared_mp import n_tourists
+                from shared_mp import locals_ratio_to_full_pop
 
-                    from shared_mp import itineraryparams
-                    from shared_mp import epidemiologyparams
-                    from shared_mp import cells_industries_by_indid_by_wpid
-                    from shared_mp import cells_restaurants
-                    from shared_mp import cells_hospital
-                    from shared_mp import cells_testinghub
-                    from shared_mp import cells_vaccinationhub
-                    from shared_mp import cells_entertainment_by_activityid
-                    from shared_mp import cells_religious
-                    from shared_mp import cells_households
-                    from shared_mp import cells_breakfast_by_accomid
-                    from shared_mp import cells_airport
-                    from shared_mp import cells_transport
-                    from shared_mp import cells_institutions
-                    from shared_mp import cells_accommodation
-                    from shared_mp import agents_static
-                
-                if static_agents_dict is not None:
-                    agents_static.static_agents_dict = static_agents_dict
+                from shared_mp import itineraryparams
+                from shared_mp import epidemiologyparams
+                from shared_mp import cells_industries_by_indid_by_wpid
+                from shared_mp import cells_restaurants
+                from shared_mp import cells_hospital
+                from shared_mp import cells_testinghub
+                from shared_mp import cells_vaccinationhub
+                from shared_mp import cells_entertainment_by_activityid
+                from shared_mp import cells_religious
+                from shared_mp import cells_households
+                from shared_mp import cells_breakfast_by_accomid
+                from shared_mp import cells_airport
+                from shared_mp import cells_transport
+                from shared_mp import cells_institutions
+                from shared_mp import cells_accommodation
+                from shared_mp import agents_static
+            
+            if static_agents_dict is not None:
+                agents_static.static_agents_dict = static_agents_dict
         else:
             worker = get_worker()
             # agents_static = worker.client.futures["agents_static"]

@@ -73,7 +73,7 @@ class Static:
 
     # this should be called at the beginning only, and tourists will not be included by default as of 26/12/2023
     # in this regard use_tourists_dict should be forced, going forward
-    def populate(self, data, n_locals, n_tourists, use_shm=True, use_agents_dict=False, use_tourists_dict=False, remote=False):
+    def populate(self, data, n_locals, n_tourists, use_shm=True, use_agents_dict=False, use_tourists_dict=False, remote=False, dask_use_mp=False):
         start = time.time()
 
         n_total = n_locals + n_tourists
@@ -86,7 +86,7 @@ class Static:
         self.use_agents_dict = use_agents_dict
         self.use_tourists_dict = use_tourists_dict
 
-        if remote and self.use_shm: # Dask use_mp case
+        if remote and dask_use_mp: # Dask use_mp case
             self.manager = mp.Manager()            
             self.static_agents_dict = self.manager.dict() # static_agents_dict is dynamic, and this synchronizes (it will add overhead)
 

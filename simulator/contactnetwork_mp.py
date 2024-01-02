@@ -201,18 +201,20 @@ def contactnetwork_parallel(manager,
                 time_taken = time.time() - start
                 print("pool join time taken " + str(time_taken))
         else:
+            if len(vars_util.directcontacts_by_simcelltype_by_day) > 0:
+                current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+
+                if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+                    vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
+            else:
+                vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = 0
+
             params = day, weekday, n_locals, n_tourists, locals_ratio_to_full_pop, agents_epi, vars_util, cells_type, indids_by_cellid, cells_households, cells_institutions, cells_accommodation, contactnetworkparams, epidemiologyparams, dynparams, contact_network_sum_time_taken, -1, process_counter, log_file_name, agents_static, True
 
             result = contactnetwork_worker(params, True)
 
             if not type(result) is dict:
                 process_index, agents_epi, vars_util, _ = result
-
-                if len(vars_util.directcontacts_by_simcelltype_by_day) > 0:
-                    current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
-
-                    if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
-                        vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
             else:
                 exception_info = result
 

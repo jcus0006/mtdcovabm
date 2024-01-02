@@ -29,7 +29,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 6, # 365/20
+            "simulationdays": 24, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -42,9 +42,9 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 8, # vm given 10 cores, limiting to X for now (represents processes or workers, depending on mp or dask)
+            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
+            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -92,7 +92,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "mp_8p_quicktest_v2.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "contactracing10k.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -152,7 +152,7 @@ def read_only_data(dask_worker: Worker, dask_use_mp, agents_ids_by_ages, timeste
         temp_agents = json.load(read_file)
 
         agents_static = static.Static()
-        agents_static.populate(temp_agents, n_locals, n_tourists, use_shm, use_static_dict_locals, use_static_dict_tourists, True)
+        agents_static.populate(temp_agents, n_locals, n_tourists, use_shm, use_static_dict_locals, use_static_dict_tourists, True, dask_use_mp)
         
         dask_worker.data["agents_static"] = agents_static
 
@@ -177,13 +177,10 @@ def main():
     if not params["use_mp"] and not params["dask_use_mp"] and len(params["dask_nodes"]) == 0 and params["numprocesses"] == 1:
         params["use_mp"] = True # single process is handled in itinerary_mp and contactnetwork_mp, but does not actually use multiprocessing
 
-    if params["use_mp"]:
-        if params["numprocesses"] == 1:
-            params["use_shm"] = False
-        else:
-            params["use_shm"] = True
+    if params["use_mp"] and params["numprocesses"] == 1: # don't use shm in single process cases
+       params["use_shm"] = False
 
-    if not params["use_mp"] and not params["dask_use_mp"]:
+    if not params["use_mp"] and not params["dask_use_mp"]: # don't use shm if not using multiprocessing
         params["use_shm"] = False
             
     data_load_start_time = time.time()
@@ -1458,8 +1455,8 @@ def main():
 
                 start = time.time()
 
-                vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
-                vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[0],reverse=False)
+                # vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
+                # vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[0],reverse=False)
 
                 epi_util = epidemiology.Epidemiology(epidemiologyparams, 
                                                     n_locals, 
@@ -1643,8 +1640,10 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
         inf_sev_mem = util.asizeof_formatted(vars_util.agents_infection_severity)
         vacc_doses_mem = util.asizeof_formatted(vars_util.agents_vaccination_doses)
         dir_con_mem = util.asizeof_formatted(vars_util.directcontacts_by_simcelltype_by_day)
-        dir_con_idx1_mem = util.asizeof_formatted(vars_util.dc_by_sct_by_day_agent1_index)
-        dir_con_idx2_mem = util.asizeof_formatted(vars_util.dc_by_sct_by_day_agent2_index)
+        dir_con_idx1_mem = 0
+        dir_con_idx2_mem = 0
+        # dir_con_idx1_mem = util.asizeof_formatted(vars_util.dc_by_sct_by_day_agent1_index)
+        # dir_con_idx2_mem = util.asizeof_formatted(vars_util.dc_by_sct_by_day_agent2_index)
 
         # it_agents_mem = round(sum([sys.getsizeof(d) for a in it_agents.values() for d in a.values()]) / (1024 * 1024), 2)
         # epi_agents_mem = round(sum([sys.getsizeof(i) for c in agents_epi.values() for i in c.values()]) / (1024 * 1024), 2)

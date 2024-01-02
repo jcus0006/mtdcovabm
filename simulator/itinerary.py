@@ -2214,7 +2214,7 @@ class Itinerary:
                         is_false_negative = True
 
                     if not is_false_negative:
-                        self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts)) 
+                        self.vars_util.contact_tracing_agent_ids.add(agentid) 
 
                         is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent_epi)
                 else:
@@ -2225,7 +2225,7 @@ class Itinerary:
                         is_false_positive = True
 
                     if is_false_positive:
-                        self.vars_util.contact_tracing_agent_ids.add((agentid, start_ts))
+                        self.vars_util.contact_tracing_agent_ids.add(agentid)
 
                         is_quarantine_startday, _ = self.epi_util.schedule_quarantine(agentid, day, start_ts, QuarantineType.Positive, agent=agent_epi)
             elif day > test_result_day:
@@ -2373,7 +2373,7 @@ class Itinerary:
                 else:
                     if not is_tourist or (is_arrival_day_today and start_ts < arr_dep_ts): # re-scheduling not applicable for tourists leaving Malta (out of scope)
                         agent_epi["test_day"] = [day + 1, start_ts]
-            elif day > test_day:
+            elif (day - test_day) == 6: # if 6 days have passed, clear test day, to eventually clear-up memory (5 days are required because if agent has been tested in the last 5 days, another test won't be re-scheduled so quickly)
                 agent_epi["test_day"] = None
 
         if not is_tourist and "vaccination_days" in agent_epi and agent_epi["vaccination_days"] is not None and len(agent_epi["vaccination_days"]) > 0: # does not apply for tourists

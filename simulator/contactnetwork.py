@@ -107,9 +107,9 @@ class ContactNetwork:
 
                     current_index += 1
 
-                    if self.process_index == -1:
-                        self.vars_util.dc_by_sct_by_day_agent1_index.append([agent1_id, current_index])
-                        self.vars_util.dc_by_sct_by_day_agent2_index.append([agent2_id, current_index])
+                    # if self.process_index == -1:
+                    #     self.vars_util.dc_by_sct_by_day_agent1_index.append([agent1_id, current_index])
+                    #     self.vars_util.dc_by_sct_by_day_agent2_index.append([agent2_id, current_index])
 
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
