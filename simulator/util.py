@@ -628,8 +628,16 @@ def split_balanced_partitions(x, n):
     remainder = x % n
     partitions = [base_value] * n
 
-    for i in range(remainder):
-        partitions[i] += 1
+    while remainder > 0:
+        temp_remainder = remainder
+        for i in range(remainder):
+            if i < len(partitions):
+                partitions[i] += 1
+                temp_remainder -= 1
+            else:
+                break
+        
+        remainder = temp_remainder
 
     return partitions
 

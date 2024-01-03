@@ -14,6 +14,7 @@ import traceback
 from cells import Cells
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from actor_dist_mp import ActorDistMP
+from actor_dist import ActorDist
 from dynamicparams import DynamicParams
 import multiprocessing as mp
 from dask.distributed import Client, Worker, SSHCluster, performance_report
@@ -49,10 +50,11 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
+            "dask_full_stateful": True,
+            "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
             "dask_mode": 0, # 0 client.submit, 1 dask.delayed (client.compute) 2 dask.delayed (dask.compute - local) 3 client.map
@@ -92,7 +94,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": True,
-            "logfilename": "contactracing10k.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "daskstrat3.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -105,10 +107,20 @@ with open('config.json', 'r') as config_file:
 #             self.persons = json.load(read_file)
 #             self.persons_len = len(self.persons)
 
-def read_only_data(dask_worker: Worker, dask_use_mp, agents_ids_by_ages, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, use_shm, use_static_dict_locals, use_static_dict_tourists, logsubfoldername, logfilename):
+def read_only_data(dask_worker: Worker, dask_strategy, agents_ids_by_ages, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, use_shm, use_static_dict_locals, use_static_dict_tourists, logsubfoldername, logfilename):
     import os
     import platform
-    if dask_use_mp and platform.system() != "Linux": # mac osx uses spawn in recent Python versions; was causing "cannot pickle '_thread.lock' object" error
+
+    dask_use_mp = False
+    dask_actors = False
+
+    if dask_strategy == 1 or dask_strategy == 2:
+        dask_actors = True
+
+        if dask_strategy == 1:
+            dask_use_mp = True
+
+    if dask_actors and platform.system() != "Linux": # mac osx uses spawn in recent Python versions; was causing "cannot pickle '_thread.lock' object" error
         mp.set_start_method("fork")
 
     current_directory = os.getcwd()
@@ -182,6 +194,15 @@ def main():
 
     if not params["use_mp"] and not params["dask_use_mp"]: # don't use shm if not using multiprocessing
         params["use_shm"] = False
+
+    dask_strategy = None
+    if not params["use_mp"]:
+        if not params["dask_use_mp"] and not params["dask_full_stateful"]:
+            dask_strategy = 0
+        elif params["dask_use_mp"]:
+            dask_strategy = 1
+        elif params["dask_full_stateful"]:
+            dask_strategy = 2
             
     data_load_start_time = time.time()
 
@@ -528,7 +549,8 @@ def main():
             f.flush()
 
     cells_util = Cells(agents, cells, cellindex)
-
+    
+    num_households, num_institutions = 0, 0
     if params["loadhouseholds"]:
         hh_start = time.time()
         householdsfile = open(os.path.join(current_directory, "population", population_sub_folder, "households.json"))
@@ -556,6 +578,7 @@ def main():
 
         hh_cells_start = time.time()
         households, cells_households, _, _ = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
+        num_households = len(households)
         del households_original
         households_size = util.asizeof_formatted(households) # mem: households_size
         cells_households_size = util.asizeof_formatted(cells_households) # mem: cells_households_size
@@ -575,13 +598,15 @@ def main():
         institutionsfile = open(os.path.join(current_directory, "population", population_sub_folder, "institutions.json"))
         institutions = json.load(institutionsfile)
         institutionsfile.close()
+
+        num_institutions = len(institutions)
         inst_time_taken = time.time() - inst_start 
         data_load_time_taken += inst_time_taken
 
         institutions_cells_params = cellsparams["institutions"]
         
         inst_cells_start = time.time()
-        _, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
+        _, inst_ids_by_cellid, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
         institutions_size = util.asizeof_formatted(institutions) # mem: institutions_size
         cells_institutions_size = util.asizeof_formatted(cells_institutions) # mem: cells_institutions_size
         print(f"institutions size: {institutions_size}, cells_institutions_size: {cells_institutions_size}")
@@ -899,11 +924,11 @@ def main():
             start = time.time()
             # cluster = LocalCluster()
 
-            num_workers = 0
-            if params["dask_use_mp"]:
-                num_workers = 1
-            else:
-                num_workers = params["numprocesses"]
+            num_workers = 1 # this is set to 1, because now always expecting "dask_nodes_n_workers" to be specified for any Dask scenario
+            # if params["dask_use_mp"]:
+            #     num_workers = 1
+            # else:
+            #     num_workers = params["numprocesses"]
 
             num_threads = None
             if params["numthreads"] > 0:
@@ -911,7 +936,7 @@ def main():
 
             dask_nodes = []
 
-            if num_workers == 1 and not params["dask_use_mp"]:
+            if not params["dask_use_mp"]:
                 dask_nodes.append(params["dask_scheduler_node"])
 
                 for index, node in enumerate(params["dask_nodes"]):
@@ -946,7 +971,7 @@ def main():
                     dask_cn_workers_time_taken[node_index] = 1
 
             worker_class = ""
-            if not params["dask_use_mp"]:
+            if not params["dask_use_mp"] and not params["dask_full_stateful"]:
                 worker_class = "distributed.Nanny"
             else:
                 worker_class = "distributed.Worker"
@@ -965,7 +990,7 @@ def main():
             if f is not None:
                 f.flush()
 
-            if params["dask_use_mp"]:
+            if params["dask_use_mp"] or params["dask_full_stateful"]:
                 print("sleeping for 5 seconds to make sure the cluster and inner processes have started successfully")
                 time.sleep(5)
 
@@ -1018,7 +1043,12 @@ def main():
                 client.upload_file('simulator/itinerary.py')
                 client.upload_file('simulator/contactnetwork.py')
                 # client.upload_file('simulator/itinerary_dask.py')
-                client.upload_file('simulator/actor_dist_mp.py')
+
+                if params["dask_use_mp"]:
+                    client.upload_file('simulator/actor_dist_mp.py')
+                elif params["dask_full_stateful"]:
+                    client.upload_file('simulator/actor_dist.py')
+
                 client.upload_file('simulator/itinerary_mp.py')
                 client.upload_file('simulator/itinerary_dist.py')      
                 client.upload_file('simulator/contactnetwork_dist.py')
@@ -1029,7 +1059,7 @@ def main():
                     client.upload_file(dynamicjsonpath)
                 
                 callback = partial(read_only_data, 
-                                dask_use_mp=params["dask_use_mp"],
+                                dask_strategy=dask_strategy,
                                 agents_ids_by_ages=agents_ids_by_ages, 
                                 timestepmins=params["timestepmins"], 
                                 n_locals=n_locals, 
@@ -1120,13 +1150,107 @@ def main():
             util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
         
         if params["dask_use_mp"]:
-            for worker_index in range(len(workers_keys)):
+            num_actors = len(workers_keys)
+            for worker_index in range(num_actors):
+                worker_url = workers_keys[worker_index]
                 num_processes = params["dask_nodes_n_workers"][worker_index]
                 dmp_params = (num_processes, worker_index, params["remotelogsubfoldername"], params["logfilename"])
-                actor_future = client.submit(ActorDistMP, dmp_params, actor=True)
+                actor_future = client.submit(ActorDistMP, dmp_params, workers=worker_url, actor=True)
                 
                 actor = actor_future.result()
                 actors.append(actor)
+
+        if params["dask_full_stateful"]:
+            num_actors = sum(params["dask_nodes_n_workers"])
+
+            # if not params["dask_actors_innerproc_assignment"]:
+            #     dask_num_tasks = num_actors
+            # else:
+            #     dask_num_tasks = num_inner_processes
+
+            # split residences
+            hh_inst_split_indices = util.split_residences_by_weight(hh_insts, num_actors)
+
+            # split cells
+            cells_ids = np.array(list(cells.keys())[len(cells_households) + len(cells_institutions):])
+            np.random.shuffle(cells_ids)
+
+            num_cells_per_actor = util.split_balanced_partitions(len(cells_ids), num_actors)
+            
+            cells_split_ids = []
+            cells_index = 0
+            for num_cells_this_actor in num_cells_per_actor:
+                this_actor_cells_ids = []
+
+                for _ in range(num_cells_this_actor):
+                    this_actor_cells_ids.append(cells_ids[cells_index])
+                    cells_index += 1
+
+                cells_split_ids.append(this_actor_cells_ids)
+
+            res_ids_by_worker_lookup, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+            worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+
+            # if params["dask_actors_innerproc_assignment"]:
+            #     temp_hh_inst_split_indices = [[] for _ in range(len(workers))]
+            #     temp_cells_split_indices = [[] for _ in range(len(workers))]
+
+            #     cursor = 0        
+            #     for ni, num_workers in enumerate(params["dask_nodes_n_workers"]):
+            #         for _ in range(num_workers):
+            #             temp_hh_inst_split_indices[ni].extend(hh_inst_split_indices[cursor])
+            #             temp_cells_split_indices[ni].extend(cells_split_indices[cursor])
+            #             cursor += 1
+
+            #     hh_inst_split_indices = temp_hh_inst_split_indices
+            #     cells_split_indices = temp_cells_split_indices
+            
+            worker_index = 0
+            for _, num_workers in enumerate(params["dask_nodes_n_workers"]):
+                for _ in range(num_workers):
+                    hh_inst_split_indices_this_worker = hh_inst_split_indices[worker_index]
+
+                    agent_ids_this_worker = []
+                    hh_inst_cell_ids = []
+
+                    for index in hh_inst_split_indices_this_worker:
+                        if index < num_households:
+                            hh_inst_cell_ids.append(index)
+                        else:
+                            hh_inst_cell_ids.append(inst_ids_by_cellid[index])
+
+                        hh_inst = hh_insts[index]
+                        agent_ids_this_worker.extend(hh_inst["resident_uids"])
+                        worker_by_res_ids_lookup[index] = worker_index
+
+                    for agent_id in agent_ids_this_worker:
+                        worker_by_agent_ids_lookup[agent_id] = worker_index
+
+                    cell_ids_this_worker = hh_inst_cell_ids
+                    cell_ids_this_worker.extend(cells_split_ids[worker_index])
+
+                    for cell_id in cell_ids_this_worker:
+                        worker_by_cell_ids_lookup[cell_id] = worker_index
+
+                    res_ids_by_worker_lookup[worker_index] = hh_inst_split_indices_this_worker
+                    agent_ids_by_worker_lookup[worker_index] = agent_ids_this_worker
+                    cell_ids_by_worker_lookup[worker_index] = cell_ids_this_worker
+
+                    worker_index += 1
+
+            worker_index = 0
+            for _, num_workers in enumerate(params["dask_nodes_n_workers"]):
+                for _ in range(num_workers):
+                    worker_url = workers_keys[worker_index]
+
+                    d_params = (workers_keys, worker_index, res_ids_by_worker_lookup, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, params["remotelogsubfoldername"], params["logfilename"])
+                    actor_future = client.submit(ActorDist, d_params, workers=worker_url, actor=True)
+                    
+                    actor = actor_future.result()
+                    actors.append(actor)          
+
+                    worker_index += 1
+                
 
         for day in simdays_range: # 365 + 1 / 1 + 1
             print("simulating day {0}".format(str(day)))
@@ -1343,7 +1467,7 @@ def main():
                                                                     dask_it_workers_time_taken,
                                                                     dask_mp_it_processes_time_taken,
                                                                     params["dask_dynamic_load_balancing"],
-                                                                    params["dask_use_mp_innerproc_assignment"],
+                                                                    params["dask_actors_innerproc_assignment"],
                                                                     f,
                                                                     actors,
                                                                     log_file_name)
@@ -1420,7 +1544,7 @@ def main():
                                                                 params["dask_nodes_n_workers"],
                                                                 dask_cn_workers_time_taken,
                                                                 dask_mp_cn_processes_time_taken,
-                                                                params["dask_use_mp_innerproc_assignment"],
+                                                                params["dask_actors_innerproc_assignment"],
                                                                 f,
                                                                 actors,
                                                                 log_file_name)
