@@ -17,7 +17,7 @@ from actor_dist_mp import ActorDistMP
 from actor_dist import ActorDist
 from dynamicparams import DynamicParams
 import multiprocessing as mp
-from dask.distributed import Client, Worker, SSHCluster, performance_report
+from dask.distributed import Client, Worker, SSHCluster, performance_report, as_completed
 # from dask.distributed import WorkerPlugin
 from functools import partial
 import gc
@@ -1210,6 +1210,9 @@ def main():
                 for _ in range(num_workers):
                     hh_inst_split_indices_this_worker = hh_inst_split_indices[worker_index]
 
+                    it_agents_this_worker, agents_epi_this_worker = customdict.CustomDict(), customdict.CustomDict()
+                    vars_util_this_worker = vars.Vars()
+
                     agent_ids_this_worker = []
                     hh_inst_cell_ids = []
 
@@ -1224,6 +1227,20 @@ def main():
                         worker_by_res_ids_lookup[index] = worker_index
 
                     for agent_id in agent_ids_this_worker:
+                        it_agents_this_worker[agent_id] = it_agents[agent_id]
+                        agents_epi_this_worker[agent_id] = agents_epi[agent_id]
+
+                        if agent_id in vars_util.agents_seir_state:
+                            vars_util_this_worker.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
+                        if agent_id in vars_util.agents_seir_state_transition_for_day:
+                            vars_util_this_worker.agents_seir_state_transition_for_day[agent_id] = vars_util.agents_seir_state_transition_for_day[agent_id]
+                        if agent_id in vars_util.agents_infection_type:
+                            vars_util_this_worker.agents_infection_type[agent_id] = vars_util.agents_infection_type[agent_id]
+                        if agent_id in vars_util.agents_infection_severity:
+                            vars_util_this_worker.agents_infection_severity[agent_id] = vars_util.agents_infection_severity[agent_id]
+                        if agent_id in vars_util.agents_vaccination_doses:
+                            vars_util_this_worker.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+                        
                         worker_by_agent_ids_lookup[agent_id] = worker_index
 
                     cell_ids_this_worker = hh_inst_cell_ids
@@ -1232,9 +1249,9 @@ def main():
                     for cell_id in cell_ids_this_worker:
                         worker_by_cell_ids_lookup[cell_id] = worker_index
 
-                    res_ids_by_worker_lookup[worker_index] = hh_inst_split_indices_this_worker
-                    agent_ids_by_worker_lookup[worker_index] = agent_ids_this_worker
-                    cell_ids_by_worker_lookup[worker_index] = cell_ids_this_worker
+                    res_ids_by_worker_lookup[worker_index] = set(hh_inst_split_indices_this_worker)
+                    agent_ids_by_worker_lookup[worker_index] = set(agent_ids_this_worker)
+                    cell_ids_by_worker_lookup[worker_index] = set(cell_ids_this_worker)
 
                     worker_index += 1
 
@@ -1243,14 +1260,31 @@ def main():
                 for _ in range(num_workers):
                     worker_url = workers_keys[worker_index]
 
-                    d_params = (workers_keys, worker_index, res_ids_by_worker_lookup, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, params["remotelogsubfoldername"], params["logfilename"])
+                    d_params = (workers_keys, 
+                                worker_index, 
+                                it_agents_this_worker, 
+                                agents_epi_this_worker, 
+                                vars_util_this_worker, 
+                                dyn_params,
+                                res_ids_by_worker_lookup, 
+                                agent_ids_by_worker_lookup, 
+                                cell_ids_by_worker_lookup, 
+                                worker_by_res_ids_lookup, 
+                                worker_by_agent_ids_lookup, 
+                                worker_by_cell_ids_lookup, 
+                                params["remotelogsubfoldername"], 
+                                params["logfilename"])
+                    
                     actor_future = client.submit(ActorDist, d_params, workers=worker_url, actor=True)
                     
                     actor = actor_future.result()
                     actors.append(actor)          
 
-                    worker_index += 1
-                
+                    worker_index += 1   
+
+            for ai, actor in enumerate(actors):
+                temp_actors = [a if i != ai else None for i, a in enumerate(actors)]
+                actor.set_remote_actors(temp_actors)
 
         for day in simdays_range: # 365 + 1 / 1 + 1
             print("simulating day {0}".format(str(day)))
@@ -1268,6 +1302,10 @@ def main():
                     f.flush()
 
             weekday, weekdaystr = util.day_of_year_to_day_of_week(day, params["year"])
+
+            if params["dask_full_stateful"]:
+                for actor in actors:
+                    actor.reset_day(day, weekday, weekdaystr, dyn_params)
 
             vars_util.contact_tracing_agent_ids = set()
             vars_util.reset_daily_structures()
@@ -1319,7 +1357,7 @@ def main():
                 if f is not None:
                     f.flush()
 
-                tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], f)
+                tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], params["dask_full_stateful"], f)
                 print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
                 if f is not None:
                     f.flush()
@@ -1447,7 +1485,7 @@ def main():
                                                                                 params["dask_submit"],
                                                                                 params["dask_map_batched_results"],
                                                                                 log_file_name)
-                        else:
+                        elif not params["dask_full_stateful"]:
                             itinerary_dist.localitinerary_distributed(client,
                                                                     day, 
                                                                     weekday, 
@@ -1471,6 +1509,15 @@ def main():
                                                                     f,
                                                                     actors,
                                                                     log_file_name)
+                        else: # full stateful
+                            futures = []
+                            for actor in actors:
+                                futures.append(actor.itinerary())
+
+                            for future in as_completed(futures):
+                                a_worker_index, vars_util.contact_tracing_agent_ids, a_tt, a_results_tt, a_avg_tt = future.result()
+
+                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(vars_util.contact_tracing_agent_ids)}, time taken: {a_tt}, send results time taken: {a_results_tt}, avg time taken: {a_avg_tt}")
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
 

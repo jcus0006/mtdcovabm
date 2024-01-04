@@ -325,7 +325,7 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
         departing_tourists_agent_ids = []
 
         start = time.time()
@@ -394,7 +394,12 @@ class Tourism:
                 else:
                     params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
                     actor = actors[worker_index]
-                    future = actor.run_update_tourist_data_remote(params)
+                    
+                    if not dask_full_stateful:
+                        future = actor.run_update_tourist_data_remote(params)
+                    else:
+                        future = actor.tourists_sync(params)
+
                     futures.append(future)
 
             self.agents_static_to_sync = {}

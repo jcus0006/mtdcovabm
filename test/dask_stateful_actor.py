@@ -1,9 +1,9 @@
 from dask.distributed import get_worker, get_client
 import os
 
-def receive_message(params):
-    sender_url, message, log_file_name = params
-    append_to_file(log_file_name, f"Sender_url {sender_url}, Message {message}")
+# def receive_message(params):
+#     sender_url, message, log_file_name = params
+#     append_to_file(log_file_name, f"Sender_url {sender_url}, Message {message}")
 
 def append_to_file(log_file_name, text):
     if type(text) != str:
@@ -16,6 +16,7 @@ class Actor:
     def __init__(self, params):
         self.worker = get_worker()
         self.client = get_client()
+        self.actors = []
 
         self.worker_index, self.log_file_path = params
 
@@ -26,8 +27,17 @@ class Actor:
 
         append_to_file(self.log_file_name, "Actor " + str(self.worker_index) + " initialized.")
 
-    def send_message(self, worker_key, message, log_file_name):
-        self.client.submit(receive_message, (self.worker.address, message, log_file_name), workers=worker_key)
+    def set_remote_actors(self, actors):
+        self.actors = actors
+
+    def receive_message(self, params):
+        sender_url, message, log_file_name = params
+        append_to_file(log_file_name, f"Sender_url {sender_url}, Message {message}")
+
+    def send_message(self, worker_key, message, log_file_name, worker_index):
+        params = (self.worker.address, message, log_file_name)
+        self.actors[worker_index].receive_message(params)
+        # self.client.submit(receive_message, (self.worker.address, message, log_file_name), workers=worker_key)
         
     def return_worker_index(self, anymessage):
         append_to_file(self.log_file_name, "Worker index: " + str(self.worker_index) + ", Any message: " + anymessage)

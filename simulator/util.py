@@ -447,6 +447,9 @@ def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agen
         if not contact_tracing:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
+            if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+                vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+        
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
 
@@ -468,9 +471,6 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
         curr_agent_epi = agents_epi_partial[agentid]
         
         agents_epi[agentid] = curr_agent_epi
-
-        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
-            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
         if agentid in vars_util_partial.agents_seir_state:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
@@ -498,6 +498,33 @@ def sync_state_info_by_agentsids_ct(agents_ids, agents_epi, agents_epi_partial):
         agents_epi[agentid] = curr_agent_epi
     
     return agents_epi
+
+def sync_state_info_by_agentsids_agents_epi(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+    # updated_count = 0
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+
+        vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+
+        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+        
+        if agentid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
+
+        if agentid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
+
+        if agentid in vars_util_partial.agents_vaccination_doses:
+            vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
+
+        # updated_count += 1  
+
+    # print("synced " + str(updated_count) + " agents")
+    
+    return agents_epi, vars_util
 
 def sync_state_info_sets(day, vars_util, vars_util_partial):
     if len(vars_util_partial.contact_tracing_agent_ids) > 0:
