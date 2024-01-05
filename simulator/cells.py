@@ -586,6 +586,7 @@ class Cells:
         institutions_by_type = {}
         institutionscells = {}
         inst_ids_by_cellid = {}
+        cell_ids_by_inst_id = {}
 
         for institution in institutions:
             institutions_by_id = {}
@@ -600,6 +601,8 @@ class Cells:
             instid = institution["instid"]
             insttypeid = institution["insttypeid"]
 
+            cell_ids_by_inst_id[instid] = []
+
             staff_resident_ratio = num_staff / num_members
 
             max_members = int(cellsize * (1 - cellsizespare))
@@ -611,6 +614,7 @@ class Cells:
                 self.cells[self.cellindex] = { "type": CellType.Institution, "place": cells_by_cellid[self.cellindex]}
                 institutionscells[self.cellindex] = self.cells[self.cellindex]
                 inst_ids_by_cellid[self.cellindex] = instid
+                cell_ids_by_inst_id[instid].append(self.cellindex)
 
                 if len(self.agents) > 0:
                     for uid in residents:
@@ -661,6 +665,7 @@ class Cells:
                     self.cells[self.cellindex] = { "type": CellType.Institution, "place": cells_by_cellid[self.cellindex]}
                     institutionscells[self.cellindex] = self.cells[self.cellindex]
                     inst_ids_by_cellid[self.cellindex] = instid
+                    cell_ids_by_inst_id[instid].append(self.cellindex)
 
                     if len(self.agents) > 0:
                         for uid in temp_residents:
@@ -685,7 +690,7 @@ class Cells:
             else:
                 institutions_by_type[insttypeid] = institutions_by_id
 
-        return institutions_by_type, inst_ids_by_cellid, institutionscells
+        return institutions_by_type, inst_ids_by_cellid, institutionscells, cell_ids_by_inst_id
     
     def create_airport_cell(self): # this is a single cell
         airport_cell = {"visitor_uids":[]}

@@ -577,7 +577,7 @@ def main():
             workplaces_cells_params = cellsparams["workplaces"]
 
         hh_cells_start = time.time()
-        households, cells_households, _, _ = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
+        households, _, cells_households, _ = cells_util.convert_households(households_original, workplaces, workplaces_cells_params)
         num_households = len(households)
         del households_original
         households_size = util.asizeof_formatted(households) # mem: households_size
@@ -606,7 +606,7 @@ def main():
         institutions_cells_params = cellsparams["institutions"]
         
         inst_cells_start = time.time()
-        _, inst_ids_by_cellid, cells_institutions = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
+        _, inst_ids_by_cellid, cells_institutions, cell_ids_by_inst_id = cells_util.split_institutions_by_cellsize(institutions, institutions_cells_params[0], institutions_cells_params[1])  
         institutions_size = util.asizeof_formatted(institutions) # mem: institutions_size
         cells_institutions_size = util.asizeof_formatted(cells_institutions) # mem: cells_institutions_size
         print(f"institutions size: {institutions_size}, cells_institutions_size: {cells_institutions_size}")
@@ -1170,9 +1170,13 @@ def main():
 
             # split residences
             hh_inst_split_indices = util.split_residences_by_weight(hh_insts, num_actors)
+            
+            inst_keys = list(cells_institutions.keys())
+            first_inst_key = inst_keys[0]
+            last_inst_key = inst_keys[-1]
 
-            # split cells
-            cells_ids = np.array(list(cells.keys())[len(cells_households) + len(cells_institutions):])
+            # split cells (except households and institutions - for now)
+            cells_ids = np.array(list(cells.keys())[last_inst_key+1:]) # from last inst + 1 until end
             np.random.shuffle(cells_ids)
 
             num_cells_per_actor = util.split_balanced_partitions(len(cells_ids), num_actors)
@@ -1188,28 +1192,16 @@ def main():
 
                 cells_split_ids.append(this_actor_cells_ids)
 
-            res_ids_by_worker_lookup, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+            agent_ids_by_worker_lookup, cell_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict()
             worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
-
-            # if params["dask_actors_innerproc_assignment"]:
-            #     temp_hh_inst_split_indices = [[] for _ in range(len(workers))]
-            #     temp_cells_split_indices = [[] for _ in range(len(workers))]
-
-            #     cursor = 0        
-            #     for ni, num_workers in enumerate(params["dask_nodes_n_workers"]):
-            #         for _ in range(num_workers):
-            #             temp_hh_inst_split_indices[ni].extend(hh_inst_split_indices[cursor])
-            #             temp_cells_split_indices[ni].extend(cells_split_indices[cursor])
-            #             cursor += 1
-
-            #     hh_inst_split_indices = temp_hh_inst_split_indices
-            #     cells_split_indices = temp_cells_split_indices
+            worker_data = customdict.CustomDict()
             
             worker_index = 0
             for _, num_workers in enumerate(params["dask_nodes_n_workers"]):
                 for _ in range(num_workers):
                     hh_inst_split_indices_this_worker = hh_inst_split_indices[worker_index]
 
+                    hh_insts_this_worker = []
                     it_agents_this_worker, agents_epi_this_worker = customdict.CustomDict(), customdict.CustomDict()
                     vars_util_this_worker = vars.Vars()
 
@@ -1217,14 +1209,16 @@ def main():
                     hh_inst_cell_ids = []
 
                     for index in hh_inst_split_indices_this_worker:
-                        if index < num_households:
-                            hh_inst_cell_ids.append(index)
-                        else:
-                            hh_inst_cell_ids.append(inst_ids_by_cellid[index])
-
                         hh_inst = hh_insts[index]
-                        agent_ids_this_worker.extend(hh_inst["resident_uids"])
+
+                        if hh_inst["is_hh"]:
+                            hh_inst_cell_ids.append(index) # hh_id == cell_id, set as is
+                        else:
+                            hh_inst_cell_ids.extend(cell_ids_by_inst_id[hh_inst["id"]]) # set all cell ids per inst (can be more than 1)
+
+                        agent_ids_this_worker.extend(hh_inst["resident_uids"]) # set all agents within this residence in the same worker
                         worker_by_res_ids_lookup[index] = worker_index
+                        hh_insts_this_worker.append(hh_inst)
 
                     for agent_id in agent_ids_this_worker:
                         it_agents_this_worker[agent_id] = it_agents[agent_id]
@@ -1243,15 +1237,15 @@ def main():
                         
                         worker_by_agent_ids_lookup[agent_id] = worker_index
 
-                    cell_ids_this_worker = hh_inst_cell_ids
-                    cell_ids_this_worker.extend(cells_split_ids[worker_index])
+                    cell_ids_this_worker = hh_inst_cell_ids # set residence cells
+                    cell_ids_this_worker.extend(cells_split_ids[worker_index]) # extend with other cells
 
                     for cell_id in cell_ids_this_worker:
                         worker_by_cell_ids_lookup[cell_id] = worker_index
 
-                    res_ids_by_worker_lookup[worker_index] = set(hh_inst_split_indices_this_worker)
                     agent_ids_by_worker_lookup[worker_index] = set(agent_ids_this_worker)
                     cell_ids_by_worker_lookup[worker_index] = set(cell_ids_this_worker)
+                    worker_data[worker_index] = [hh_insts_this_worker, it_agents_this_worker, agents_epi_this_worker, vars_util_this_worker]
 
                     worker_index += 1
 
@@ -1262,11 +1256,11 @@ def main():
 
                     d_params = (workers_keys, 
                                 worker_index, 
-                                it_agents_this_worker, 
-                                agents_epi_this_worker, 
-                                vars_util_this_worker, 
+                                worker_data[worker_index][0], # hh_insts
+                                worker_data[worker_index][1], # it_agents
+                                worker_data[worker_index][2], # agents_epi
+                                worker_data[worker_index][3], # vars_util
                                 dyn_params,
-                                res_ids_by_worker_lookup, 
                                 agent_ids_by_worker_lookup, 
                                 cell_ids_by_worker_lookup, 
                                 worker_by_res_ids_lookup, 
@@ -1515,8 +1509,11 @@ def main():
                                 futures.append(actor.itinerary())
 
                             for future in as_completed(futures):
-                                a_worker_index, vars_util.contact_tracing_agent_ids, a_tt, a_results_tt, a_avg_tt = future.result()
+                                a_worker_index, contact_tracing_agent_ids_partial, a_tt, a_results_tt, a_avg_tt = future.result()
 
+                                if len(contact_tracing_agent_ids_partial) > 0:
+                                    vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
+                                
                                 print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(vars_util.contact_tracing_agent_ids)}, time taken: {a_tt}, send results time taken: {a_results_tt}, avg time taken: {a_avg_tt}")
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data

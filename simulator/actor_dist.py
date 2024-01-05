@@ -2,6 +2,7 @@ import os
 import time
 from dask.distributed import get_worker, get_client, as_completed
 import customdict, vars, tourism_dist, itinerary, util
+from cellsclasses import CellType
 from enum import Enum
 
 # the client will start each stage on each actor
@@ -14,7 +15,7 @@ class ActorDist:
 
         self.remote_actors = []
 
-        workers_keys, workerindex, it_agents, agents_epi, vars_util, dyn_params, res_ids_by_worker_lookup, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
+        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, dyn_params, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
 
         current_directory = os.getcwd()
         subfolder_name = logfilename.replace(".txt", "")
@@ -25,13 +26,11 @@ class ActorDist:
         self.workers_keys = workers_keys
         self.worker_index = workerindex
         self.worker_key = self.workers_keys[self.worker_index]
-        self.res_ids_by_process_lookup = res_ids_by_worker_lookup # {worker_id: [resid0, resid1, ..]}
         self.agent_ids_by_process_lookup = agent_ids_by_worker_lookup
         self.cell_ids_by_process_lookup = cell_ids_by_worker_lookup
         self.worker_by_res_ids_lookup = worker_by_res_ids_lookup # {id: worker_id}
         self.worker_by_agent_ids_lookup = worker_by_agent_ids_lookup
         self.worker_by_cell_ids_lookup = worker_by_cell_ids_lookup
-        self.res_ids = set(self.res_ids_by_process_lookup[self.worker_index]) # [resid0, resid1, ..]
         self.agent_ids = set(self.agent_ids_by_process_lookup[self.worker_index])
         self.cell_ids = set(self.cell_ids_by_process_lookup[self.worker_index])
 
@@ -42,6 +41,7 @@ class ActorDist:
         # self.workers_sync_flag = None
         # self.init_worker_flags()
         self.dyn_params = dyn_params
+        self.hh_insts = hh_insts
         self.it_agents = it_agents # this does not have to be shared with the remote nodes or returned to the client!
         self.agents_epi = agents_epi
         self.vars_util = vars_util # direct contacts do not have to be shared with the remote nodes, it can be simply returned to the client
@@ -128,14 +128,11 @@ class ActorDist:
         num_agents_working_schedule = 0
         working_schedule_times_by_resid = {}
 
-        hh_insts = cells_households | cells_institutions # merge dicts
-
         if self.day == 1 or self.weekday_str == "Monday":
             # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
             start = time.time()
-            for hh_inst_cell in hh_insts.values():
+            for hh_inst in self.hh_insts:
                 start = time.time()
-                hh_inst = hh_inst_cell["place"]
                 # print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
                 itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
                 time_taken = time.time() - start
@@ -150,9 +147,8 @@ class ActorDist:
 
         num_agents_itinerary = 0
         itinerary_times_by_resid = {}
-        for hh_inst_cell in hh_insts.values():
+        for hh_inst in self.hh_insts:
             res_start = time.time()
-            hh_inst = hh_inst_cell["place"]
             itinerary_util.generate_local_itinerary(self.day, self.weekday, hh_inst["resident_uids"])
             res_timetaken = time.time() - res_start
             itinerary_times_by_resid[hh_inst["id"]] = res_timetaken
@@ -161,7 +157,7 @@ class ActorDist:
         send_results_start_time = time.time()
         # send results
         self.send_results()
-        send_results_time_taken = time.time() - start
+        send_results_time_taken = time.time() - send_results_start_time
         print("send results time taken: " + str(send_results_time_taken))
 
         time_taken = time.time() - start
@@ -236,14 +232,17 @@ class ActorDist:
         
         results = []
         for wi in range(len(self.workers_keys)):
-            data = send_results_by_worker_id[wi]
-            params = (self.worker_index, self.simstage, data)
-            results.append(self.remote_actors[wi].receive_results(params))
-            # self.client.submit(receive_results, (self.worker.address, self.simstage, data), workers=worker_key)
+            if wi != self.worker_index:
+                data = send_results_by_worker_id[wi]
+                params = (self.worker_index, self.simstage, data)
+                result = self.remote_actors[wi].receive_results(params)
+                results.append(result)
+                # results.append(self.remote_actors[wi].receive_results(params))
+                # self.client.submit(receive_results, (self.worker.address, self.simstage, data), workers=worker_key)
 
         result_index = 0
-        for future in as_completed(results):
-            result = future.result()
+        for result in results:
+            # result = result.result()
             print("Message Result {0}: {1}".format(str(result_index), str(result)))
             result_index += 1
 
@@ -261,6 +260,8 @@ class ActorDist:
         self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
 
         # self.workers_sync_flag[sender_worker_index] = True
+
+        return True
 
     # def init_worker_flags(self):
     #     self.workers_sync_flag = customdict.CustomDict({
