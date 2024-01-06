@@ -763,14 +763,14 @@ class Epidemiology:
                             residence = self.cells_accommodation[res_cell_id]["place"] # res_cell_id
 
                         if residence is not None:
-                            resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
+                            resident_ids = residence["place"][residents_key] # self.cells_mp.get(residence, residents_key) 
                             contact_id_index = np.argwhere(resident_ids == contact_id)
                             resident_ids = np.delete(resident_ids, contact_id_index)
 
                             employees_ids = []
 
                             if staff_key != "":
-                                employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
+                                employees_ids = residence["place"][staff_key] # self.cells_mp.get(residence, staff_key)
 
                             sec_contact_ids = []
                             if employees_ids is None or len(employees_ids) == 0:

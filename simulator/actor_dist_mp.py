@@ -63,7 +63,7 @@ class ActorDistMP:
             f = open(log_file_name, "w")
             sys.stdout = f
 
-            util.log_memory_usage(f, "Before assigning work. ")
+            # util.log_memory_usage(f, "Before assigning work. ")
 
             mp_hh_inst_indices = util.split_residences_by_weight(hh_insts, self.num_processes) # to do - for the time being this assumes equal split but we may have more information about the cores of the workers
 
@@ -111,11 +111,11 @@ class ActorDistMP:
 
             imap_results = self.pool.imap(run_itinerary_single, imap_params)
 
-            util.log_memory_usage(f, "After assigning work. ")
+            # util.log_memory_usage(f, "After assigning work. ")
 
             it_agents, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, workers_remote_time_taken)
                 
-            util.log_memory_usage(f, "After syncing results. ")
+            # util.log_memory_usage(f, "After syncing results. ")
 
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
@@ -154,7 +154,7 @@ class ActorDistMP:
             f = open(log_file_name, "w")
             sys.stdout = f
 
-            util.log_memory_usage(f, "Before assigning work. ")
+            # util.log_memory_usage(f, "Before assigning work. ")
 
             cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, self.num_processes)
 
@@ -197,18 +197,18 @@ class ActorDistMP:
 
             imap_results = self.pool.imap(run_contactnetwork_single, imap_params)
             
-            util.log_memory_usage(f, "After assigning work. ")
+            # util.log_memory_usage(f, "After assigning work. ")
 
             _, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, workers_remote_time_taken)
                 
-            util.log_memory_usage(f, "After syncing results. ")
+            # util.log_memory_usage(f, "After syncing results. ")
 
             # certain data does not have to go back because it would not have been updated in this context
             vars_util.cells_agents_timesteps = customdict.CustomDict()
             vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
             vars_util.agents_vaccination_doses = customdict.CustomDict()
 
-            util.log_memory_usage(f, "Before returning. ")
+            # util.log_memory_usage(f, "Before returning. ")
 
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
@@ -274,8 +274,8 @@ def run_itinerary_single(params):
         f = open(log_file_name, "w")
         sys.stdout = f
 
-        util.log_memory_usage(f, "Pre global memory important. ", pre_mem_info)
-        util.log_memory_usage(f, "Before processing itinerary. ")
+        # util.log_memory_usage(f, "Pre global memory important. ", pre_mem_info)
+        # util.log_memory_usage(f, "Before processing itinerary. ")
 
         itinerary_util = itinerary.Itinerary(itineraryparams,
                                             timestepmins, 
@@ -340,7 +340,7 @@ def run_itinerary_single(params):
 
         main_time_taken = time.time() - main_start
 
-        util.log_memory_usage(f, "After processing itinerary. ")
+        # util.log_memory_usage(f, "After processing itinerary. ")
 
         return worker_index, agents_dynamic, agents_epi, vars_util_mp, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
@@ -385,8 +385,8 @@ def run_contactnetwork_single(params):
         f = open(log_file_name, "w")
         sys.stdout = f
 
-        util.log_memory_usage(f, "Pre global memory important. ", pre_mem_info)
-        util.log_memory_usage(f, "Before processing contact network. ")
+        # util.log_memory_usage(f, "Pre global memory important. ", pre_mem_info)
+        # util.log_memory_usage(f, "Before processing contact network. ")
 
         contact_network_util = contactnetwork.ContactNetwork(n_locals, 
                                                             n_tourists, 
@@ -406,7 +406,7 @@ def run_contactnetwork_single(params):
 
         _, _, agents_epi, vars_util = contact_network_util.simulate_contact_network(day, weekday)
         
-        util.log_memory_usage(f, "After processing contact network. ") 
+        # util.log_memory_usage(f, "After processing contact network. ") 
 
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
@@ -415,7 +415,7 @@ def run_contactnetwork_single(params):
 
         main_time_taken = time.time() - main_start
 
-        util.log_memory_usage(f, "After cleaning data structures. ")
+        # util.log_memory_usage(f, "After cleaning data structures. ")
 
         return worker_index, agents_epi, vars_util, main_time_taken
     except Exception as e:

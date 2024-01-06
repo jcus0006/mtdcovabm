@@ -182,9 +182,9 @@ def contactnetwork_parallel(manager,
             # print("contact network state info sync (combined). time taken " + str(time_taken) + ", ended at " + str(sync_time_end))
 
             start = time.time()
-            util.log_memory_usage(prepend_text= "Before syncing contact network results ")
+            # util.log_memory_usage(prepend_text= "Before syncing contact network results ")
             _, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
-            util.log_memory_usage(prepend_text= "After syncing contact network results ")
+            # util.log_memory_usage(prepend_text= "After syncing contact network results ")
             
             time_taken = time.time() - start
             print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -282,7 +282,7 @@ def contactnetwork_worker(params, single_proc=False):
             sys.stdout = f
 
         print("process " + str(process_index) + " started at " + str(start))
-        util.log_memory_usage(f, "Start: ", pre_mem_info)
+        # util.log_memory_usage(f, "Start: ", pre_mem_info)
 
         contact_network_util = contactnetwork.ContactNetwork(n_locals, 
                                                             n_tourists, 
@@ -317,7 +317,7 @@ def contactnetwork_worker(params, single_proc=False):
     finally:
         gc.collect()
 
-        util.log_memory_usage(f, "End: ")
+        # util.log_memory_usage(f, "End: ")
 
         if process_counter is not None:
             process_counter.value -= 1

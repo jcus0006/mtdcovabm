@@ -30,7 +30,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 24, # 365/20
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -45,15 +45,15 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "visualise": False,
             "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
             "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": True,
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -74,7 +74,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes_n_workers": [8], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -93,8 +93,8 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
-            "logmemoryinfo": True,
-            "logfilename": "daskstrat3.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logmemoryinfo": False,
+            "logfilename": "quicktest365_daskstrat2_8p_3d.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -350,7 +350,8 @@ def main():
     original_stdout = sys.stdout
     sys.stdout = f
 
-    util.log_memory_usage(f, "Created data frames. Loading data.. ")
+    if params["logmemoryinfo"]:
+        util.log_memory_usage(f, "Created data frames. Loading data.. ")
 
     print("interpreter: " + os.path.dirname(sys.executable))
     print("current working directory: " + os.getcwd())
@@ -901,12 +902,14 @@ def main():
     if f is not None:
         f.flush()
 
-    util.log_memory_usage(f, "Loaded data. Before gc.collect() ")
+    if params["logmemoryinfo"]:
+        util.log_memory_usage(f, "Loaded data. Before gc.collect() ")
     gc_start = time.time()
     gc.collect()
     gc_time_taken = time.time() - gc_start
     print("gc time_taken: " + str(gc_time_taken))
-    util.log_memory_usage(f, "Loaded data. After gc.collect() ")
+    if params["logmemoryinfo"]:
+        util.log_memory_usage(f, "Loaded data. After gc.collect() ")
     
     dask_combined_scores_nworkers = None
     dask_it_workers_time_taken, dask_cn_workers_time_taken = {}, {}
@@ -1144,10 +1147,12 @@ def main():
         tourist_util = None
 
         if params["loadtourism"]:
-            util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
             tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution) 
             tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
-            util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
         
         if params["dask_use_mp"]:
             num_actors = len(workers_keys)
@@ -1337,7 +1342,8 @@ def main():
                 if f is not None:
                     f.flush()
 
-                util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
 
                 start = time.time()
                 
@@ -1356,7 +1362,8 @@ def main():
                 if f is not None:
                     f.flush()
 
-                util.log_memory_usage(f, "Loaded data. After tourist itinerary ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After tourist itinerary ")
 
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
@@ -1371,7 +1378,8 @@ def main():
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
             if day == 1: # from day 2 onwards always calculated at eod
-                util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
 
                 num_arrivals, num_departures = 0, 0
 
@@ -1381,11 +1389,16 @@ def main():
                     num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
             
                 dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
-                util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
+
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
 
             if not params["quicktourismrun"]:
                 start = time.time()  
-                util.log_memory_usage(f, "Loaded data. Before local itinerary ")
+
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before local itinerary ")
+
                 if params["use_mp"]:
                     itinerary_mp.localitinerary_parallel(manager,
                                                         pool,
@@ -1517,13 +1530,16 @@ def main():
                                 print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(vars_util.contact_tracing_agent_ids)}, time taken: {a_tt}, send results time taken: {a_results_tt}, avg time taken: {a_avg_tt}")
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "After itinerary. Before gc.collect() ")
 
-                util.log_memory_usage(f, "After itinerary. Before gc.collect() ")
                 gc_start = time.time()
                 gc.collect()
                 gc_time_taken = time.time() - gc_start
                 print("gc time_taken: " + str(gc_time_taken))
-                util.log_memory_usage(f, "After itinerary. After gc.collect() ")
+
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "After itinerary. After gc.collect() ")
 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -1544,7 +1560,8 @@ def main():
                     if f is not None:
                         f.flush()
 
-                    util.log_memory_usage(f, "Loaded data. Before contact network ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. Before contact network ")
 
                     start = time.time()       
 
@@ -1593,12 +1610,15 @@ def main():
                                                                 actors,
                                                                 log_file_name)
 
-                    util.log_memory_usage(f, "After contact network. Before gc.collect() ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "After contact network. Before gc.collect() ")
                     gc_start = time.time()
                     gc.collect()
                     gc_time_taken = time.time() - gc_start
                     print("gc time_taken: " + str(gc_time_taken))
-                    util.log_memory_usage(f, "After contact network. After gc.collect() ")
+
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "After contact network. After gc.collect() ")
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -1614,107 +1634,114 @@ def main():
                     if f is not None:
                         f.flush()
 
-                # contact tracing
-                print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
-                if f is not None:
-                    f.flush()
+                    # contact tracing
+                    print("contact_tracing for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
+                        f.flush()
 
-                util.log_memory_usage(f, "Loaded data. Before contact tracing ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. Before contact tracing ")
+
+                    start = time.time()
+
+                    # vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
+                    # vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[0],reverse=False)
+
+                    epi_util = epidemiology.Epidemiology(epidemiologyparams, 
+                                                        n_locals, 
+                                                        n_tourists, 
+                                                        locals_ratio_to_full_pop,
+                                                        agents_static,
+                                                        agents_epi, 
+                                                        vars_util, 
+                                                        cells_households, 
+                                                        cells_institutions, 
+                                                        cells_accommodation, 
+                                                        dyn_params)
+
+                    # contacttracing_mp.contacttracing_parallel(manager, 
+                    #                                         pool, 
+                    #                                         day, 
+                    #                                         epidemiologyparams, 
+                    #                                         n_locals, 
+                    #                                         n_tourists, 
+                    #                                         locals_ratio_to_full_pop, 
+                    #                                         ct_agents, 
+                    #                                         vars_util, 
+                    #                                         cells_households, 
+                    #                                         cells_institutions, 
+                    #                                         cells_accommodation, 
+                    #                                         dyn_params, 
+                    #                                         params["numprocesses"], 
+                    #                                         params["numthreads"], 
+                    #                                         params["keep_processes_open"], 
+                    #                                         log_file_name)
+
+                    if not params["contacttracing_distributed"]:
+                        _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
+                    else:
+                        vars_util.reset_daily_structures()
+
+                        contacttracing_dist.contacttracing_distributed(client, 
+                                                                    day, 
+                                                                    epi_util,
+                                                                    agents_epi, 
+                                                                    vars_util, 
+                                                                    dyn_params, 
+                                                                    params["dask_mode"],
+                                                                    params["dask_numtasks"],
+                                                                    params["dask_full_array_mapping"],
+                                                                    params["keep_processes_open"],
+                                                                    f,
+                                                                    log_file_name)
+                    
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "After contact tracing. Before gc.collect() ")
+                    gc_start = time.time()
+                    gc.collect()
+                    gc_time_taken = time.time() - gc_start
+                    print("gc time_taken: " + str(gc_time_taken))
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "After contact tracing. After gc.collect() ")
+
+                    time_taken = time.time() - start
+                    contactracing_sum_time_taken += time_taken
+                    avg_time_taken = contactracing_sum_time_taken / day
+                    perf_timings_df.loc[day, "contacttracing_day"] = round(time_taken, 2)
+                    perf_timings_df.loc[day, "contacttracing_avg"] = round(avg_time_taken, 2)
+                    print("contact_tracing time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+
+                    if f is not None:
+                        f.flush()   
+
+                    # vaccinations
+                    print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
+                        f.flush()
+
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. Before vaccinations ")
+                    start = time.time()
+                    epi_util.schedule_vaccinations(day)
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. After vaccinations ")
+                    time_taken = time.time() - start
+                    vaccination_sum_time_taken += time_taken
+                    avg_time_taken = vaccination_sum_time_taken / day
+                    perf_timings_df.loc[day, "vaccination_day"] = round(time_taken, 2)
+                    perf_timings_df.loc[day, "vaccination_avg"] = round(avg_time_taken, 2)
+                    print("schedule_vaccinations time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+                    if f is not None:
+                        f.flush()
+
+                    print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
+                        f.flush()
 
                 start = time.time()
 
-                # vars_util.dc_by_sct_by_day_agent1_index.sort(key=lambda x:x[0],reverse=False)
-                # vars_util.dc_by_sct_by_day_agent2_index.sort(key=lambda x:x[0],reverse=False)
-
-                epi_util = epidemiology.Epidemiology(epidemiologyparams, 
-                                                    n_locals, 
-                                                    n_tourists, 
-                                                    locals_ratio_to_full_pop,
-                                                    agents_static,
-                                                    agents_epi, 
-                                                    vars_util, 
-                                                    cells_households, 
-                                                    cells_institutions, 
-                                                    cells_accommodation, 
-                                                    dyn_params)
-
-                # contacttracing_mp.contacttracing_parallel(manager, 
-                #                                         pool, 
-                #                                         day, 
-                #                                         epidemiologyparams, 
-                #                                         n_locals, 
-                #                                         n_tourists, 
-                #                                         locals_ratio_to_full_pop, 
-                #                                         ct_agents, 
-                #                                         vars_util, 
-                #                                         cells_households, 
-                #                                         cells_institutions, 
-                #                                         cells_accommodation, 
-                #                                         dyn_params, 
-                #                                         params["numprocesses"], 
-                #                                         params["numthreads"], 
-                #                                         params["keep_processes_open"], 
-                #                                         log_file_name)
-
-                if not params["contacttracing_distributed"]:
-                    _, _updated_agent_ids, agents_epi, vars_util = epi_util.contact_tracing(day, f=f) # process_index, updated_agent_ids
-                else:
-                    vars_util.reset_daily_structures()
-
-                    contacttracing_dist.contacttracing_distributed(client, 
-                                                                day, 
-                                                                epi_util,
-                                                                agents_epi, 
-                                                                vars_util, 
-                                                                dyn_params, 
-                                                                params["dask_mode"],
-                                                                params["dask_numtasks"],
-                                                                params["dask_full_array_mapping"],
-                                                                params["keep_processes_open"],
-                                                                f,
-                                                                log_file_name)
-
-                util.log_memory_usage(f, "After contact tracing. Before gc.collect() ")
-                gc_start = time.time()
-                gc.collect()
-                gc_time_taken = time.time() - gc_start
-                print("gc time_taken: " + str(gc_time_taken))
-                util.log_memory_usage(f, "After contact tracing. After gc.collect() ")
-
-                time_taken = time.time() - start
-                contactracing_sum_time_taken += time_taken
-                avg_time_taken = contactracing_sum_time_taken / day
-                perf_timings_df.loc[day, "contacttracing_day"] = round(time_taken, 2)
-                perf_timings_df.loc[day, "contacttracing_avg"] = round(avg_time_taken, 2)
-                print("contact_tracing time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-
-                if f is not None:
-                    f.flush()   
-
-                # vaccinations
-                print("schedule_vaccinations for simday " + str(day) + ", weekday " + str(weekday))
-                if f is not None:
-                    f.flush()
-
-                util.log_memory_usage(f, "Loaded data. Before vaccinations ")
-                start = time.time()
-                epi_util.schedule_vaccinations(day)
-                util.log_memory_usage(f, "Loaded data. After vaccinations ")
-                time_taken = time.time() - start
-                vaccination_sum_time_taken += time_taken
-                avg_time_taken = vaccination_sum_time_taken / day
-                perf_timings_df.loc[day, "vaccination_day"] = round(time_taken, 2)
-                perf_timings_df.loc[day, "vaccination_avg"] = round(avg_time_taken, 2)
-                print("schedule_vaccinations time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-                if f is not None:
-                    f.flush()
-
-                print("refresh_dynamic_parameters for simday " + str(day) + ", weekday " + str(weekday))
-                if f is not None:
-                    f.flush()
-
-                start = time.time()
-                util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
 
                 num_arrivals, num_departures = 0, 0
 
@@ -1725,7 +1752,8 @@ def main():
                     
                 dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
                 interventions_logs_df, statistics_logs_df = dyn_params.update_logs_df(day, interventions_logs_df, statistics_logs_df)
-                util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters and updating statistics ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters and updating statistics ")
                 time_taken = time.time() - start
                 refresh_dyn_params_sum_time_taken += time_taken
                 avg_time_taken = refresh_dyn_params_sum_time_taken / day
@@ -1735,19 +1763,24 @@ def main():
                 if f is not None:
                     f.flush()
 
-            mem_start = time.time()
-            util.log_memory_usage(f, "Loaded data. Before calculating memory info ")
-            memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
-            util.log_memory_usage(f, "Loaded data. After calculating memory info ")
-            mem_time_taken = time.time() - mem_start
-            print("log memory info time_taken: " + str(mem_time_taken))
+            if params["logmemoryinfo"]:
+                mem_start = time.time()
+                util.log_memory_usage(f, "Loaded data. Before calculating memory info ")
+                memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
+                util.log_memory_usage(f, "Loaded data. After calculating memory info ")
+                mem_time_taken = time.time() - mem_start
+                print("log memory info time_taken: " + str(mem_time_taken))
 
-            util.log_memory_usage(f, "End of sim day. Before gc.collect() ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "End of sim day. Before gc.collect() ")
+
             gc_start = time.time()
             gc.collect()
             gc_time_taken = time.time() - gc_start
             print("gc time_taken: " + str(gc_time_taken))
-            util.log_memory_usage(f, "End of sim day. After gc.collect() ")
+
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "End of sim day. After gc.collect() ")
                               
             day_time_taken = time.time() - day_start
             simdays_sum_time_taken += day_time_taken

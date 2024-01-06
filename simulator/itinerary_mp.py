@@ -325,7 +325,7 @@ def localitinerary_parallel(manager,
             if proc_use_pool == 3 or proc_use_pool == 4:
                 start = time.time()
 
-                util.log_memory_usage(prepend_text="Before syncing itinerary results ")
+                # util.log_memory_usage(prepend_text="Before syncing itinerary results ")
                 if proc_use_pool == 3:
                     it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None)
                 elif proc_use_pool == 4:
@@ -340,7 +340,7 @@ def localitinerary_parallel(manager,
                         # print(working_schedule_times_by_resid_ordered)
                         # print(itinerary_times_by_resid_ordered)            
 
-                util.log_memory_usage(prepend_text= "After syncing itinerary results ") 
+                # util.log_memory_usage(prepend_text= "After syncing itinerary results ") 
                             
                 time_taken = time.time() - start
                 print("syncing pool imap results back with main process. time taken " + str(time_taken))
@@ -466,7 +466,7 @@ def localitinerary_worker(params, single_proc=False):
             f = open(log_file_name, "w")
             sys.stdout = f
 
-        util.log_memory_usage(f, "Start: ", pre_mem_info)
+        # util.log_memory_usage(f, "Start: ", pre_mem_info)
 
         worker = None
         if use_mp:
@@ -661,7 +661,7 @@ def localitinerary_worker(params, single_proc=False):
             process_counter.value -= 1
 
         if f is not None:
-            util.log_memory_usage(f, "End: ")
+            # util.log_memory_usage(f, "End: ")
 
             # Close the file
             f.close()

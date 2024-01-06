@@ -709,6 +709,10 @@ class Itinerary:
 
                                         if latest_wake_up_hour <= 24 and latest_wake_up_hour >= start_work_school_hour - 1:
                                             wakeup_hour = start_work_school_hour - 1
+
+                                            if wakeup_hour < 0:
+                                                wakeup_hour = 0
+
                                             wakeup_timestep = self.get_timestep_by_hour(wakeup_hour) # force wake up before work
                                         
                                 else: # student
@@ -1298,6 +1302,10 @@ class Itinerary:
                 agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
                 last_timestep = agent_itinerary_timesteps[-1]
                 for timestep in agent_itinerary_timesteps:
+                    if timestep < 0 or timestep > 143:
+                        temp_it = agent["itinerary"][timestep]
+                        raise Exception(f"Error: Negative timesteps in itinerary. Day {simday}, Agent {agentid}, Timestep {timestep}, Itinerary {temp_it}")                   
+                    
                     if timestep != last_timestep:
                         del agent["itinerary"][timestep]
 
@@ -1608,6 +1616,10 @@ class Itinerary:
                             agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
                             last_timestep = agent_itinerary_timesteps[-1]
                             for timestep in agent_itinerary_timesteps:
+                                if timestep < 0 or timestep > 143:
+                                    temp_it = agent["itinerary"][timestep]
+                                    raise Exception(f"Error: Negative timesteps in itinerary. Day {simday}, Agent {agentid}, Timestep {timestep}, Itinerary {temp_it}")   
+                    
                                 if timestep != last_timestep:
                                     del agent["itinerary"][timestep]
                     else:
@@ -1656,6 +1668,10 @@ class Itinerary:
                                 agent_itinerary_timesteps = sorted(agent["itinerary"].keys())
                                 last_timestep = agent_itinerary_timesteps[-1]
                                 for timestep in agent_itinerary_timesteps:
+                                    if timestep < 0 or timestep > 143:
+                                        temp_it = agent["itinerary"][timestep]
+                                        raise Exception(f"Error: Negative timesteps in itinerary. Day {simday}, Agent {agentid}, Timestep {timestep}, Itinerary {temp_it}")   
+                                    
                                     if timestep != last_timestep:
                                         del agent["itinerary"][timestep]
         except Exception as e:
@@ -1783,7 +1799,7 @@ class Itinerary:
             #if len(airport_overnight_cellids_by_ts) == 0 or is_arrivalday: # if airport_overnight_cellids_by_ts contains data for departure case skip going to the airport, waking up and sleeping
             if is_departureday and len(airport_overnight_cellids_by_ts) == 0:
                 # if prev_night_airport_cellid is None: # if not already at the airport from previous day
-                max_leave_for_airport_time = arr_dep_time - 3
+                max_leave_for_airport_time = arr_dep_time - min(arr_dep_time, 3)
                 max_leave_for_airport_ts = self.get_timestep_by_hour(max_leave_for_airport_time)
 
             if (not is_departureday or len(airport_overnight_cellids_by_ts) == 0) and next_day_checkin_timestep is None and wakeup_timestep is None: # would already be set for arrivals
@@ -1926,7 +1942,26 @@ class Itinerary:
                 if is_departureday and len(airport_overnight_cellids_by_ts) == 0:
                     trip_to_airport_time = self.rng.choice(np.arange(3, 10), size=1)[0]
 
-                    max_arrive_at_airport_ts = max_leave_for_airport_ts + trip_to_airport_time
+                    # max_leave_for_airport_ts here will be 0 at most; which means time must have to be moved accordingly to account for this
+                    # trip to airport time here is purely random, so it does not add any epidemiological value whatsoever (timings can be played with)
+
+                    if max_leave_for_airport_ts + trip_to_airport_time >= arr_dep_ts + 1:
+                        max_arrive_at_airport_ts = arr_dep_ts - 3
+                    else:
+                        max_arrive_at_airport_ts = max_leave_for_airport_ts + trip_to_airport_time 
+
+                    if max_arrive_at_airport_ts < 0:
+                        max_arrive_at_airport_ts = 0
+
+                    if max_arrive_at_airport_ts == arr_dep_ts or (arr_dep_ts - max_arrive_at_airport_ts) < 3:
+                        diff_between_arr_dep_ts_and_max_arrive = arr_dep_ts - max_arrive_at_airport_ts
+
+                        to_adjust = 3 - diff_between_arr_dep_ts_and_max_arrive
+
+                        if max_arrive_at_airport_ts - to_adjust > 0:
+                            max_arrive_at_airport_ts -= to_adjust
+                        else:
+                            arr_dep_ts += to_adjust # make sure there's a suitable time between arrival at airport and departure
 
                     # go to airport, spend the duration as imposed by the tourists_arrivals_departures_for_day dict, in different airport cells at random"
                     # delete tourists_arrivals_departures_for_day and tourists_active_groupids by tourist group id (hence left the country) (this will be after spending time at the airport)"
