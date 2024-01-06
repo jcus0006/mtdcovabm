@@ -29,7 +29,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 24, # 365/20
+            "simulationdays": 6, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -49,9 +49,9 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -72,7 +72,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes_n_workers": [8], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -91,8 +91,8 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
-            "logmemoryinfo": True,
-            "logfilename": "contactracing10k.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logmemoryinfo": False,
+            "logfilename": "quick10ktest_daskstrat2_itinerarybugissue.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -186,12 +186,14 @@ def main():
     data_load_start_time = time.time()
 
     simdays_range = range(1, params["simulationdays"] + 1)
-    perf_timings_df = pd.DataFrame(index=simdays_range, columns=["tourismitinerary_day", 
+    perf_timings_df = pd.DataFrame(index=simdays_range, columns=["day_day",
+                                                              "tourismitinerary_day", 
                                                               "localitinerary_day", 
                                                               "contactnetwork_day", 
                                                               "contacttracing_day", 
                                                               "vaccination_day", 
                                                               "refreshdynamicparams_day",
+                                                              "day_avg",
                                                               "tourismitinerary_avg", 
                                                               "localitinerary_avg", 
                                                               "contactnetwork_avg", 
@@ -329,7 +331,8 @@ def main():
     original_stdout = sys.stdout
     sys.stdout = f
 
-    util.log_memory_usage(f, "Created data frames. Loading data.. ")
+    if params["logmemoryinfo"]:
+        util.log_memory_usage(f, "Created data frames. Loading data.. ")
 
     print("interpreter: " + os.path.dirname(sys.executable))
     print("current working directory: " + os.getcwd())
@@ -876,12 +879,15 @@ def main():
     if f is not None:
         f.flush()
 
-    util.log_memory_usage(f, "Loaded data. Before gc.collect() ")
+    if params["logmemoryinfo"]:
+        util.log_memory_usage(f, "Loaded data. Before gc.collect() ")
     gc_start = time.time()
     gc.collect()
     gc_time_taken = time.time() - gc_start
     print("gc time_taken: " + str(gc_time_taken))
-    util.log_memory_usage(f, "Loaded data. After gc.collect() ")
+
+    if params["logmemoryinfo"]:
+        util.log_memory_usage(f, "Loaded data. After gc.collect() ")
     
     dask_combined_scores_nworkers = None
     dask_it_workers_time_taken, dask_cn_workers_time_taken = {}, {}
@@ -1114,10 +1120,12 @@ def main():
         tourist_util = None
 
         if params["loadtourism"]:
-            util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
             tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution) 
             tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
-            util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
         
         if params["dask_use_mp"]:
             for worker_index in range(len(workers_keys)):
@@ -1181,7 +1189,8 @@ def main():
                 if f is not None:
                     f.flush()
 
-                util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
 
                 start = time.time()
                 
@@ -1200,7 +1209,8 @@ def main():
                 if f is not None:
                     f.flush()
 
-                util.log_memory_usage(f, "Loaded data. After tourist itinerary ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After tourist itinerary ")
 
                 time_taken = time.time() - start
                 tourist_itinerary_sum_time_taken += time_taken
@@ -1215,7 +1225,8 @@ def main():
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
             if day == 1: # from day 2 onwards always calculated at eod
-                util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
 
                 num_arrivals, num_departures = 0, 0
 
@@ -1225,11 +1236,14 @@ def main():
                     num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
             
                 dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
-                util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
 
             if not params["quicktourismrun"]:
                 start = time.time()  
-                util.log_memory_usage(f, "Loaded data. Before local itinerary ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before local itinerary ")
+
                 if params["use_mp"]:
                     itinerary_mp.localitinerary_parallel(manager,
                                                         pool,
@@ -1349,13 +1363,14 @@ def main():
                                                                     log_file_name)
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
-
-                util.log_memory_usage(f, "After itinerary. Before gc.collect() ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "After itinerary. Before gc.collect() ")
                 gc_start = time.time()
                 gc.collect()
                 gc_time_taken = time.time() - gc_start
                 print("gc time_taken: " + str(gc_time_taken))
-                util.log_memory_usage(f, "After itinerary. After gc.collect() ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "After itinerary. After gc.collect() ")
 
                 time_taken = time.time() - start
                 itinerary_sum_time_taken += time_taken
@@ -1376,7 +1391,8 @@ def main():
                     if f is not None:
                         f.flush()
 
-                    util.log_memory_usage(f, "Loaded data. Before contact network ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. Before contact network ")
 
                     start = time.time()       
 
@@ -1424,13 +1440,14 @@ def main():
                                                                 f,
                                                                 actors,
                                                                 log_file_name)
-
-                    util.log_memory_usage(f, "After contact network. Before gc.collect() ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "After contact network. Before gc.collect() ")
                     gc_start = time.time()
                     gc.collect()
                     gc_time_taken = time.time() - gc_start
                     print("gc time_taken: " + str(gc_time_taken))
-                    util.log_memory_usage(f, "After contact network. After gc.collect() ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "After contact network. After gc.collect() ")
 
                     time_taken = time.time() - start
                     contactnetwork_sum_time_taken += time_taken
@@ -1451,7 +1468,8 @@ def main():
                 if f is not None:
                     f.flush()
 
-                util.log_memory_usage(f, "Loaded data. Before contact tracing ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before contact tracing ")
 
                 start = time.time()
 
@@ -1505,13 +1523,14 @@ def main():
                                                                 params["keep_processes_open"],
                                                                 f,
                                                                 log_file_name)
-
-                util.log_memory_usage(f, "After contact tracing. Before gc.collect() ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "After contact tracing. Before gc.collect() ")
                 gc_start = time.time()
                 gc.collect()
                 gc_time_taken = time.time() - gc_start
                 print("gc time_taken: " + str(gc_time_taken))
-                util.log_memory_usage(f, "After contact tracing. After gc.collect() ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "After contact tracing. After gc.collect() ")
 
                 time_taken = time.time() - start
                 contactracing_sum_time_taken += time_taken
@@ -1528,10 +1547,12 @@ def main():
                 if f is not None:
                     f.flush()
 
-                util.log_memory_usage(f, "Loaded data. Before vaccinations ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before vaccinations ")
                 start = time.time()
                 epi_util.schedule_vaccinations(day)
-                util.log_memory_usage(f, "Loaded data. After vaccinations ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After vaccinations ")
                 time_taken = time.time() - start
                 vaccination_sum_time_taken += time_taken
                 avg_time_taken = vaccination_sum_time_taken / day
@@ -1546,7 +1567,8 @@ def main():
                     f.flush()
 
                 start = time.time()
-                util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
 
                 num_arrivals, num_departures = 0, 0
 
@@ -1557,7 +1579,8 @@ def main():
                     
                 dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
                 interventions_logs_df, statistics_logs_df = dyn_params.update_logs_df(day, interventions_logs_df, statistics_logs_df)
-                util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters and updating statistics ")
+                if params["logmemoryinfo"]:
+                    util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters and updating statistics ")
                 time_taken = time.time() - start
                 refresh_dyn_params_sum_time_taken += time_taken
                 avg_time_taken = refresh_dyn_params_sum_time_taken / day
@@ -1567,23 +1590,29 @@ def main():
                 if f is not None:
                     f.flush()
 
-            mem_start = time.time()
-            util.log_memory_usage(f, "Loaded data. Before calculating memory info ")
-            memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
-            util.log_memory_usage(f, "Loaded data. After calculating memory info ")
-            mem_time_taken = time.time() - mem_start
-            print("log memory info time_taken: " + str(mem_time_taken))
+            if params["logmemoryinfo"]:
+                mem_start = time.time()
+                util.log_memory_usage(f, "Loaded data. Before calculating memory info ")
+                memory_sums, mem_logs_df = calculate_memory_info(day, params["logmemoryinfo"], it_agents, agents_epi, vars_util, memory_sums, f, mem_logs_df)
+                util.log_memory_usage(f, "Loaded data. After calculating memory info ")
+                mem_time_taken = time.time() - mem_start
+                print("log memory info time_taken: " + str(mem_time_taken))
 
-            util.log_memory_usage(f, "End of sim day. Before gc.collect() ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "End of sim day. Before gc.collect() ")
             gc_start = time.time()
             gc.collect()
             gc_time_taken = time.time() - gc_start
             print("gc time_taken: " + str(gc_time_taken))
-            util.log_memory_usage(f, "End of sim day. After gc.collect() ")
+            if params["logmemoryinfo"]:
+                util.log_memory_usage(f, "End of sim day. After gc.collect() ")
                               
             day_time_taken = time.time() - day_start
             simdays_sum_time_taken += day_time_taken
             simdays_avg_time_taken = simdays_sum_time_taken / day
+
+            perf_timings_df.loc[day, "day_day"] = round(day_time_taken, 2)
+            perf_timings_df.loc[day, "day_avg"] = round(simdays_avg_time_taken, 2)
 
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.statistics.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
             if f is not None:
