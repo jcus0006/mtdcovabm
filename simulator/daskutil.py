@@ -38,7 +38,7 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
             if remote_worker_index == -1 and log_timings:
                 remote_worker_index = future_count
 
-            if remote_time_taken is not None and workers_remote_time_taken is not None:
+            if remote_time_taken is not None and workers_remote_time_taken is not None and len(workers_remote_time_taken) > 0:
                 if method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
                     workers_remote_time_taken[remote_worker_index][1] = remote_time_taken
                 else:

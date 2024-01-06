@@ -44,12 +44,13 @@ class SEIRStateTransition(IntEnum):
     MildToRecovery = 6, # if mild, sample MildToRec, assign "Recovered" after MildToRec
     SevereToRecovery = 7, # if severe, sample SevToRec, assign "Recovered" after SevToRec
     CriticalToRecovery = 8 # if critical, sample CriToRec, assign "Recovered" after CriToRec
-    RecoveredToExposed = 9 # if recovered, sample RecToExp (uniform from range e.g. 30-90 days), assign "Exposed" after RecToExp
+    RecoveredToSusceptible = 9 # if recovered, sample RecToExp (uniform from range e.g. 30-90 days), assign "Exposed" after RecToExp
 
 class QuarantineType(IntEnum):
-    Positive = 0,
-    PositiveContact = 1,
-    SecondaryContact = 2
+    Symptomatic = 0, # there's a probabiliy that someone feels symptoms and quarantines immediately without having received a test result
+    Positive = 1, # represents positive test result case (whether true or false positive)
+    PositiveContact = 2, # contact tracing positive (primary) contact
+    SecondaryContact = 3 # contact tracing secondary contact
 
 # class InterventionAgentEvents(IntEnum):
 #     Test = 0,

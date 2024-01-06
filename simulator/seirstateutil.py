@@ -3,8 +3,6 @@ import random
 from epidemiologyclasses import SEIRState, SEIRStateTransition, InfectionType, Severity
 
 def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_state):
-    partial_agents_seir_state = agents_seir_state[:n]
-
     for seirindex, seirstate_percent in enumerate(initial_seir_state_distribution):
         seirid = seirindex + 1
 
@@ -12,26 +10,24 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 
         seirstate = SEIRState(seirid)
 
-        undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
+        undefined_ids = [id for id, x in agents_seir_state.items() if x == SEIRState.Undefined]
 
-        if len(undefined_indices) > 0:
-            undefined_indices = np.array(undefined_indices)
+        if len(undefined_ids) > 0:
+            undefined_ids = np.array(undefined_ids)
 
-        this_state_indices = np.random.choice(undefined_indices, size=total_to_assign_this_state, replace=False)
+        this_state_ids = np.random.choice(undefined_ids, size=total_to_assign_this_state, replace=False)
 
-        if len(this_state_indices) > 0:
-            partial_agents_seir_state[this_state_indices] = np.array([seirstate for i in range(total_to_assign_this_state)])
-        else:
-            partial_agents_seir_state = []
+        for id in this_state_ids:
+            agents_seir_state[id] = seirstate
 
-    undefined_indices = [i for i, x in enumerate(partial_agents_seir_state) if x == SEIRState.Undefined]
+    undefined_ids = [id for id, x in agents_seir_state.items() if x == SEIRState.Undefined]
 
-    for index in undefined_indices:
+    for id in undefined_ids:
         random_state = random.randint(1, 4)
 
         random_seir_state = SEIRState(random_state)
 
-        partial_agents_seir_state[index] = random_seir_state
+        agents_seir_state[id] = random_seir_state
 
     return agents_seir_state
 
@@ -41,10 +37,11 @@ def initialize_agent_states(n, initial_seir_state_distribution, agents_seir_stat
 #   - clear agent["state_transition_by_day"] for day
 def update_agent_state(agents_seir_state, agents_infection_type, agents_infection_severity, agentid, agent, agentindex, day):
     today_index = -1
-    for index, day_entry in enumerate(agent["state_transition_by_day"]): # should always be a short list
-        if day_entry[0] == day:
-            today_index = index
-            break
+    if agent["state_transition_by_day"] is not None:
+        for index, day_entry in enumerate(agent["state_transition_by_day"]): # should always be a short list
+            if day_entry[0] == day:
+                today_index = index
+                break
     
     if today_index > -1:
         _, seir_state_transition, timestep = agent["state_transition_by_day"][today_index]
@@ -107,7 +104,7 @@ def convert_state_transition_to_new_state(current_seir_state, current_infection_
             if current_infection_type == InfectionType.PreAsymptomatic:
                 new_infection_type = InfectionType.Asymptomatic
             # if PreSymptomatic, infection type will already be assigned, but is only to be considered infectious, if SEIR State is Infectious
-            return SEIRState.Infectious, new_infection_type, current_infection_severity
+            return SEIRState.Infectious, new_infection_type, Severity.Mild
         case SEIRStateTransition.InfectiousToSymptomatic:
             new_infection_type = current_infection_type
             if current_infection_type == InfectionType.PreSymptomatic:
@@ -128,7 +125,7 @@ def convert_state_transition_to_new_state(current_seir_state, current_infection_
             return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
         case SEIRStateTransition.CriticalToRecovery:
             return SEIRState.Recovered, InfectionType.Undefined, Severity.Undefined
-        case SEIRStateTransition.RecoveredToExposed:
-            return SEIRState.Exposed, current_infection_type, current_infection_severity
+        case SEIRStateTransition.RecoveredToSusceptible:
+            return SEIRState.Susceptible, current_infection_type, current_infection_severity
         case _:
             return SEIRState.Undefined, InfectionType.Undefined, Severity.Undefined

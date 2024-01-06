@@ -13,6 +13,7 @@ import dask
 from dask.distributed import Client, get_worker, performance_report
 from copy import copy
 from util import MethodType
+import gc
 
 def contacttracing_distributed(client: Client,
                             day, 
@@ -50,8 +51,10 @@ def contacttracing_distributed(client: Client,
                 dask_numtasks = len(workers)
 
             directcontacts_size = sum([sys.getsizeof(c) for c in vars_util.directcontacts_by_simcelltype_by_day]) / (1024 * 1024)
-            agent1_index_size = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024)
-            agent2_index_size = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024)
+            agent1_index_size = 0
+            agent2_index_size = 0
+            # agent1_index_size = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent1_index]) / (1024 * 1024)
+            # agent2_index_size = sum([sys.getsizeof(i) for i in vars_util.dc_by_sct_by_day_agent2_index]) / (1024 * 1024)
 
             print("day: {0}, contact_tracing_agent_ids_len: {1}, directcontacts len: {2}, directcontacts size: {3}, agent1 index size: {4}, agent2 index size: {5}".format(str(day), str(len(vars_util.contact_tracing_agent_ids)), str(len(vars_util.directcontacts_by_simcelltype_by_day)), str(directcontacts_size), str(agent1_index_size), str(agent2_index_size)))
             if f is not None:
@@ -86,8 +89,8 @@ def contacttracing_distributed(client: Client,
                     start = time.time()
                     vars_util_partial.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day
                     vars_util_partial.directcontacts_by_simcelltype_by_day_start_marker = vars_util.directcontacts_by_simcelltype_by_day_start_marker
-                    vars_util_partial.dc_by_sct_by_day_agent1_index = vars_util.dc_by_sct_by_day_agent1_index
-                    vars_util_partial.dc_by_sct_by_day_agent2_index = vars_util.dc_by_sct_by_day_agent2_index
+                    # vars_util_partial.dc_by_sct_by_day_agent1_index = vars_util.dc_by_sct_by_day_agent1_index
+                    # vars_util_partial.dc_by_sct_by_day_agent2_index = vars_util.dc_by_sct_by_day_agent2_index
                     
                     time_taken = time.time() - start
                     print("partialising directcontacts_by_simcelltype_by_day, process: " + str(worker_index) + ", time taken: " + str(time_taken))
@@ -219,6 +222,8 @@ def contacttracing_worker(params):
 
         return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
     finally:
+        gc.collect()
+        
         if original_stdout is not None:
             sys.stdout = original_stdout
 

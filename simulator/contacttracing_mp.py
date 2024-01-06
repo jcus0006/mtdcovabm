@@ -61,8 +61,8 @@ def contacttracing_parallel(manager,
             if len(vars_util_partial.contact_tracing_agent_ids) > 0:
                 start = time.time()
                 vars_util_partial.directcontacts_by_simcelltype_by_day = vars_util.directcontacts_by_simcelltype_by_day
-                vars_util_partial.dc_by_sct_by_day_agent1_index = sorted(vars_util.dc_by_sct_by_day_agent1_index, key=lambda x: x[0])
-                vars_util_partial.dc_by_sct_by_day_agent2_index = sorted(vars_util.dc_by_sct_by_day_agent2_index, key=lambda x: x[0])
+                # vars_util_partial.dc_by_sct_by_day_agent1_index = sorted(vars_util.dc_by_sct_by_day_agent1_index, key=lambda x: x[0])
+                # vars_util_partial.dc_by_sct_by_day_agent2_index = sorted(vars_util.dc_by_sct_by_day_agent2_index, key=lambda x: x[0])
                 # vars_util_partial.directcontacts_by_simcelltype_by_day = set([directcontacts_by_simcelltype_by_day_list[index] for index in proc_directcontact_by_simcelltype_by_day_indices]) # simply to retain type
                 time_taken = time.time() - start
                 print("partialising directcontacts_by_simcelltype_by_day, process: " + str(process_index) + ", time taken: " + str(time_taken))

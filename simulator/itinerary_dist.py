@@ -8,7 +8,7 @@ import json
 # import threading
 import math
 import numpy as np
-import numpy.ma as ma
+# import numpy.ma as ma
 import traceback
 import itinerary, itinerary_mp, actor_dist_mp, vars, shared_mp, jsonutil, customdict, daskutil, util
 import time
@@ -79,7 +79,7 @@ def localitinerary_distributed_finegrained(client: Client,
             vars_util_partial = vars.Vars()
 
             if not dask_scatter: # and not dask_persist
-                vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                # vars_util_partial.agents_seir_state = [] # to be populated hereunder
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                 
                 agents_partial, _, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, None, None, True, True, agents_epi, agents_epi_partial)               
@@ -173,10 +173,10 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                     agents_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict()
                     vars_util_partial = vars.Vars()
 
-                    if not dask_full_array_mapping:
-                        vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                    else:
-                        vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                    # if not dask_full_array_mapping:
+                    #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    # else:
+                    #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
                     
                     vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
@@ -225,10 +225,10 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                 agents_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict()
                 vars_util_partial = vars.Vars()
 
-                if not dask_full_array_mapping:
-                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                else:
-                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                # if not dask_full_array_mapping:
+                #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # else:
+                #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
 
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                 
@@ -354,10 +354,10 @@ def localitinerary_distributed_map_batched(client: Client,
                 agents_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict()
                 vars_util_partial = vars.Vars()
 
-                if not dask_full_array_mapping:
-                    vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                else:
-                    vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                # if not dask_full_array_mapping:
+                #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                # else:
+                #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
                 
                 vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
 
@@ -503,6 +503,13 @@ def localitinerary_distributed(client: Client,
             delayed_computations = []
             futures = []
 
+            # mem troubleshooting
+            hh_insts_size = util.asizeof_formatted(hh_insts)
+            it_agents_size = util.asizeof_formatted(it_agents)
+            agents_epi_size = util.asizeof_formatted(agents_epi)
+            vars_util_size = util.asizeof_formatted(vars_util)
+            print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
+
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
 
@@ -521,24 +528,24 @@ def localitinerary_distributed(client: Client,
                     agents_partial, agents_ids_by_ages_partial, agents_epi_partial = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
                     vars_util_partial = vars.Vars()
 
-                    if not dask_full_array_mapping:
-                        vars_util_partial.agents_seir_state = vars_util.agents_seir_state
-                        # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
-                    else:
-                        vars_util_partial.agents_seir_state = [] # to be populated hereunder
-
+                    # if not dask_full_array_mapping:
+                    #     vars_util_partial.agents_seir_state = vars_util.agents_seir_state
+                    #     # vars_util_partial.agents_seir_state = copy(vars_util.agents_seir_state)
+                    # else:
+                    #     vars_util_partial.agents_seir_state = [] # to be populated hereunder
+                    # vars_util_partial.agents_seir_state = vars_util.agents_seir_state
                     vars_util_partial.cells_agents_timesteps = customdict.CustomDict()
                     
                     for hh_inst in hh_insts_partial:
                         agents_partial, agents_ids_by_ages_partial, vars_util_partial, agents_epi_partial = util.split_dicts_by_agentsids(hh_inst["resident_uids"], it_agents, vars_util, agents_partial, vars_util_partial, None, None, True, dask_full_array_mapping, agents_epi, agents_epi_partial)
 
-                    if not dask_full_array_mapping:
-                        agent_ids = sorted(list(agents_partial.keys()))
+                    # if not dask_full_array_mapping:
+                    #     agent_ids = sorted(list(agents_partial.keys()))
 
-                        mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), agent_ids, invert=True)
+                    #     mask = np.isin(np.arange(len(vars_util_partial.agents_seir_state)), agent_ids, invert=True)
 
-                        vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
-
+                    #     vars_util_partial.agents_seir_state = ma.masked_array(vars_util_partial.agents_seir_state, mask=mask)
+                    
                     # Define parameters
                     if not use_mp:
                         params = (day, 
@@ -562,6 +569,16 @@ def localitinerary_distributed(client: Client,
                                 dynparams, 
                                 log_file_name)  
 
+                    params_size = util.asizeof_formatted(params)
+                    print(f"params for {worker_index} size: {params_size}")
+
+                    hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
+                    it_agents_partial_size = util.asizeof_formatted(agents_partial)
+                    agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
+                    agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
+                    vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                    dyn_params_size = util.asizeof_formatted(dynparams)
+                    print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
                     # print("starting process index with " + str(len(hh_insts_partial)) + " residences on " + str(remote_worker_index) + " (" + worker_url + ") at " + str(time.time()))
                     # if f is not None:
                     #     f.flush()

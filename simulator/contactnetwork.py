@@ -107,9 +107,9 @@ class ContactNetwork:
 
                     current_index += 1
 
-                    if self.process_index == -1:
-                        self.vars_util.dc_by_sct_by_day_agent1_index.append([agent1_id, current_index])
-                        self.vars_util.dc_by_sct_by_day_agent2_index.append([agent2_id, current_index])
+                    # if self.process_index == -1:
+                    #     self.vars_util.dc_by_sct_by_day_agent1_index.append([agent1_id, current_index])
+                    #     self.vars_util.dc_by_sct_by_day_agent2_index.append([agent2_id, current_index])
 
         time_taken = time.time() - start
         self.contactnetwork_sum_time_taken += time_taken
@@ -234,9 +234,12 @@ class ContactNetwork:
 
                     avg_contacts_by_age_activity = self.ageactivitycontactmatrix[age_bracket_index, 2 + ageactivitycontact_cm_activityid]
 
-                    timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
+                    timestep_multiplier = 1.0
 
-                    potential_contacts_count_multiplier = 1
+                    if agent_timestep_count != avg_agents_timestep_counts and avg_agents_timestep_counts > 1:
+                        timestep_multiplier = math.log(agent_timestep_count, avg_agents_timestep_counts)
+
+                    potential_contacts_count_multiplier = 1.0
                     
                     if agent_potentialcontacts_count != avg_potential_contacts_count and avg_potential_contacts_count > 1:
                         potential_contacts_count_multiplier = math.log(agent_potentialcontacts_count, avg_potential_contacts_count)
