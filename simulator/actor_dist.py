@@ -1,7 +1,7 @@
 import os
 import time
 from dask.distributed import get_worker, get_client, as_completed
-import customdict, vars, tourism_dist, itinerary, util
+import customdict, vars, tourism_dist, util, itinerary, contactnetwork
 from cellsclasses import CellType
 from enum import Enum
 
@@ -46,8 +46,8 @@ class ActorDist:
         self.agents_epi = agents_epi
         self.vars_util = vars_util # direct contacts do not have to be shared with the remote nodes, it can be simply returned to the client
 
-        self.it_time_taken_sum = 0
-        self.it_time_taken_avg = 0
+        self.it_main_time_taken_sum = 0
+        self.it_main_time_taken_avg = 0
         self.cn_time_taken_sum = 0
         self.cn_time_taken_avg = 0
 
@@ -60,6 +60,8 @@ class ActorDist:
         return tourism_dist.update_tourist_data_remote(params, self.folder_name)
     
     def itinerary(self):
+        main_start = time.time()
+
         self.simstage = SimStage.Itinerary
 
         # load worker data
@@ -130,28 +132,28 @@ class ActorDist:
 
         if self.day == 1 or self.weekday_str == "Monday":
             # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
-            start = time.time()
+            ws_main_start = time.time()
             for hh_inst in self.hh_insts:
-                start = time.time()
+                ws_start = time.time()
                 # print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
                 itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
-                time_taken = time.time() - start
-                working_schedule_times_by_resid[hh_inst["id"]] = time_taken
+                ws_time_taken = time.time() - ws_start
+                working_schedule_times_by_resid[hh_inst["id"]] = ws_time_taken
                 num_agents_working_schedule += len(hh_inst["resident_uids"])
 
-            time_taken = time.time() - start
-            print("generate_working_days_for_week_residence for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(time_taken) + ", proc index: " + str(self.worker_index))
+            ws_time_taken = time.time() - ws_main_start
+            print("generate_working_days_for_week_residence for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(ws_time_taken) + ", proc index: " + str(self.worker_index))
 
         print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday))
-        start = time.time()                    
+        it_start = time.time()                    
 
         num_agents_itinerary = 0
         itinerary_times_by_resid = {}
         for hh_inst in self.hh_insts:
             res_start = time.time()
             itinerary_util.generate_local_itinerary(self.day, self.weekday, hh_inst["resident_uids"])
-            res_timetaken = time.time() - res_start
-            itinerary_times_by_resid[hh_inst["id"]] = res_timetaken
+            res_time_taken = time.time() - res_start
+            itinerary_times_by_resid[hh_inst["id"]] = res_time_taken
             num_agents_itinerary += len(hh_inst["resident_uids"])
         
         send_results_start_time = time.time()
@@ -160,27 +162,73 @@ class ActorDist:
         send_results_time_taken = time.time() - send_results_start_time
         print("send results time taken: " + str(send_results_time_taken))
 
-        time_taken = time.time() - start
-        self.it_time_taken_sum += time_taken
-        self.it_time_taken_avg = self.it_time_taken_sum / self.day
-        print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(time_taken) + ", proc index: " + str(self.worker_index))
+        it_time_taken = time.time() - it_start
+
+        main_time_taken = time.time() - main_start
+
+        self.it_main_time_taken_sum += main_time_taken
+        self.it_main_time_taken_avg = self.it_main_time_taken_sum / self.day
+        print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(it_time_taken) + ", proc index: " + str(self.worker_index))
         
-        print("process " + str(self.worker_index) + ", ended at " + str(time.time()))
+        print("process " + str(self.worker_index) + ", ended at " + str(time.time()) + ", full time taken: " + str(main_time_taken))
         # return contact_tracing_agent_ids (that are only added to in this context) and time-logging information to client
+
+        time_takens = (main_time_taken, ws_time_taken, it_time_taken, send_results_time_taken, self.it_main_time_taken_avg)
         
-        return self.worker_index, self.vars_util.contact_tracing_agent_ids, time_taken, send_results_time_taken, self.it_time_taken_avg
+        return self.worker_index, self.vars_util.contact_tracing_agent_ids, time_takens
 
     def contact_network(self):
+        main_start = time.time()
+
         self.simstage = SimStage.ContactNetwork
 
-        # load worker data
-        # simulate_contact_network
+        n_locals = self.worker.data["n_locals"]
+        n_tourists = self.worker.data["n_tourists"]
+        locals_ratio_to_full_pop = self.worker.data["locals_ratio_to_full_pop"]
+        contactnetworkparams = self.worker.data["contactnetworkparams"]
+        epidemiologyparams = self.worker.data["epidemiologyparams"]
+        cells_type = self.worker.data["cells_type"]
+        indids_by_cellid = self.worker.data["indids_by_cellid"]
+        cells_households = self.worker.data["cells_households"] 
+        cells_institutions = self.worker.data["cells_institutions"] 
+        cells_accommodation = self.worker.data["cells_accommodation"] 
+        agents_static = self.worker.data["agents_static"]
+
+        # print("process " + str(process_index) + " started at " + str(start))
+
+        contact_network_util = contactnetwork.ContactNetwork(n_locals, 
+                                                            n_tourists, 
+                                                            locals_ratio_to_full_pop, 
+                                                            agents_static,
+                                                            self.agents_epi,
+                                                            self.vars_util,
+                                                            cells_type,
+                                                            indids_by_cellid,
+                                                            cells_households, 
+                                                            cells_institutions, 
+                                                            cells_accommodation, 
+                                                            contactnetworkparams,
+                                                            epidemiologyparams, 
+                                                            self.dyn_params, 
+                                                            process_index=self.worker_index)
+
+        _, _, agents_epi_partial, self.vars_util = contact_network_util.simulate_contact_network(self.day, self.weekday)
+        
+        # certain data does not have to go back because it would not have been updated in this context
+        self.vars_util.cells_agents_timesteps = customdict.CustomDict()
+        self.vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
+        self.vars_util.agents_vaccination_doses = customdict.CustomDict()
+        
+        main_time_taken = time.time() - main_start
+
         # send results
+        self.send_results(list(agents_epi_partial.keys()))
+        
         # return direct contacts info to client and time-logging information
 
-        pass
+        return self.worker_index, self.vars_util.directcontacts_by_simcelltype_by_day, main_time_taken
 
-    def send_results(self):
+    def send_results(self, updated_agent_ids=None):
         # if itinerary, get list of cell ids from cells_agents_timesteps, then get list of cell ids that are not in self.cells_ids (difference with sets)
         # these are the cases for which the contact network will be computed on another remote node
         # iterate on the workers, skipping this one, build a dict of the following structure: {worker_index: (agents_epi, vars_util)} 
@@ -191,44 +239,46 @@ class ActorDist:
         # the same applies, in terms of the structure: {worker_index: (agents_epi, vars_util)}
         # do not include direct contacts, these will be returned directly to the client and synced accordingly (contact tracing happens on the client anyway)
         
-        cells_ids = set(self.vars_util.cells_agents_timesteps.keys())
-        cells_ids = cells_ids.difference(self.cell_ids) 
-
         send_results_by_worker_id = customdict.CustomDict()
-        
-        for wi, w_cell_ids in self.cell_ids_by_process_lookup.items():
-            if wi != self.worker_index:
-                cells_ids_to_send = cells_ids.intersection(w_cell_ids)
 
-                agents_epi_to_send = customdict.CustomDict()
-                vars_util_to_send = vars.Vars()
+        if self.simstage == SimStage.Itinerary:
+            cells_ids = set(self.vars_util.cells_agents_timesteps.keys()) # convert to set to enable set functions
+            cells_ids = cells_ids.difference(self.cell_ids) # get the updated agent ids that are not local to this worker
+            
+            for wi, w_cell_ids in self.cell_ids_by_process_lookup.items():
+                if wi != self.worker_index:
+                    cells_ids_to_send = cells_ids.intersection(w_cell_ids) # get the matching cell ids to send to this worker specifically
 
-                agents_ids_to_send = set()
+                    agents_ids_to_send = set()
 
-                for cell_id in cells_ids_to_send:
-                    cats_by_cell_id = self.vars_util.cells_agents_timesteps[cell_id]
-                    vars_util_to_send.cells_agents_timesteps[cell_id] = cats_by_cell_id
+                    for cell_id in cells_ids_to_send:
+                        cats_by_cell_id = self.vars_util.cells_agents_timesteps[cell_id]
+                        vars_util_to_send.cells_agents_timesteps[cell_id] = cats_by_cell_id
 
-                    for agent_id, _, _ in cats_by_cell_id:
-                        agents_ids_to_send.add(agent_id)
+                        for agent_id, _, _ in cats_by_cell_id:
+                            agents_ids_to_send.add(agent_id)
 
-                for agent_id in agents_ids_to_send:
-                    agents_epi_to_send[agent_id] = self.agents_epi[agent_id]
-                    vars_util_to_send.agents_seir_state[agent_id] = self.vars_util.agents_seir_state[agent_id]
+                    agents_epi_to_send = customdict.CustomDict()
+                    vars_util_to_send = vars.Vars()
 
-                    if agent_id in self.vars_util.agents_seir_state_transition_for_day:
-                        vars_util_to_send.agents_seir_state_transition_for_day[agent_id] = self.vars_util.agents_seir_state_transition_for_day[agent_id]
+                    agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_ids_to_send, self.agents_epi, self.vars_util, agents_epi_to_send, vars_util_to_send)
 
-                    if agent_id in self.vars_util.agents_infection_type:
-                        vars_util_to_send.agents_infection_type[agent_id] = self.vars_util.agents_infection_type[agent_id]
+                    send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
+        else:
+            updated_agent_ids = set(updated_agent_ids) # convert to set to enable set functions
 
-                    if agent_id in self.vars_util.agents_infection_severity:
-                        vars_util_to_send.agents_infection_severity[agent_id] = self.vars_util.agents_infection_severity[agent_id]
+            updated_agent_ids = updated_agent_ids.difference(self.agent_ids) # get the updated agent ids that are not local to this worker
 
-                    if agent_id in self.vars_util.agents_vaccination_doses:
-                        vars_util_to_send.agents_vaccination_doses[agent_id] = self.vars_util.agents_vaccination_doses[agent_id]
+            for wi, w_agent_ids in self.agent_ids_by_process_lookup.items():
+                if wi != self.worker_index:
+                    agents_ids_to_send = updated_agent_ids.intersection(w_agent_ids) # get the matching agent ids to send to this worker specifically
 
-                send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
+                    agents_epi_to_send = customdict.CustomDict()
+                    vars_util_to_send = vars.Vars()
+
+                    agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_ids_to_send, self.agents_epi, self.vars_util, agents_epi_to_send, vars_util_to_send)
+
+                    send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
         
         results = []
         for wi in range(len(self.workers_keys)):
@@ -250,7 +300,6 @@ class ActorDist:
         sender_worker_index, simstage, data = params
 
         # sync results after itinerary or contact network
-        # TO DO - when is_itinerary_result is True and receiving state information from a remote node, keep track, so as not to send again, for current day only (i.e. that node already has this data)
 
         agents_epi_partial, vars_util_partial = data
         
@@ -274,9 +323,7 @@ class ActorDist:
         self.weekday_str = new_weekday_str
         self.dyn_params = new_dyn_params
 
-    # as is would be called at the end of the simulation day
-    # but if certain dynamic data would already be statefully available, it would be better to use it (and not receive it again)
-    # in that case, the workers would need to keep a temporary store of additional dynamic data available on remote nodes (for current day only)
+    # called at the end of the simulation day and removes any data that does not reside on this worker by default
     def clean_up(self):
         self.vars_util.reset_daily_structures()
 

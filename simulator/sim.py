@@ -30,7 +30,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 1, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -41,19 +41,19 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "year": 2021,
             "quickdebug": False,
             "quicktourismrun": False,
-            "quickitineraryrun": False,
+            "quickitineraryrun": True,
             "visualise": False,
-            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
+            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
             "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": False,
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_full_stateful": True,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -74,7 +74,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [8], # 3, 11
+            "dask_nodes_n_workers": [4], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -94,7 +94,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "quicktest365_daskstrat2_8p_3d.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "dask_strat3_1n_4w_1d_10k_full_debug.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -1522,12 +1522,14 @@ def main():
                                 futures.append(actor.itinerary())
 
                             for future in as_completed(futures):
-                                a_worker_index, contact_tracing_agent_ids_partial, a_tt, a_results_tt, a_avg_tt = future.result()
+                                a_worker_index, contact_tracing_agent_ids_partial, it_times_taken = future.result()
 
                                 if len(contact_tracing_agent_ids_partial) > 0:
                                     vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
+
+                                a_it_main_tt, a_ws_tt, a_it_tt, a_it_results_tt, a_it_avg_tt = it_times_taken
                                 
-                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(vars_util.contact_tracing_agent_ids)}, time taken: {a_tt}, send results time taken: {a_results_tt}, avg time taken: {a_avg_tt}")
+                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, send results time taken: {a_it_results_tt}, avg time taken: {a_it_avg_tt}")
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
                 if params["logmemoryinfo"]:
@@ -1591,27 +1593,47 @@ def main():
                                                                 agents_static,
                                                                 static_agents_dict)
                     else:
-                        contactnetwork_dist.contactnetwork_distributed(client,
-                                                                day,
-                                                                weekday,
-                                                                agents_epi,
-                                                                vars_util,
-                                                                dyn_params,
-                                                                params["dask_mode"],
-                                                                params["dask_numtasks"],
-                                                                params["dask_full_array_mapping"],
-                                                                params["keep_processes_open"],
-                                                                params["dask_use_mp"],
-                                                                params["dask_nodes_n_workers"],
-                                                                dask_cn_workers_time_taken,
-                                                                dask_mp_cn_processes_time_taken,
-                                                                params["dask_actors_innerproc_assignment"],
-                                                                f,
-                                                                actors,
-                                                                log_file_name)
+                        if not params["dask_full_stateful"]:
+                            contactnetwork_dist.contactnetwork_distributed(client,
+                                                                    day,
+                                                                    weekday,
+                                                                    agents_epi,
+                                                                    vars_util,
+                                                                    dyn_params,
+                                                                    params["dask_mode"],
+                                                                    params["dask_numtasks"],
+                                                                    params["dask_full_array_mapping"],
+                                                                    params["keep_processes_open"],
+                                                                    params["dask_use_mp"],
+                                                                    params["dask_nodes_n_workers"],
+                                                                    dask_cn_workers_time_taken,
+                                                                    dask_mp_cn_processes_time_taken,
+                                                                    params["dask_actors_innerproc_assignment"],
+                                                                    f,
+                                                                    actors,
+                                                                    log_file_name)
+                        else:
+                            futures = []
+                            for actor in actors:
+                                futures.append(actor.contact_network())
+
+                            for future in as_completed(futures):
+                                cn_worker_index, directcontacts_by_simcelltype_by_day_partial, cn_time_taken = future.result()
+
+                                # sync direct contacts
+                                if len(directcontacts_by_simcelltype_by_day_partial) > 0:
+                                    current_index = len(vars_util.directcontacts_by_simcelltype_by_day)
+
+                                    if day not in vars_util.directcontacts_by_simcelltype_by_day_start_marker: # sync_state_info_sets is called multiple times, but start index must only be set the first time
+                                        vars_util.directcontacts_by_simcelltype_by_day_start_marker[day] = current_index
+
+                                    vars_util.directcontacts_by_simcelltype_by_day.extend(directcontacts_by_simcelltype_by_day_partial)
+
+                                print(f"contact network. actor worker index {cn_worker_index}, direct contacts: {len(directcontacts_by_simcelltype_by_day_partial)}, time taken: {cn_time_taken}")
 
                     if params["logmemoryinfo"]:
                         util.log_memory_usage(f, "After contact network. Before gc.collect() ")
+                        
                     gc_start = time.time()
                     gc.collect()
                     gc_time_taken = time.time() - gc_start

@@ -429,6 +429,26 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
 
     return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
 
+def split_agents_epi_by_agentsids(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send):
+    for agent_id in agents_ids_to_send:
+        agents_epi_to_send[agent_id] = agents_epi[agent_id]
+        vars_util_to_send.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
+
+        # should the below be uncommented, this should only apply for the Itinerary SimStage
+        # if agent_id in self.vars_util.agents_seir_state_transition_for_day:
+        #     vars_util_to_send.agents_seir_state_transition_for_day[agent_id] = self.vars_util.agents_seir_state_transition_for_day[agent_id]
+
+        if agent_id in vars_util.agents_infection_type:
+            vars_util_to_send.agents_infection_type[agent_id] = vars_util.agents_infection_type[agent_id]
+
+        if agent_id in vars_util.agents_infection_severity:
+            vars_util_to_send.agents_infection_severity[agent_id] = vars_util.agents_infection_severity[agent_id]
+
+        if agent_id in vars_util.agents_vaccination_doses:
+            vars_util_to_send.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+
+    return agents_epi_to_send, vars_util_to_send
+
 def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, contact_tracing=False):
     # updated_count = 0
     for agentindex, agentid in enumerate(agents_ids):
@@ -447,8 +467,8 @@ def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agen
         if not contact_tracing:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
-            if agentid in vars_util_partial.agents_seir_state_transition_for_day:
-                vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+            # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
         
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
@@ -473,7 +493,7 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
         agents_epi[agentid] = curr_agent_epi
 
         if agentid in vars_util_partial.agents_seir_state:
-            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) # agentindex
 
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
@@ -508,8 +528,9 @@ def sync_state_info_by_agentsids_agents_epi(agents_ids, agents_epi, vars_util, a
 
         vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
-        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
-            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+        # should this be uncommented it needs to apply only to the Itinerary SimStage
+        # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+        #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
         
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
