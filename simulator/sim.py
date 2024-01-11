@@ -27,9 +27,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 6, # 365/20
+            "simulationdays": 365, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -39,12 +39,12 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "religiouscells": True,
             "year": 2021,
             "quickdebug": False,
-            "quicktourismrun": False,
+            "quicktourismrun": True,
             "quickitineraryrun": False,
             "visualise": False,
             "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
             "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -92,7 +92,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "quick10ktest_daskstrat2_itinerarybugissue.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "500krun_transportitineraryissue_daskmp_logs2.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration

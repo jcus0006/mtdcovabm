@@ -514,8 +514,8 @@ class Epidemiology:
             # test_day = self.agents_mp.get(agent_id, "test_day")
 
             if test_day is not None and len(test_day) > 0:
-                if abs(test_day[0] - incremental_days) <= 5:
-                    test_already_scheduled = True
+                # if abs(test_day[0] - incremental_days) <= 5:
+                test_already_scheduled = True # the presence of a test_day is enough (it will only be cleared from the itinerary when it can be cleared)
 
             if not test_already_scheduled:
                 test_after_symptoms_rand = -1
