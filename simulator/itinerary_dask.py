@@ -190,8 +190,8 @@ def localitinerary_parallel(client,
             params = day, weekday, weekdaystr, hh_insts, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_dynamic, agents_ids_by_ages, vars_util, tourists, cells_industries_by_indid_by_wpid, cells_restaurants, cells_hospital, cells_testinghub, cells_vaccinationhub, cells_entertainment_by_activityid, cells_religious, cells_households, cells_breakfast_by_accomid, cells_airport, cells_transport, cells_institutions, cells_accommodation, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, -1, log_file_name
             localitinerary_worker(params)
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
 def localitinerary_worker(params):
     # from shared_mp import agents_static
@@ -318,8 +318,8 @@ def localitinerary_worker(params):
 
         return process_index, agents_dynamic, vars_util_mp, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary
     except:
-        with open(stack_trace_log_file_name, 'w') as f: # it_mp_stack_trace.txt
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi: # it_mp_stack_trace.txt
+            traceback.print_exc(file=fi)
     finally:
         # process_counter.value -= 1
 

@@ -714,7 +714,26 @@ def asizeof_list_formatted(data):
         temp_sum += asizeof.asizeof(d)
 
     return round(temp_sum / (1024 ** 2), 2)
+
+def refresh_dask_nodes_n_workers(workers):
+    dask_nodes_n_workers = []
+    curr_worker = ""
+    curr_worker_count = 0
+    for w in workers:
+        temp_w = w.replace(":" + w[w.rindex(':') + 1:], "").replace("tcp://", "")
+        if curr_worker == "" or temp_w == curr_worker:
+            curr_worker_count += 1
+        else:
+            dask_nodes_n_workers.append(curr_worker_count)
+            curr_worker_count = 0
+        curr_worker = temp_w
         
+    if len(workers) > 0:
+        curr_worker_count += 1
+        dask_nodes_n_workers.append(curr_worker_count) # close it off
+
+    return dask_nodes_n_workers
+
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
 # def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
 #     agents_partial = {}

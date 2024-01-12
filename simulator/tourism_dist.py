@@ -66,8 +66,8 @@ def update_tourist_data_remote(params, folder_name=None):
         if stack_trace_log_file_name == "":
             stack_trace_log_file_name = os.path.join(os.getcwd(), "dask_error.txt")
 
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
         raise
     finally:

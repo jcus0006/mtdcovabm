@@ -1699,8 +1699,8 @@ class Itinerary:
                                     if timestep != last_timestep:
                                         del agent["itinerary"][timestep]
         except Exception as e:
-            with open(stack_trace_log_file_name, 'w') as f:
-                traceback.print_exc(file=f)
+            with open(stack_trace_log_file_name, 'w') as fi:
+                traceback.print_exc(file=fi)
 
             raise
 
