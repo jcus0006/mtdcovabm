@@ -130,6 +130,7 @@ class ActorDist:
         num_agents_working_schedule = 0
         working_schedule_times_by_resid = {}
 
+        ws_time_taken = 0
         if self.day == 1 or self.weekday_str == "Monday":
             # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
             ws_main_start = time.time()
@@ -243,13 +244,15 @@ class ActorDist:
 
         if self.simstage == SimStage.Itinerary:
             cells_ids = set(self.vars_util.cells_agents_timesteps.keys()) # convert to set to enable set functions
-            cells_ids = cells_ids.difference(self.cell_ids) # get the updated agent ids that are not local to this worker
+            cells_ids = cells_ids.difference(self.cell_ids) # get the newly created cell ids that are not local to this worker
             
             for wi, w_cell_ids in self.cell_ids_by_process_lookup.items():
                 if wi != self.worker_index:
                     cells_ids_to_send = cells_ids.intersection(w_cell_ids) # get the matching cell ids to send to this worker specifically
 
                     agents_ids_to_send = set()
+                    agents_epi_to_send = customdict.CustomDict()
+                    vars_util_to_send = vars.Vars()
 
                     for cell_id in cells_ids_to_send:
                         cats_by_cell_id = self.vars_util.cells_agents_timesteps[cell_id]
@@ -258,12 +261,11 @@ class ActorDist:
                         for agent_id, _, _ in cats_by_cell_id:
                             agents_ids_to_send.add(agent_id)
 
-                    agents_epi_to_send = customdict.CustomDict()
-                    vars_util_to_send = vars.Vars()
-
                     agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_ids_to_send, self.agents_epi, self.vars_util, agents_epi_to_send, vars_util_to_send)
 
                     send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
+
+            self.clean_cells_agents_timesteps(cells_ids)
         else:
             updated_agent_ids = set(updated_agent_ids) # convert to set to enable set functions
 
@@ -323,8 +325,15 @@ class ActorDist:
         self.weekday_str = new_weekday_str
         self.dyn_params = new_dyn_params
 
+        return True
+
+    # clean cells_agents_timesteps, otherwise this worker will compute cells that do not reside on this worker by default
+    def clean_cells_agents_timesteps(self, keys_to_del):
+        for key in keys_to_del:
+            del self.vars_util.cells_agents_timesteps[key]
+
     # called at the end of the simulation day and removes any data that does not reside on this worker by default
-    def clean_up(self):
+    def clean_up_daily(self):
         self.vars_util.reset_daily_structures()
 
         for id in list(self.it_agents.keys()): # can try BST search and compare times
@@ -355,6 +364,8 @@ class ActorDist:
                     del self.vars_util.agents_vaccination_doses[id]
                 except:
                     pass
+
+        return True
 
 class SimStage(Enum):
     TouristSync = 0
