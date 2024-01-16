@@ -1,13 +1,14 @@
 import numpy as np
 from copy import copy
 import time
-import util, seirstateutil, tourism_dist
+import util, seirstateutil, tourism_dist, vars
 from epidemiologyclasses import SEIRState
 from dask.distributed import Client, SSHCluster, as_completed
+import customdict
 import gc
 
 class Tourism:
-    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, agents_seir_state, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution):
+    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -30,14 +31,17 @@ class Tourism:
         self.agents_static = agents_static
         self.it_agents = it_agents
         self.agents_epi = agents_epi
-        self.agents_seir_state = agents_seir_state
+        self.vars_util = vars_util
         self.touristsgroupsdays = touristsgroupsdays
         self.touristsgroups = touristsgroups
         self.rooms_by_accomid_by_accomtype = rooms_by_accomid_by_accomtype
         self.day_timesteps = np.arange(144)
         self.afternoon_timesteps = np.arange(72, 144)
 
-        self.agents_static_to_sync = {}
+        self.agents_static_to_sync = customdict.CustomDict()
+
+        self.dask_full_stateful = dask_full_stateful
+
         self.arriving_tourists_agents_ids = [] # [id1, id2] - reset everyday
         self.arriving_tourists_next_day_agents_ids = [] # see above
         self.departing_tourists_agents_ids = {} # {day: []} - cleaned the day after
@@ -205,7 +209,7 @@ class Tourism:
                     # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
                     for id in new_agent_ids:
-                        self.agents_seir_state[id] = SEIRState.Undefined
+                        self.vars_util.agents_seir_state[id] = SEIRState.Undefined
 
                     # self.num_active_tourists += num_tourists_in_group
 
@@ -316,7 +320,7 @@ class Tourism:
             # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
             for id in new_agent_ids:
-                self.agents_seir_state[id] = SEIRState.Undefined
+                self.vars_util.agents_seir_state[id] = SEIRState.Undefined
 
                     # self.num_active_tourists += num_tourists_in_group
     def get_next_available_agent_id(self):
@@ -325,7 +329,7 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, cells_agents_timesteps_to_sync_by_worker=None, f=None):
         departing_tourists_agent_ids = []
 
         start = time.time()
@@ -392,7 +396,25 @@ class Tourism:
                     future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
                     futures.append(future)
                 else:
-                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
+                    if not dask_full_stateful:
+                        params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
+                    else:
+                        it_agents_to_sync, agents_epi_to_sync = customdict.CustomDict(), customdict.CustomDict()
+                        vars_util_to_sync = vars.Vars()
+
+                        for agentid in self.agents_static_to_sync.keys():
+                            it_agents_to_sync[agentid] = self.it_agents[agentid]
+                            agents_epi_to_sync[agentid] = self.agents_epi[agentid]
+                            vars_util_to_sync.agents_seir_state[agentid] = self.vars_util.agents_seir_state[agentid]
+
+                            if agentid in self.vars_util.agents_infection_type:
+                                vars_util_to_sync.agents_infection_type[agentid] = self.vars_util.agents_infection_type[agentid]
+
+                            if agentid in self.vars_util.agents_infection_severity:
+                                vars_util_to_sync.agents_infection_severity[agentid] = self.vars_util.agents_infection_severity[agentid]
+
+                        params = (day, self.agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, prev_day_departing_tourists_agents_ids, worker_index, cells_agents_timesteps_to_sync_by_worker[worker_index])
+
                     actor = actors[worker_index]
                     
                     if not dask_full_stateful:
@@ -402,14 +424,18 @@ class Tourism:
 
                     futures.append(future)
 
-            self.agents_static_to_sync = {}
+            self.agents_static_to_sync = customdict.CustomDict()
+            self.it_agents_to_sync = customdict.CustomDict()
+            self.agents_epi_to_sync = customdict.CustomDict()
             
             success = False
             for future in as_completed(futures):
-                process_index, success = future.result()
-
                 if len(actors) == 0:
+                    process_index, success, _, _, _ = future.result()
+
                     future.release()
+                else:
+                    process_index, success = future.result()                   
 
                 print("process_index {0}, success {1}".format(str(process_index), str(success)))
                 if f is not None:
@@ -425,7 +451,13 @@ class Tourism:
             for agentid in prev_day_departing_tourists_agents_ids:
                 del self.it_agents[agentid]
                 del self.agents_epi[agentid] #       
-                del self.agents_seir_state[agentid]
+                del self.vars_util.agents_seir_state[agentid]
+
+                if agentid in self.vars_util.agents_infection_type:
+                    del self.vars_util.agents_infection_type[agentid]
+
+                if agentid in self.vars_util.agents_infection_severity:
+                    del self.vars_util.agents_infection_severity[agentid]
 
                 self.agents_static.delete(agentid)
                 # print(f"deleted agent {agentid} from agents_static")

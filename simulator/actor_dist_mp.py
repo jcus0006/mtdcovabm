@@ -231,7 +231,8 @@ class ActorDistMP:
             sys.stdout = original_stdout
     
     def run_update_tourist_data_remote(self, params):
-        return tourism_dist.update_tourist_data_remote(params, self.folder_name)
+        result = tourism_dist.update_tourist_data_remote(params, self.folder_name)
+        return result[0], result[1]
 
 def run_itinerary_single(params):
     f = None

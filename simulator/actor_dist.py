@@ -51,13 +51,28 @@ class ActorDist:
         self.cn_time_taken_sum = 0
         self.cn_time_taken_avg = 0
 
+    # by setting the remote actors, we enable each actor to communicate with all the other actors
     def set_remote_actors(self, actors):
         self.remote_actors = actors
 
+    def close_pool(self):
+        self.pool.close()
+        self.pool.join()
+        self.manager.shutdown()
+
+    # tourists are handled in the main process (adding new tourists and tourism itinerary). 
+    # the distributed stage starts immediately by syncing the cells_agents_timesteps created in the tourism itinerary, 
+    # as well as syncing new (initial and arriving) tourists and deleting departing tourists
     def tourists_sync(self, params):
+        self.vars_util.cells_agents_timesteps = params[-1] 
+
+        params = params[0], params[1], params[2], params[3], params[4], params[5], params[6]
+
         self.simstage = SimStage.TouristSync
 
-        return tourism_dist.update_tourist_data_remote(params, self.folder_name)
+        process_index, success, self.it_agents, self.agents_epi, self.vars_util = tourism_dist.update_tourist_data_remote(params, self.folder_name, self.it_agents, self.agents_epi, self.vars_util)
+
+        return process_index, success
     
     def itinerary(self):
         main_start = time.time()
@@ -159,7 +174,7 @@ class ActorDist:
         
         send_results_start_time = time.time()
         # send results
-        self.send_results()
+        agents_epi_keys = self.send_results()
         send_results_time_taken = time.time() - send_results_start_time
         print("send results time taken: " + str(send_results_time_taken))
 
@@ -176,7 +191,7 @@ class ActorDist:
 
         time_takens = (main_time_taken, ws_time_taken, it_time_taken, send_results_time_taken, self.it_main_time_taken_avg)
         
-        return self.worker_index, self.vars_util.contact_tracing_agent_ids, time_takens
+        return self.worker_index, self.vars_util.contact_tracing_agent_ids, time_takens, agents_epi_keys
 
     def contact_network(self):
         main_start = time.time()
@@ -225,7 +240,7 @@ class ActorDist:
         # send results
         self.send_results(list(agents_epi_partial.keys()))
         
-        # return direct contacts info to client and time-logging information
+        # return direct contacts and time-logging information to client
 
         return self.worker_index, self.vars_util.directcontacts_by_simcelltype_by_day, main_time_taken
 
@@ -298,6 +313,8 @@ class ActorDist:
             print("Message Result {0}: {1}".format(str(result_index), str(result)))
             result_index += 1
 
+        return list(self.agents_epi.keys())
+
     def receive_results(self, params):
         sender_worker_index, simstage, data = params
 
@@ -333,15 +350,17 @@ class ActorDist:
             del self.vars_util.cells_agents_timesteps[key]
 
     # called at the end of the simulation day and removes any data that does not reside on this worker by default
-    def clean_up_daily(self):
+    def clean_up_and_calculate_seir_states_daily(self):
+        n_locals = self.worker.data["n_locals"]
+
         self.vars_util.reset_daily_structures()
 
-        for id in list(self.it_agents.keys()): # can try BST search and compare times
-            if id not in self.agent_ids:
-                del self.it_agents[id]
+        for id in list(self.agents_epi.keys()): # can try BST search and compare times
+            if id < n_locals and id not in self.agent_ids:
+                del self.agents_epi[id]
 
                 try:
-                    del self.agents_epi[id]
+                    del self.it_agents[id]
                 except:
                     pass
 
@@ -365,9 +384,12 @@ class ActorDist:
                 except:
                     pass
 
-        return True
+        seir_states, ids = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util, True, False) # ignore_tourists
+
+        return seir_states, ids, len(self.agent_ids), len(self.it_agents), len(self.agents_epi)
 
 class SimStage(Enum):
     TouristSync = 0
     Itinerary = 1
     ContactNetwork = 2
+    EndOfDaySync = 3

@@ -757,13 +757,14 @@ class Epidemiology:
                         elif res_cell_id in self.cells_institutions:
                             residents_key = "resident_uids"
                             staff_key = "staff_uids"
-                            residence = self.cells_institutions[res_cell_id]["place"] # res_cell_id 
+                            residence = self.cells_institutions[res_cell_id] # res_cell_id 
                         elif res_cell_id in self.cells_accommodation:
                             residents_key = "member_uids"
-                            residence = self.cells_accommodation[res_cell_id]["place"] # res_cell_id
+                            residence = self.cells_accommodation[res_cell_id] # res_cell_id
 
                         if residence is not None:
                             resident_ids = residence["place"][residents_key] # self.cells_mp.get(residence, residents_key) 
+
                             contact_id_index = np.argwhere(resident_ids == contact_id)
                             resident_ids = np.delete(resident_ids, contact_id_index)
 
@@ -824,291 +825,7 @@ class Epidemiology:
         print(f"total contact traced {len(updated_agent_ids)} primary contact ids {len(primary_contact_ids)}, secondary contact ids {len(secondary_contact_ids)}, num_quarantine_scheduled {num_quarantine_scheduled}, num_tests_scheduled {num_tests_scheduled}")
                
         return self.process_index, updated_agent_ids, self.agents_epi, self.vars_util
-    
-    # the outer loop iterates for a number of days back pertaining to the number of days that the public health would attempt to trace back (e.g. 1 day)
-    # the next loop iterates direct contacts in each simcelltype (residence, workplace, school, community contacts) i.e. subset of contacts per sim type
-    # the next loop iterates the positive contacts to be traced
-    # the positive agent would have had contacts in different places pertaining to the 4 "simcelltypes" (which feature a different chance of tracing)
-    # a percentage of these contacts, based on "simcelltype" successful tracing probability, will be successfully traced
-    # a percentage of the secondary contacts (people that share the same residence), based on the simcelltype "residence" probability will also be traced
-    # quarantine and tests will be scheduled accordingly according to the relevant percentages in the "contact_tracing_parameters"
-
-    # fp = open("memory_profiler_10k_ct.log", "w+")
-    # @profile(stream=fp)
-    def contact_tracing_old(self, day, distributed=False, f=None):
-        updated_agent_ids = set()
-
-        if self.dyn_params.contact_tracing_enabled and len(self.vars_util.contact_tracing_agent_ids) > 0:
-            quarantine_scheduled_ids = []
-            test_scheduled_ids = []
-
-            print("contact tracing days back: {0}, directcontacts_by_simcelltype_by_day len: {1}, agent1 index len: {2}, agent2 index len: {3}".format(str(self.contact_tracing_days_back), str(len(self.vars_util.directcontacts_by_simcelltype_by_day)), str(len(self.vars_util.dc_by_sct_by_day_agent1_index)), str(len(self.vars_util.dc_by_sct_by_day_agent2_index))))
-
-            if f is not None:
-                f.flush()
-
-            # self.contact_tracing_days_back = 0 # set to 0 to make sure the work is done once only, for now
-            for daybackindex in range(self.contact_tracing_days_back + 1): # assume minimum is 1 + 1, i.e. 2 iterations, i.e. 24 hours
-                contact_tracing_day = day - daybackindex
-
-                trace_back_min_ts, trace_back_max_ts = None, None
-
-                if daybackindex == 0: # first day looks like: traced timestep until 0
-                    trace_back_max_ts = None
-                    trace_back_min_ts = 0
-                elif daybackindex < self.contact_tracing_days_back: # day in between looks like: timestep 143 until 0
-                    trace_back_max_ts = 143
-                    trace_back_min_ts = 0
-                elif daybackindex == self.contact_tracing_days_back: # + 1 - 1 = 0, last day traced back onto looks like: timestep 143 until traced timestep
-                    trace_back_max_ts = 143
-                    trace_back_min_ts = None
-
-                day_start_index = 0
-                day_end_index = len(self.vars_util.directcontacts_by_simcelltype_by_day) # default index is the last unless there is a "next day"
-
-                print("daybackindex: {0}, day_end_index: {1}, directcontacts_by_simcelltype_by_day_start_marker len: {2}".format(str(daybackindex), str(day_end_index), str(len(self.vars_util.directcontacts_by_simcelltype_by_day_start_marker))))
-                if f is not None:
-                    f.flush()
-
-                if contact_tracing_day in self.vars_util.directcontacts_by_simcelltype_by_day_start_marker:
-                    day_start_index = self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[contact_tracing_day]
-
-                    if contact_tracing_day + 1 in self.vars_util.directcontacts_by_simcelltype_by_day_start_marker: # next day case
-                        day_end_index = self.vars_util.directcontacts_by_simcelltype_by_day_start_marker[contact_tracing_day + 1] - 1
-
-                    print("contact tracing day: {0}, contact_tracing_agent_ids: {1}, index len for day: {2}".format(str(contact_tracing_day), str(len(self.vars_util.contact_tracing_agent_ids)), str(day_end_index - day_start_index)))
-                    if f is not None:
-                        f.flush()
-                    
-                    for agent_id, traced_timestep in self.vars_util.contact_tracing_agent_ids:
-                        # print("agent_id " + str(agent_id) + ", traced_timestep: " + str(traced_timestep))
-
-                        # start = time.time()
-                        dc_by_sct_by_day_agent1_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent1_index[day_start_index:day_end_index], agent_id)
-                        # time_taken = time.time() - start
-                        # print("agent1 binary search: " + str(time_taken))
-
-                        # start = time.time()
-                        dc_by_sct_by_day_agent2_indices = util.binary_search_2d_all_indices(self.vars_util.dc_by_sct_by_day_agent2_index[day_start_index:day_end_index], agent_id)
-                        # time_taken = time.time() - start
-                        # print("agent2 binary search: " + str(time_taken))
-
-                        # start = time.time()
-                        agent1_indices = [self.vars_util.dc_by_sct_by_day_agent1_index[idx][1] for idx in dc_by_sct_by_day_agent1_indices]
-                        agent2_indices = [self.vars_util.dc_by_sct_by_day_agent2_index[idx][1] for idx in dc_by_sct_by_day_agent2_indices]
-                        # time_taken = time.time() - start
-
-                        # print("building indices: " + str(time_taken))
-                        
-                        print("dc_by_sct_by_day_agent1_indices len: {0}, dc_by_sct_by_day_agent2_indices len: {1}, agent1_indices len: {2}, agent2_indices len: {3}".format(str(len(dc_by_sct_by_day_agent1_indices)), str(len(dc_by_sct_by_day_agent2_indices)), str(len(agent1_indices)), str(len(agent2_indices))))
-                        if f is not None:
-                            f.flush()
-                        
-                        # start = time.time()
-                        contact_tracing_info_arr = []
-                        for idx in agent1_indices:
-                            params = self.vars_util.directcontacts_by_simcelltype_by_day[idx]
-
-                            contact_tracing_info_arr.append([params[2], params[0], params[3]]) # agent2, simcelltype, starttimestep
-
-                        for idx in agent2_indices:
-                            params = self.vars_util.directcontacts_by_simcelltype_by_day[idx]
-
-                            contact_tracing_info_arr.append([params[1], params[0], params[3]]) # agent1, simcelltype, starttimestep
-
-                        # time_taken = time.time() - start
-                        # print("generating contact_tracing_info_arr: " + str(time_taken))
-
-                        # start = time.time()
-                        contact_ids_by_simcelltype = util.filter_contacttracing_agents_by_startts_groupby_simcelltype(contact_tracing_info_arr, traced_timestep, trace_back_min_ts, trace_back_max_ts, shuffle=False)
-                        # time_taken = time.time() - start
-                        # print("filter_contacttracing_agents_by_startts_groupby_simcelltype: " + str(time_taken))
-
-                        print("contact_ids_by_simcelltype len: {0}".format(str(len(contact_ids_by_simcelltype))))
-                        if f is not None:
-                            f.flush()   
-                        
-                        # start = time.time()
-                        for simcelltype, contact_ids in contact_ids_by_simcelltype.items():
-                            contact_tracing_success_prob = self.convert_simcelltype_to_contact_tracing_success_prob(simcelltype)
-
-                            contact_ids = list(contact_ids) # would be set
-
-                            num_of_successfully_traced = round(len(contact_ids) * contact_tracing_success_prob)
-                                
-                            sampled_traced_contact_ids = np.random.choice(np.array(contact_ids), size=num_of_successfully_traced, replace=False)
-
-                            print("num contacts {0} successfully traced {1} contact tracing success probability {2}".format(str(len(contact_ids)), str(num_of_successfully_traced), str(contact_tracing_success_prob)))
-
-                            sampled_traced_contact_indices = np.arange(len(sampled_traced_contact_ids))
-
-                            num_of_quarantined = round(num_of_successfully_traced * self.contact_tracing_positive_quarantine_prob)
-
-                            if num_of_quarantined == len(sampled_traced_contact_indices):
-                                sampled_quarantine_indices = sampled_traced_contact_indices
-                            else:
-                                sampled_quarantine_indices = np.random.choice(sampled_traced_contact_indices, size=num_of_quarantined, replace=False)
-
-                            num_of_tests = round(num_of_successfully_traced * self.contact_tracing_positive_test_prob)
-
-                            if num_of_tests == len(sampled_traced_contact_indices):
-                                sampled_test_indices = sampled_traced_contact_indices
-                            else:
-                                sampled_test_indices = np.random.choice(sampled_traced_contact_indices, size=num_of_tests, replace=False)
-
-                            for index, contact_id in enumerate(sampled_traced_contact_ids):
-                                quarantine_reference_quar_days = None
-                                positive_contact_agent = None
-
-                                if index in sampled_quarantine_indices and contact_id not in quarantine_scheduled_ids and contact_id in self.agents_epi: # tourists may have left
-                                    positive_contact_agent = self.agents_epi[contact_id]
-
-                                    if positive_contact_agent is not None and len(positive_contact_agent) > 0:
-                                        sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                        quarantine_scheduled, quar_days = self.schedule_quarantine(contact_id, day, sampled_timestep, QuarantineType.PositiveContact, agent=positive_contact_agent)
-
-                                        if quarantine_scheduled:
-                                            quarantine_scheduled_ids.append(contact_id)
-                                            quarantine_reference_quar_days = quar_days
-
-                                            updated_agent_ids.add(contact_id)
-
-                                if index in sampled_test_indices and contact_id not in test_scheduled_ids and contact_id in self.agents_epi: # tourists may have left
-                                    if positive_contact_agent is None:
-                                        positive_contact_agent = self.agents_epi[contact_id]
-
-                                    if positive_contact_agent is not None and len(positive_contact_agent) > 0:
-                                        sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                        test_scheduled, _, _ = self.schedule_test(positive_contact_agent, contact_id, day, sampled_timestep, QuarantineType.PositiveContact)
-
-                                        if test_scheduled:
-                                            test_scheduled_ids.append(contact_id)
-
-                                            updated_agent_ids.add(contact_id)
-
-                                if simcelltype != SimCellType.Residence and positive_contact_agent is not None: # compute secondary contacts (i.e. residential), only applicable if simcelltype not already residential
-                                    # res_cell_id = self.agents_mp.get(positive_contact_agent_id, "res_cellid")
-                                    res_cell_id = -1
-
-                                    try:
-                                        res_cell_id = self.agents_static.get(contact_id, "res_cellid")
-                                    except:
-                                        if contact_id < self.n_locals: # if tourist would have departed, skip
-                                            raise ValueError("Agent {0} not found during contact tracing".format(str(contact_id)))
-
-                                    if res_cell_id != -1:
-                                        residence = None
-
-                                        residents_key = ""
-                                        staff_key = ""
-
-                                        if res_cell_id in self.cells_households:
-                                            residents_key = "resident_uids"
-                                            staff_key = "staff_uids"
-                                            residence = self.cells_households[res_cell_id] # res_cell_id
-                                        elif res_cell_id in self.cells_institutions:
-                                            residents_key = "resident_uids"
-                                            staff_key = "staff_uids"
-                                            residence = self.cells_institutions[res_cell_id]["place"] # res_cell_id 
-                                        elif res_cell_id in self.cells_accommodation:
-                                            residents_key = "member_uids"
-                                            residence = self.cells_accommodation[res_cell_id]["place"] # res_cell_id
-
-                                        if residence is not None:
-                                            resident_ids = residence[residents_key] # self.cells_mp.get(residence, residents_key) 
-                                            contact_id_index = np.argwhere(resident_ids == contact_id)
-                                            resident_ids = np.delete(resident_ids, contact_id_index)
-
-                                            employees_ids = []
-
-                                            if staff_key != "":
-                                                employees_ids = residence[staff_key] # self.cells_mp.get(residence, staff_key)
-
-                                            secondary_contact_ids = []
-                                            if employees_ids is None or len(employees_ids) == 0:
-                                                secondary_contact_ids = resident_ids
-                                            else:
-                                                try:
-                                                    secondary_contact_ids = np.concatenate((resident_ids, employees_ids))
-                                                except Exception as e:
-                                                    print("problemos: " + e)
-
-                                            if secondary_contact_ids is not None and len(secondary_contact_ids) > 0:
-                                                num_of_sec_successfully_traced = round(len(secondary_contact_ids) * self.contact_tracing_residence_probability)
-                                    
-                                                sampled_sec_traced_contact_ids = np.random.choice(np.array(secondary_contact_ids), size=num_of_sec_successfully_traced, replace=False)
-
-                                                secondary_contact_indices = np.arange(len(sampled_sec_traced_contact_ids))
-
-                                                num_of_sec_quarantined = round(num_of_sec_successfully_traced * self.contact_tracing_secondary_quarantine_prob)
-
-                                                if num_of_sec_quarantined == len(secondary_contact_indices):
-                                                    sampled_sec_quarantine_indices = secondary_contact_indices
-                                                else:
-                                                    sampled_sec_quarantine_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_quarantined, replace=False)
-
-                                                num_of_sec_tests = round(num_of_sec_successfully_traced * self.contact_tracing_secondary_test_prob)
-
-                                                if num_of_sec_tests == len(secondary_contact_indices):
-                                                    sampled_sec_test_indices = secondary_contact_indices
-                                                else:
-                                                    sampled_sec_test_indices = np.random.choice(secondary_contact_indices, size=num_of_sec_tests, replace=False)
-
-                                                quar_start_day, quar_start_timestep, quar_end_day = None, None, None
-                                                if quarantine_reference_quar_days is not None:
-                                                    quar_start_day, quar_start_timestep, quar_end_day = quarantine_reference_quar_days[0], quarantine_reference_quar_days[1], quarantine_reference_quar_days[2]
-                                                else:
-                                                    quar_start_day = day
-                                                    quar_start_timestep = np.random.choice(self.timestep_options, size=1)[0]
-
-                                                for sec_index, sec_contact_id in enumerate(secondary_contact_ids):
-                                                    secondary_contact_agent = None
-
-                                                    if sec_index in sampled_sec_quarantine_indices and sec_contact_id not in quarantine_scheduled_ids and sec_contact_id in self.agents_epi: # tourists may have left
-                                                        secondary_contact_agent = self.agents_epi[sec_contact_id]
-
-                                                        if secondary_contact_agent is not None and len(secondary_contact_agent) > 0:
-                                                            sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                                            quarantine_scheduled, quar_days = self.schedule_quarantine(sec_contact_id, quar_start_day, quar_start_timestep, QuarantineType.SecondaryContact, quar_end_day, agent=secondary_contact_agent)
-
-                                                            if quarantine_scheduled:
-                                                                quarantine_scheduled_ids.append(sec_contact_id)
-
-                                                                if quarantine_reference_quar_days is None:
-                                                                    quarantine_reference_quar_days = quar_days
-
-                                                                updated_agent_ids.add(sec_contact_id)
-
-                                                    if sec_index in sampled_sec_test_indices and sec_contact_id not in test_scheduled_ids and sec_contact_id in self.agents_epi: # tourists may have left
-                                                        if secondary_contact_agent is None:
-                                                            secondary_contact_agent = self.agents_epi[sec_contact_id]
-                                                        
-                                                        if secondary_contact_agent is not None and len(secondary_contact_agent) > 0:
-                                                            sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                                            test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, sec_contact_id, day, sampled_timestep, QuarantineType.SecondaryContact)
-
-                                                            if test_scheduled:
-                                                                test_scheduled_ids.append(sec_contact_id)
-
-                                                                updated_agent_ids.add(sec_contact_id)
-
-            print("quarantine scheduled from contact tracing {0}, tests scheduled from contact tracing {0}".format(str(len(quarantine_scheduled_ids)), str(len(test_scheduled_ids))))        
-                    # time_taken = time.time() - start
-                    # print("contact tracing applied: " + str(time_taken))
-        else:
-            if self.dyn_params.contact_tracing_enabled:
-                print("contract tracing skipped because there are no agents to contact trace")
-            else:
-                print("contact tracing skipped between contact tracing is disabled")
-
-            if f is not None:
-                f.flush()
-
-        if not distributed:
-            self.contact_tracing_clean_up(day, f)
-                
-        return self.process_index, updated_agent_ids, self.agents_epi, self.vars_util
-    
+      
     # fp = open("memory_profiler_10k_ct_cleanup.log", "w+")
     # @profile(stream=fp)
     def contact_tracing_clean_up(self, day, f=None):
@@ -1185,6 +902,8 @@ class Epidemiology:
     # agents_vaccination_doses has already been equipped to hold simulation days on which vaccination doses have been administered
     # virus transmission has already been implemented to take this into consideration for immunity + asymptomatic likelihood
     def schedule_vaccinations(self, day):
+        updated_agent_ids = []
+
         if self.dyn_params.vaccination_propensity > 0:
             num_not_vaccinated = self.n_locals - len(self.vars_util.agents_vaccination_doses) # np.where(self.vars_util.agents_vaccination_doses == 0)[0]
 
@@ -1240,11 +959,15 @@ class Epidemiology:
                     
                     agent["vaccination_days"] = agent_vaccination_days
 
+                    updated_agent_ids.append(agentid)
+
                     # increment on actual day of vaccination
                     # agent_vaccination_doses = self.vars_util.agents_vaccination_doses[agentid]
                     # agent_vaccination_doses += 1
                     # self.vars_util.agents_vaccination_doses[agentid] = agent_vaccination_doses
-
+                    
+        return updated_agent_ids
+    
     def convert_simcelltype_to_contact_tracing_success_prob(self, simcelltype):
         contact_tracing_success_prob = 0
         match simcelltype:
