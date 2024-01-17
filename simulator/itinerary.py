@@ -1531,19 +1531,8 @@ class Itinerary:
                                 self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
                                 self.vars_util.agents_infection_type[agentid] = inf_type
                                 self.vars_util.agents_infection_severity[agentid] = inf_sev
-
-                                # print(f"setting infection type {inf_type} and infection severity {inf_sev} for agent {agentid}, new infection_type_len {str(len(self.vars_util.agents_infection_type))}")
-
-                                # immediately clear any events that happened prior to today as they would not be relevant anymore
-                                # delete_indices = []
-                                # for day_entry_index, day_entry in enumerate(agent_state_transition_by_day): # iterate on the indices to be able to delete directly
-                                #     if day_entry[0] < simday: # day is first index
-                                #         delete_indices.append(day_entry_index)
-
-                                # if len(delete_indices) > 0:
-                                #     agent_state_transition_by_day = agent_state_transition_by_day[delete_indices[-1]+1:]
-
-                                # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                            else:
+                                self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, SEIRState.Susceptible, agentid)                       
 
                         # this updates the state, infection type and severity, if relevant for the current day! (such that the itinerary may also handle public health interventions)
                         new_states = seirstateutil.update_agent_state(self.vars_util.agents_seir_state, self.vars_util.agents_infection_type, self.vars_util.agents_infection_severity, agentid, agent_epi, agentid, simday) # agentid is guaranteed to be agentindex here
