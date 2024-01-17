@@ -27,9 +27,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 24, # 365/20
+            "simulationdays": 6, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -42,8 +42,8 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 100000, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 400000, # 2173531 / 400000 / 40000 / 4000
+            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
             "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
@@ -71,8 +71,8 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
-            "dask_nodes": ["localhost", "192.168.1.23"], # 192.168.1.24
-            "dask_nodes_n_workers": [4, 4], # 3, 11
+            "dask_nodes": ["localhost"], # 192.168.1.23
+            "dask_nodes_n_workers": [8], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -92,7 +92,7 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "dask_strat1_2n_16w__100k_3d_resilience_test.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "daskstrat1_8p_10k_temptest.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration

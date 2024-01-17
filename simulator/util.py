@@ -719,17 +719,26 @@ def refresh_dask_nodes_n_workers(workers):
     dask_nodes_n_workers = []
     curr_worker = ""
     curr_worker_count = 0
+    worker_count_open = False
+
     for w in workers:
+        if curr_worker_count == 0:
+            worker_count_open = True
+
         temp_w = w.replace(":" + w[w.rindex(':') + 1:], "").replace("tcp://", "")
         if curr_worker == "" or temp_w == curr_worker:
             curr_worker_count += 1
         else:
             dask_nodes_n_workers.append(curr_worker_count)
+            worker_count_open = False
             curr_worker_count = 0
+
         curr_worker = temp_w
         
-    if len(workers) > 0:
-        curr_worker_count += 1
+    if worker_count_open: # last worker will not be closed within the loop
+        if len(dask_nodes_n_workers) > 0: # if single worker, don't need to increment
+            curr_worker_count += 1
+        
         dask_nodes_n_workers.append(curr_worker_count) # close it off
 
     return dask_nodes_n_workers
