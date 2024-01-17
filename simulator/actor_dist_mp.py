@@ -205,7 +205,7 @@ class ActorDistMP:
 
             # certain data does not have to go back because it would not have been updated in this context
             vars_util.cells_agents_timesteps = customdict.CustomDict()
-            vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
+            # vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
             vars_util.agents_vaccination_doses = customdict.CustomDict()
 
             # util.log_memory_usage(f, "Before returning. ")
@@ -410,7 +410,7 @@ def run_contactnetwork_single(params):
 
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
-        vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
+        # vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
         vars_util.agents_vaccination_doses = customdict.CustomDict()
 
         main_time_taken = time.time() - main_start

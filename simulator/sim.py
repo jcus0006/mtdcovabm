@@ -27,9 +27,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 6, # 365/20
+            "simulationdays": 365, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -42,15 +42,15 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
+            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_use_mp_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
@@ -70,7 +70,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_partition_size": 128, # NOT USED
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
-            "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
+            "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.23
             "dask_nodes_n_workers": [8], # 3, 11
             # "dask_scheduler_node": "localhost",
@@ -92,7 +92,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "daskstrat1_8p_10k_temptest.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "mp_8p_365d_tourinitfix_addedlogs.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -442,7 +442,7 @@ def main():
 
     # # transmission model
     agents_seir_state = customdict.CustomDict() # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
-    agents_seir_state_transition_for_day = customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
+    agents_seir_state_transition_for_day = None # customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
     agents_infection_type = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_infection_severity = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_vaccination_doses = customdict.CustomDict() # number of doses per agent

@@ -29,8 +29,8 @@ class Vars:
         if agents_seir_state is None:
             agents_seir_state = customdict.CustomDict()
 
-        if agents_seir_state_transition_for_day is None:
-            agents_seir_state_transition_for_day = customdict.CustomDict()
+        # if agents_seir_state_transition_for_day is None:
+        #     agents_seir_state_transition_for_day = customdict.CustomDict()
 
         if agents_infection_type is None:
             agents_infection_type = customdict.CustomDict()
@@ -67,7 +67,7 @@ class Vars:
 
     def reset_daily_structures(self):
         self.cells_agents_timesteps = customdict.CustomDict()
-        self.agents_seir_state_transition_for_day = customdict.CustomDict()
+        self.agents_seir_state_transition_for_day = None # customdict.CustomDict()
 
     # def convert_to_dask_collections(self, partition_size):
     #     # self.cells_agents_timesteps = db.from_sequence(self.cells_agents_timesteps.items(), partition_size=128)
