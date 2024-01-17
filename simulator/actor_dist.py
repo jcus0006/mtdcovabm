@@ -1,7 +1,7 @@
 import os
 import time
 from dask.distributed import get_worker, get_client, as_completed
-import customdict, vars, tourism_dist, util, itinerary, contactnetwork
+import customdict, vars, tourism, tourism_dist, util, itinerary, contactnetwork
 from cellsclasses import CellType
 from enum import Enum
 
@@ -15,7 +15,7 @@ class ActorDist:
 
         self.remote_actors = []
 
-        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, dyn_params, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
+        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, tourists, touristsgroups, touristsgroupsids_initial, dyn_params, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
 
         current_directory = os.getcwd()
         subfolder_name = logfilename.replace(".txt", "")
@@ -46,6 +46,14 @@ class ActorDist:
         self.agents_epi = agents_epi
         self.vars_util = vars_util # direct contacts do not have to be shared with the remote nodes, it can be simply returned to the client
 
+        self.tourists = tourists
+        self.touristsgroups = touristsgroups
+        self.touristsgroupsids_initial = touristsgroupsids_initial
+        self.tourists_active_ids = []
+        self.tourists_active_groupids = []
+        self.tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
+        self.tourists_arrivals_departures_for_nextday = {}
+
         self.it_main_time_taken_sum = 0
         self.it_main_time_taken_avg = 0
         self.cn_time_taken_sum = 0
@@ -64,15 +72,77 @@ class ActorDist:
     # the distributed stage starts immediately by syncing the cells_agents_timesteps created in the tourism itinerary, 
     # as well as syncing new (initial and arriving) tourists and deleting departing tourists
     def tourists_sync(self, params):
-        self.vars_util.cells_agents_timesteps = params[-1] 
+        # self.vars_util.cells_agents_timesteps = params[-1] 
 
-        params = params[0], params[1], params[2], params[3], params[4], params[5], params[6]
+        # params = params[0], params[1], params[2], params[3], params[4], params[5], params[6]
 
         self.simstage = SimStage.TouristSync
 
         process_index, success, self.it_agents, self.agents_epi, self.vars_util = tourism_dist.update_tourist_data_remote(params, self.folder_name, self.it_agents, self.agents_epi, self.vars_util)
 
         return process_index, success
+    
+    def tourist_itinerary(self):
+        main_start = time.time()
+
+        self.simstage = SimStage.TouristItinerary
+
+        agents_ids_by_ages = self.worker.data["agents_ids_by_ages"]
+        timestepmins = self.worker.data["timestepmins"]
+        n_locals = self.worker.data["n_locals"]
+        n_tourists = self.worker.data["n_tourists"]
+        locals_ratio_to_full_pop = self.worker.data["locals_ratio_to_full_pop"]
+
+        itineraryparams = self.worker.data["itineraryparams"]
+        epidemiologyparams = self.worker.data["epidemiologyparams"]
+        cells_industries_by_indid_by_wpid = self.worker.data["cells_industries_by_indid_by_wpid"] 
+        cells_restaurants = self.worker.data["cells_restaurants"] 
+        cells_hospital = self.worker.data["cells_hospital"] 
+        cells_testinghub = self.worker.data["cells_testinghub"] 
+        cells_vaccinationhub = self.worker.data["cells_vaccinationhub"] 
+        cells_entertainment_by_activityid = self.worker.data["cells_entertainment_by_activityid"] 
+        cells_religious = self.worker.data["cells_religious"] 
+        cells_households = self.worker.data["cells_households"] 
+        cells_breakfast_by_accomid = self.worker.data["cells_breakfast_by_accomid"] 
+        cells_airport = self.worker.data["cells_airport"] 
+        cells_transport = self.worker.data["cells_transport"] 
+        cells_institutions = self.worker.data["cells_institutions"] 
+        cells_accommodation = self.worker.data["cells_accommodation"] 
+        agents_static = self.worker.data["agents_static"]
+
+        if self.day == 1:
+            contactnetworkparams = self.worker.data["contactnetworkparams"]
+            sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
+            sociability_rate_min, sociability_rate_max = sociability_rate_min_max[0], sociability_rate_min_max[1]
+            powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
+
+            initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
+
+            tourist_util = tourism.Tourism(tourismparams, # to do - can be passed to the actor immediately (as light-weight)
+                                           cells, # to do - may use cells_accommodation instead, and pass it in the beginning via upload_file
+                                           n_locals, 
+                                           self.tourists, 
+                                           agents_static, 
+                                           self.it_agents, 
+                                           self.agents_epi, 
+                                           self.vars_util, 
+                                           touristsgroupsdays, # to do - always pass a dict, with a single day
+                                           self.touristsgroups, 
+                                           rooms_by_accomid_by_accomtype, # to do - to be passed to the actor immediately
+                                           self.tourists_arrivals_departures_for_day, 
+                                           self.tourists_arrivals_departures_for_nextday, 
+                                           self.tourists_active_groupids, 
+                                           self.tourists_active_ids, 
+                                           age_brackets, # to do - to be passed to the actor immediately
+                                           powerlaw_distribution_parameters, 
+                                           False, # visualise 
+                                           sociability_rate_min, 
+                                           sociability_rate_max, 
+                                           0, 
+                                           initial_seir_state_distribution, 
+                                           True) # dask_full_stateful
+            
+            tourist_util.sample_initial_tourists(self.touristsgroupsids_initial, f) # to do - must create f and point stdout to it
     
     def itinerary(self):
         main_start = time.time()
@@ -390,6 +460,7 @@ class ActorDist:
 
 class SimStage(Enum):
     TouristSync = 0
-    Itinerary = 1
-    ContactNetwork = 2
-    EndOfDaySync = 3
+    TouristItinerary = 1
+    Itinerary = 2
+    ContactNetwork = 3
+    EndOfDaySync = 4

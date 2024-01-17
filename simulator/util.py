@@ -176,7 +176,7 @@ def set_age_brackets_tourists(age, agents_ids_by_ages, agent_uid, age_brackets, 
 
     return age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets
 
-def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count):
+def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count):
     for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
         powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]
 
@@ -193,7 +193,7 @@ def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebracke
 
                 normalized_arr = (agents_contact_propensity - min_arr) / (max_arr - min_arr) * (sociability_rate_max - sociability_rate_min) + sociability_rate_min
 
-                if params["visualise"]:
+                if visualise:
                     figure_count += 1
                     plt.figure(figure_count)
                     bins = np.logspace(np.log10(min(agents_contact_propensity)), np.log10(max(agents_contact_propensity)), 50)

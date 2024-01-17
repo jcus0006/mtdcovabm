@@ -62,11 +62,11 @@ def update_tourist_data_remote(params, folder_name=None, it_agents=None, agents_
                 agents_epi[agentid] = agents_epi_to_sync[agentid]
                 vars_util.agents_seir_state[agentid] = vars_util_to_sync.agents_seir_state[agentid]
 
-                if agentid in vars_util_to_sync.agents_infection_type:
-                    vars_util.agents_infection_type[agentid] = vars_util_to_sync.agents_infection_type[agentid]
+                # if agentid in vars_util_to_sync.agents_infection_type:
+                #     vars_util.agents_infection_type[agentid] = vars_util_to_sync.agents_infection_type[agentid]
                 
-                if agentid in vars_util_to_sync.agents_infection_severity:
-                    vars_util.agents_infection_severity[agentid] = vars_util_to_sync.agents_infection_severity[agentid]
+                # if agentid in vars_util_to_sync.agents_infection_severity:
+                #     vars_util.agents_infection_severity[agentid] = vars_util_to_sync.agents_infection_severity[agentid]
 
                 print(f"synced it_agents and agents_epi {agentid}")
 

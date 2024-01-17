@@ -8,7 +8,7 @@ import customdict
 import gc
 
 class Tourism:
-    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
+    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -16,7 +16,8 @@ class Tourism:
         self.tourists_active_groupids = tourists_active_groupids
         self.tourists_active_ids = tourists_active_ids
         self.age_brackets = age_brackets
-        self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count = powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count
+        self.visualise = visualise
+        self.powerlaw_distribution_parameters, self.sociability_rate_min, self.sociability_rate_max, self.figure_count = powerlaw_distribution_parameters, sociability_rate_min, sociability_rate_max, figure_count
         self.initial_seir_state_distribution = initial_seir_state_distribution
 
         incoming_airport_duration_dist_params = tourismparams["incoming_airport_duration_distribution_params"]
@@ -199,7 +200,7 @@ class Tourism:
                                 break
                     
                     new_soc_rates = {agentid:{} for agentid in new_agent_ids}
-                    new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
+                    new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.visualise, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
 
                     for agentid, prop in new_soc_rates.items():
                         self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
@@ -310,7 +311,7 @@ class Tourism:
                         break
             
             new_soc_rates = {agentid:{} for agentid in new_agent_ids}
-            new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.params, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
+            new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.visualise, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
 
             for agentid, prop in new_soc_rates.items():
                 self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
@@ -329,7 +330,7 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, cells_agents_timesteps_to_sync_by_worker=None, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
         departing_tourists_agent_ids = []
 
         start = time.time()
@@ -407,13 +408,7 @@ class Tourism:
                             agents_epi_to_sync[agentid] = self.agents_epi[agentid]
                             vars_util_to_sync.agents_seir_state[agentid] = self.vars_util.agents_seir_state[agentid]
 
-                            if agentid in self.vars_util.agents_infection_type:
-                                vars_util_to_sync.agents_infection_type[agentid] = self.vars_util.agents_infection_type[agentid]
-
-                            if agentid in self.vars_util.agents_infection_severity:
-                                vars_util_to_sync.agents_infection_severity[agentid] = self.vars_util.agents_infection_severity[agentid]
-
-                        params = (day, self.agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, prev_day_departing_tourists_agents_ids, worker_index, cells_agents_timesteps_to_sync_by_worker[worker_index])
+                        params = (day, self.agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
 
                     actor = actors[worker_index]
                     

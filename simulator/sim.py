@@ -94,7 +94,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "strat3_10k_6d.txt" # dask_strat1_1n_4w_6d_500k_full_test.txt
+            "logfilename": "strat3_touropt_10k_6d.txt" # dask_strat1_1n_4w_6d_500k_full_test.txt
         }
 
 # Load configuration
@@ -1151,7 +1151,7 @@ def main():
         if params["loadtourism"]:
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
-            tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, params["dask_full_stateful"]) 
+            tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params["visualise"], sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, params["dask_full_stateful"]) 
             tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
@@ -1199,6 +1199,34 @@ def main():
 
                 cells_split_ids.append(this_actor_cells_ids)
 
+            num_touristsgroups_per_actor = util.split_balanced_partitions(len(touristsgroups), num_actors)
+            
+            touristsgroups_ids = list(touristsgroups.keys())
+            touristsgroups_split_ids = []
+            touristsgroups_index = 0
+            for num_touristsgroups_this_actor in num_touristsgroups_per_actor:
+                this_actor_touristsgroups_ids = []
+
+                for _ in range(num_touristsgroups_this_actor):
+                    this_actor_touristsgroups_ids.append(touristsgroups_ids[touristsgroups_index])
+                    touristsgroups_index += 1
+
+                touristsgroups_split_ids.append(this_actor_touristsgroups_ids)
+
+            num_touristsgroups_per_actor = util.split_balanced_partitions(len(touristsgroups), num_actors)
+            
+            touristsgroups_ids = list(touristsgroups.keys())
+            touristsgroups_split_ids = []
+            touristsgroups_index = 0
+            for num_touristsgroups_this_actor in num_touristsgroups_per_actor:
+                this_actor_touristsgroups_ids = []
+
+                for _ in range(num_touristsgroups_this_actor):
+                    this_actor_touristsgroups_ids.append(touristsgroups_ids[touristsgroups_index])
+                    touristsgroups_index += 1
+
+                touristsgroups_split_ids.append(this_actor_touristsgroups_ids)
+
             agent_ids_by_worker_lookup, cell_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict()
             worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
             worker_data = customdict.CustomDict()
@@ -1209,7 +1237,8 @@ def main():
                     hh_inst_split_indices_this_worker = hh_inst_split_indices[worker_index]
 
                     hh_insts_this_worker = []
-                    it_agents_this_worker, agents_epi_this_worker = customdict.CustomDict(), customdict.CustomDict()
+                    it_agents_this_worker, agents_epi_this_worker, tourists_this_worker, touristsgroups_this_worker = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+                    touristsgroupsids_initial_this_worker = []
                     vars_util_this_worker = vars.Vars()
 
                     agent_ids_this_worker = []
@@ -1250,9 +1279,23 @@ def main():
                     for cell_id in cell_ids_this_worker:
                         worker_by_cell_ids_lookup[cell_id] = worker_index
 
+                    for tourist_group_id in touristsgroups_split_ids[worker_index]:
+                        tourist_group = touristsgroups[tourist_group_id]
+                        touristsgroups_this_worker[tourist_group_id] = tourist_group
+
+                        for tour_group in tourist_group["subgroupsmemberids"]:
+                            for tour_id in tour_group:
+                                tourists_this_worker[tour_id] = tourists[tour_id]
+
+                    touristsgroups_ids_this_worker = set(touristsgroups_this_worker.keys())
+                    touristsgroupsids_initial_this_worker = list(set(touristsgroupsids_initial).intersection(touristsgroups_ids_this_worker))
+
+                    tourists_agentids_this_worker = [tour_id + n_locals for tour_id in tourists_this_worker.keys()]
+                    agent_ids_this_worker.extend(tourists_agentids_this_worker)
+
                     agent_ids_by_worker_lookup[worker_index] = set(agent_ids_this_worker)
                     cell_ids_by_worker_lookup[worker_index] = set(cell_ids_this_worker)
-                    worker_data[worker_index] = [hh_insts_this_worker, it_agents_this_worker, agents_epi_this_worker, vars_util_this_worker]
+                    worker_data[worker_index] = [hh_insts_this_worker, it_agents_this_worker, agents_epi_this_worker, vars_util_this_worker, tourists_this_worker, touristsgroups_split_ids[worker_index], touristsgroupsids_initial_this_worker]
 
                     worker_index += 1
 
@@ -1267,6 +1310,9 @@ def main():
                                 worker_data[worker_index][1], # it_agents
                                 worker_data[worker_index][2], # agents_epi
                                 worker_data[worker_index][3], # vars_util
+                                worker_data[worker_index][4], # tourists
+                                worker_data[worker_index][5], # touristsgroups
+                                worker_data[worker_index][6], # touristsgroupsids_initial
                                 dyn_params,
                                 agent_ids_by_worker_lookup, 
                                 cell_ids_by_worker_lookup, 
@@ -1339,54 +1385,55 @@ def main():
                 if f is not None:
                     f.flush()
 
-                # single process tourism section
-                itinerary_util = itinerary.Itinerary(itineraryparams, 
-                                                    params["timestepmins"], 
-                                                    n_locals, 
-                                                    n_tourists,
-                                                    locals_ratio_to_full_pop,
-                                                    agents_static,
-                                                    it_agents, # it_agents
-                                                    agents_epi, # agents_epi ?
-                                                    agents_ids_by_ages,
-                                                    vars_util,
-                                                    cells_industries_by_indid_by_wpid,
-                                                    cells_restaurants,
-                                                    cells_hospital, 
-                                                    cells_testinghub, 
-                                                    cells_vaccinationhub, 
-                                                    cells_entertainment_by_activityid,
-                                                    cells_religious, 
-                                                    cells_households,
-                                                    cells_breakfast_by_accomid,
-                                                    cells_airport, 
-                                                    cells_transport, 
-                                                    cells_institutions, 
-                                                    cells_accommodation, 
-                                                    epidemiologyparams,
-                                                    dyn_params,
-                                                    tourists)
+                if not params["dask_full_stateful"]:
+                    # single process tourism section
+                    itinerary_util = itinerary.Itinerary(itineraryparams, 
+                                                        params["timestepmins"], 
+                                                        n_locals, 
+                                                        n_tourists,
+                                                        locals_ratio_to_full_pop,
+                                                        agents_static,
+                                                        it_agents, # it_agents
+                                                        agents_epi, # agents_epi ?
+                                                        agents_ids_by_ages,
+                                                        vars_util,
+                                                        cells_industries_by_indid_by_wpid,
+                                                        cells_restaurants,
+                                                        cells_hospital, 
+                                                        cells_testinghub, 
+                                                        cells_vaccinationhub, 
+                                                        cells_entertainment_by_activityid,
+                                                        cells_religious, 
+                                                        cells_households,
+                                                        cells_breakfast_by_accomid,
+                                                        cells_airport, 
+                                                        cells_transport, 
+                                                        cells_institutions, 
+                                                        cells_accommodation, 
+                                                        epidemiologyparams,
+                                                        dyn_params,
+                                                        tourists)
 
-                itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, log_file_name, f)
-                print("generate_tourist_itinerary (done) for simday " + str(day) + ", weekday " + str(weekday))
-                if f is not None:
-                    f.flush()
+                    itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, log_file_name, f)
+                    print("generate_tourist_itinerary (done) for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
+                        f.flush()
 
-                cells_agents_timesteps_to_sync_by_worker = None
+                # cells_agents_timesteps_to_sync_by_worker = None
 
-                if params["dask_full_stateful"]:
-                    cells_agents_timesteps_to_sync_by_worker = []
+                # if params["dask_full_stateful"]:
+                #     cells_agents_timesteps_to_sync_by_worker = []
 
-                    tourists_cat_ids = set(list(vars_util.cells_agents_timesteps.keys()))
+                #     tourists_cat_ids = set(list(vars_util.cells_agents_timesteps.keys()))
 
-                    for _, cells_ids in cell_ids_by_worker_lookup.items():
-                        cat_ids_to_sync_this_worker = tourists_cat_ids.intersection(cells_ids)
+                #     for _, cells_ids in cell_ids_by_worker_lookup.items():
+                #         cat_ids_to_sync_this_worker = tourists_cat_ids.intersection(cells_ids)
 
-                        cells_agents_timesteps_partial = customdict.CustomDict()
+                #         cells_agents_timesteps_partial = customdict.CustomDict()
 
-                        for cell_id in cat_ids_to_sync_this_worker:
-                            cells_agents_timesteps_partial[cell_id] = vars_util.cells_agents_timesteps[cell_id]
-                            cells_agents_timesteps_to_sync_by_worker.append(cells_agents_timesteps_partial)                            
+                #         for cell_id in cat_ids_to_sync_this_worker:
+                #             cells_agents_timesteps_partial[cell_id] = vars_util.cells_agents_timesteps[cell_id]
+                #             cells_agents_timesteps_to_sync_by_worker.append(cells_agents_timesteps_partial)                            
 
                 tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], params["dask_full_stateful"], cells_agents_timesteps_to_sync_by_worker, f)
                 print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
