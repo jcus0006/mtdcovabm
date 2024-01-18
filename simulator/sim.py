@@ -1043,6 +1043,8 @@ def main():
                 client.upload_file('simulator/epidemiology.py')
                 client.upload_file('simulator/seirstateutil.py')
                 client.upload_file('simulator/vars.py')
+                if params["dask_full_stateful"]:
+                    client.upload_file('simulator/tourism.py')
                 client.upload_file('simulator/dynamicstatistics.py')
                 client.upload_file('simulator/dynamicparams.py')
                 client.upload_file('simulator/itinerary.py')
@@ -1058,7 +1060,6 @@ def main():
                 client.upload_file('simulator/itinerary_dist.py')      
                 client.upload_file('simulator/contactnetwork_dist.py')
                 client.upload_file('simulator/contacttracing_dist.py')
-                client.upload_file('simulator/tourism_dist.py')
 
                 for dynamicjsonpath in json_paths_to_upload:
                     client.upload_file(dynamicjsonpath)
@@ -1151,7 +1152,7 @@ def main():
         if params["loadtourism"]:
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
-            tourist_util = tourism.Tourism(tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params["visualise"], sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, params["dask_full_stateful"]) 
+            tourist_util = tourism.Tourism(tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params["visualise"], sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, params["dask_full_stateful"]) 
             tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
@@ -1201,7 +1202,8 @@ def main():
 
             num_touristsgroups_per_actor = util.split_balanced_partitions(len(touristsgroups), num_actors)
             
-            touristsgroups_ids = list(touristsgroups.keys())
+            touristsgroups_ids = np.array(list(touristsgroups.keys()))
+            np.random.shuffle(touristsgroups_ids)
             touristsgroups_split_ids = []
             touristsgroups_index = 0
             for num_touristsgroups_this_actor in num_touristsgroups_per_actor:
@@ -1213,21 +1215,7 @@ def main():
 
                 touristsgroups_split_ids.append(this_actor_touristsgroups_ids)
 
-            num_touristsgroups_per_actor = util.split_balanced_partitions(len(touristsgroups), num_actors)
-            
-            touristsgroups_ids = list(touristsgroups.keys())
-            touristsgroups_split_ids = []
-            touristsgroups_index = 0
-            for num_touristsgroups_this_actor in num_touristsgroups_per_actor:
-                this_actor_touristsgroups_ids = []
-
-                for _ in range(num_touristsgroups_this_actor):
-                    this_actor_touristsgroups_ids.append(touristsgroups_ids[touristsgroups_index])
-                    touristsgroups_index += 1
-
-                touristsgroups_split_ids.append(this_actor_touristsgroups_ids)
-
-            agent_ids_by_worker_lookup, cell_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict()
+            agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, touristsgroups_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
             worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
             worker_data = customdict.CustomDict()
             
@@ -1295,7 +1283,8 @@ def main():
 
                     agent_ids_by_worker_lookup[worker_index] = set(agent_ids_this_worker)
                     cell_ids_by_worker_lookup[worker_index] = set(cell_ids_this_worker)
-                    worker_data[worker_index] = [hh_insts_this_worker, it_agents_this_worker, agents_epi_this_worker, vars_util_this_worker, tourists_this_worker, touristsgroups_split_ids[worker_index], touristsgroupsids_initial_this_worker]
+                    touristsgroups_ids_by_worker_lookup[worker_index] = touristsgroups_ids_this_worker
+                    worker_data[worker_index] = [hh_insts_this_worker, it_agents_this_worker, agents_epi_this_worker, vars_util_this_worker, tourists_this_worker, touristsgroups_this_worker, touristsgroupsids_initial_this_worker]
 
                     worker_index += 1
 
@@ -1314,6 +1303,9 @@ def main():
                                 worker_data[worker_index][5], # touristsgroups
                                 worker_data[worker_index][6], # touristsgroupsids_initial
                                 dyn_params,
+                                tourismparams,
+                                rooms_by_accomid_by_accomtype,
+                                age_brackets,
                                 agent_ids_by_worker_lookup, 
                                 cell_ids_by_worker_lookup, 
                                 worker_by_res_ids_lookup, 
@@ -1354,6 +1346,9 @@ def main():
 
             if params["dask_full_stateful"]:
                 dfs_reset_start = time.time()
+
+                if day == 1:
+                    dyn_params.refresh_dynamic_parameters(day, 0, 0, 0, tourists_active_ids, vars_util)
 
                 futures = []
                 for actor in actors:
@@ -1417,41 +1412,25 @@ def main():
                     itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, log_file_name, f)
                     print("generate_tourist_itinerary (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
+                        f.flush()                      
+
+                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], params["dask_full_stateful"], cells_agents_timesteps_to_sync_by_worker, f)
+                    print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
                         f.flush()
 
-                # cells_agents_timesteps_to_sync_by_worker = None
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. After tourist itinerary ")
 
-                # if params["dask_full_stateful"]:
-                #     cells_agents_timesteps_to_sync_by_worker = []
+                    time_taken = time.time() - start
+                    tourist_itinerary_sum_time_taken += time_taken
+                    avg_time_taken = tourist_itinerary_sum_time_taken / day
+                    perf_timings_df.loc[day, "tourismitinerary_day"] = round(time_taken, 2)
+                    perf_timings_df.loc[day, "tourismitinerary_avg"] = round(avg_time_taken, 2)
 
-                #     tourists_cat_ids = set(list(vars_util.cells_agents_timesteps.keys()))
-
-                #     for _, cells_ids in cell_ids_by_worker_lookup.items():
-                #         cat_ids_to_sync_this_worker = tourists_cat_ids.intersection(cells_ids)
-
-                #         cells_agents_timesteps_partial = customdict.CustomDict()
-
-                #         for cell_id in cat_ids_to_sync_this_worker:
-                #             cells_agents_timesteps_partial[cell_id] = vars_util.cells_agents_timesteps[cell_id]
-                #             cells_agents_timesteps_to_sync_by_worker.append(cells_agents_timesteps_partial)                            
-
-                tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], params["dask_full_stateful"], cells_agents_timesteps_to_sync_by_worker, f)
-                print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
-                if f is not None:
-                    f.flush()
-
-                if params["logmemoryinfo"]:
-                    util.log_memory_usage(f, "Loaded data. After tourist itinerary ")
-
-                time_taken = time.time() - start
-                tourist_itinerary_sum_time_taken += time_taken
-                avg_time_taken = tourist_itinerary_sum_time_taken / day
-                perf_timings_df.loc[day, "tourismitinerary_day"] = round(time_taken, 2)
-                perf_timings_df.loc[day, "tourismitinerary_avg"] = round(avg_time_taken, 2)
-
-                print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
-                if f is not None:
-                    f.flush()
+                    print("generate_tourist_itinerary for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken) + ", avg time taken: " + str(avg_time_taken))
+                    if f is not None:
+                        f.flush()
 
             # epi_util.tourists_active_ids = tourist_util.tourists_active_ids
 
@@ -1459,17 +1438,17 @@ def main():
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
 
-                num_arrivals, num_departures = 0, 0
+                num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
 
-                if params["loadtourism"]:
+                if params["loadtourism"] and not params["dask_full_stateful"]:
                     num_departures = len(tourist_util.departing_tourists_agents_ids[day])
                     num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
                     num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
             
-                dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
+                    dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
 
-                if params["logmemoryinfo"]:
-                    util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
+                    if params["logmemoryinfo"]:
+                        util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
 
             if not params["quicktourismrun"]:
                 start = time.time()  
@@ -1596,18 +1575,25 @@ def main():
                                                                     log_file_name)
                         else: # full stateful
                             futures = []
-                            for actor in actors:
-                                futures.append(actor.itinerary())
+                            touristsgroupsdays_this_day = set(touristsgroupsdays[day])
+                            
+                            for worker_index, actor in enumerate(actors):
+                                touristsgroupsdays_this_day_this_worker = list(touristsgroups_ids_by_worker_lookup[worker_index].intersection(touristsgroupsdays_this_day))
+                                futures.append(actor.itineraries(touristsgroupsdays_this_day_this_worker))
 
                             for future in as_completed(futures):
-                                a_worker_index, contact_tracing_agent_ids_partial, it_times_taken, agents_epi_keys = future.result()
+                                a_worker_index, cells_accommodation_partial, contact_tracing_agent_ids_partial, it_times_taken, agents_epi_keys = future.result()
+                                
+                                if len(cells_accommodation_partial) > 0:
+                                    for cell_id, cell_value in cells_accommodation_partial.items():
+                                        cells_accommodation[cell_id] = cell_value
 
                                 if len(contact_tracing_agent_ids_partial) > 0:
                                     vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
 
-                                a_it_main_tt, a_ws_tt, a_it_tt, a_it_results_tt, a_it_avg_tt = it_times_taken
+                                a_it_main_tt, tour_tt, a_ws_tt, a_it_tt, a_it_results_tt, a_it_avg_tt = it_times_taken
                                 
-                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, send results time taken: {a_it_results_tt}, avg time taken: {a_it_avg_tt}")
+                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, send results time taken: {a_it_results_tt}, avg time taken: {a_it_avg_tt}")
                 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
                 if params["logmemoryinfo"]:
@@ -1924,7 +1910,7 @@ def main():
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
 
-                num_arrivals, num_departures = 0, 0
+                num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
 
                 if params["loadtourism"]:
                     num_departures = len(tourist_util.departing_tourists_agents_ids[day])

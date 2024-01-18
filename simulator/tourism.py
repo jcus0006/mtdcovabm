@@ -8,7 +8,7 @@ import customdict
 import gc
 
 class Tourism:
-    def __init__(self, tourismparams, cells, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
+    def __init__(self, tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
         self.rng = np.random.default_rng(seed=6)
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
@@ -26,7 +26,7 @@ class Tourism:
         self.incoming_duration_shape_param, self.incoming_duration_min, self.incoming_duration_max = incoming_airport_duration_dist_params[0], incoming_airport_duration_dist_params[1], incoming_airport_duration_dist_params[2]
         self.outgoing_duration_shape_param, self.outgoing_duration_min, self.outgoing_duration_max = outgoing_airport_duration_dist_params[0], outgoing_airport_duration_dist_params[1], outgoing_airport_duration_dist_params[2]
 
-        self.cells = cells
+        self.cells_accommodation = cells_accommodation
         self.n_locals = n_locals
         self.tourists = tourists
         self.agents_static = agents_static
@@ -47,6 +47,8 @@ class Tourism:
         self.arriving_tourists_next_day_agents_ids = [] # see above
         self.departing_tourists_agents_ids = {} # {day: []} - cleaned the day after
 
+        self.updated_cell_ids = [] # required by strat3, remote worker will use this to only send subset of data back to main process to be used with contact tracing
+
     def initialize_foreign_arrivals_departures_for_day(self, day, f=None):
         tourist_groupids_by_day = set(self.touristsgroupsdays[day])
 
@@ -65,11 +67,12 @@ class Tourism:
         if len(tourist_groupids_by_nextday) > 0:
             self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, f)
         
-        return self.it_agents, self.agents_epi, self.tourists, self.cells, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
+        return self.it_agents, self.agents_epi, self.tourists, self.cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
     def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, f):
         if not is_next_day:
             self.arriving_tourists_agents_ids = []
+            self.updated_cell_ids = []
         else:
             self.arriving_tourists_next_day_agents_ids = []
 
@@ -90,8 +93,9 @@ class Tourism:
                     arrival_airport_duration = util.sample_gamma_reject_out_of_range(self.incoming_duration_shape_param, self.incoming_duration_min, self.incoming_duration_max, 1, True, True)
 
                     tourists_arrivals_departures[tour_group_id] = {"ts": arrival_ts, "airport_duration": arrival_airport_duration, "arrival": True}
-                
-                    self.tourists_active_groupids.append(tour_group_id) 
+
+                    if not is_next_day:
+                        self.tourists_active_groupids.append(tour_group_id) 
                 else:
                     if departureday - arrivalday == 1: # if only 1 day trip force departure to be in the afternoon
                         timesteps = self.afternoon_timesteps
@@ -122,9 +126,10 @@ class Tourism:
 
                         room_members = subgroupsmemberids[accinfoindex] # this room
 
-                        cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
-
-                        self.cells[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
+                        if not is_next_day:
+                            cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
+                            self.cells_accommodation[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
+                            self.updated_cell_ids.append(cellindex)
 
                         num_tourists_in_group += len(room_members)
 
@@ -133,86 +138,91 @@ class Tourism:
                             tourist = self.tourists[tourist_id]
                             # new_agent_id = self.get_next_available_agent_id()
                             new_agent_id = tourist_id + self.n_locals
-                            new_agent_ids.append(new_agent_id)
-                            res_cell_ids.append(cellindex)
-                            tourist["agentid"] = new_agent_id
-                            tourist["initial_tourist"] = True
 
-                            age_bracket_index = -1
-                            for i, ab in enumerate(self.age_brackets):
-                                if tourist["age"] >= ab[0] and tourist["age"] <= ab[1]:
-                                    age_bracket_index = i
-                                    break
-
-                            ages.append(tourist["age"])
-
-                            if tourist["age"] < 16:
-                                under_age_agent = True
-
-                            epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
-
-                            self.it_agents[new_agent_id] = None
-                            self.agents_epi[new_agent_id] = None
-
-                            new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
-                            new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
-
-                            age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
-
-                            self.it_agents[new_agent_id] = new_it_agent
-                            self.agents_epi[new_agent_id] = new_agent_epi          
-
-                            # stbd_exists = "state_transition_by_day" in self.agents_epi[new_agent_id]
-                            # print(f"new agent id {new_agent_id} tourist id {tourist_id} state_transition_by_day exists {str(stbd_exists)}")
-                            # if f is not None:
-                            #     f.flush()
-
-                            if not self.agents_static.use_tourists_dict:
-                                self.agents_static.set(new_agent_id, "age", tourist["age"])
-                                self.agents_static.set(new_agent_id, "res_cellid", cellindex)
-                                self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
-                                self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
-                                self.agents_static.set(new_agent_id, "pub_transp_reg", True)
-                            else:
-                                props = {"age": tourist["age"], "res_cellid": cellindex, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "soc_rate": 0}
-                                self.agents_static.set_props(new_agent_id, props)
-
-                            self.agents_static_to_sync[new_agent_id] = [tourist["age"], cellindex, age_bracket_index, epi_age_bracket_index, True, 0]
-
-                            self.tourists_active_ids.append(tourist_id)
                             if not is_next_day:
                                 self.arriving_tourists_agents_ids.append(new_agent_id)
                             else:
                                 self.arriving_tourists_next_day_agents_ids.append(new_agent_id)
 
-                        tourists_group["under_age_agent"] = under_age_agent
-                        tourists_group["group_accom_id"] = group_accom_id
-                        tourists_group["agent_ids"] = new_agent_ids
-                        tourists_group["res_cell_ids"] = res_cell_ids
-                        tourists_group["pub_transp_reg"] = True
-                        tourists_group["initial_tourist"] = True
+                            if not is_next_day:
+                                new_agent_ids.append(new_agent_id)
+                                res_cell_ids.append(cellindex)
+                                tourist["agentid"] = new_agent_id
+                                tourist["initial_tourist"] = True
 
-                        avg_age = round(sum(ages) / num_tourists_in_group)
+                                age_bracket_index = -1
+                                for i, ab in enumerate(self.age_brackets):
+                                    if tourist["age"] >= ab[0] and tourist["age"] <= ab[1]:
+                                        age_bracket_index = i
+                                        break
 
-                        for i, ab in enumerate(self.age_brackets):
-                            if avg_age >= ab[0] and avg_age <= ab[1]:
-                                tourists_group["age_bracket_index"] = i
-                                break
+                                ages.append(tourist["age"])
+
+                                if tourist["age"] < 16:
+                                    under_age_agent = True
+
+                                epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
+
+                                self.it_agents[new_agent_id] = None
+                                self.agents_epi[new_agent_id] = None
+
+                                new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
+                                new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
+
+                                age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
+
+                                self.it_agents[new_agent_id] = new_it_agent
+                                self.agents_epi[new_agent_id] = new_agent_epi          
+
+                                # stbd_exists = "state_transition_by_day" in self.agents_epi[new_agent_id]
+                                # print(f"new agent id {new_agent_id} tourist id {tourist_id} state_transition_by_day exists {str(stbd_exists)}")
+                                # if f is not None:
+                                #     f.flush()
+
+                                if not self.agents_static.use_tourists_dict:
+                                    self.agents_static.set(new_agent_id, "age", tourist["age"])
+                                    self.agents_static.set(new_agent_id, "res_cellid", cellindex)
+                                    self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
+                                    self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
+                                    self.agents_static.set(new_agent_id, "pub_transp_reg", True)
+                                else:
+                                    props = {"age": tourist["age"], "res_cellid": cellindex, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "soc_rate": 0}
+                                    self.agents_static.set_props(new_agent_id, props)
+
+                                self.agents_static_to_sync[new_agent_id] = [tourist["age"], cellindex, age_bracket_index, epi_age_bracket_index, True, 0]
+
+                                self.tourists_active_ids.append(tourist_id)
+
+                        if not is_next_day:
+                            tourists_group["under_age_agent"] = under_age_agent
+                            tourists_group["group_accom_id"] = group_accom_id
+                            tourists_group["agent_ids"] = new_agent_ids
+                            tourists_group["res_cell_ids"] = res_cell_ids
+                            tourists_group["pub_transp_reg"] = True
+                            tourists_group["initial_tourist"] = True
+
+                            avg_age = round(sum(ages) / num_tourists_in_group)
+
+                            for i, ab in enumerate(self.age_brackets):
+                                if avg_age >= ab[0] and avg_age <= ab[1]:
+                                    tourists_group["age_bracket_index"] = i
+                                    break
                     
-                    new_soc_rates = {agentid:{} for agentid in new_agent_ids}
-                    new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.visualise, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
+                    if not is_next_day:
+                        new_soc_rates = {agentid:{} for agentid in new_agent_ids}
+                        new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.visualise, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
 
-                    for agentid, prop in new_soc_rates.items():
-                        self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
-                        self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
+                        for agentid, prop in new_soc_rates.items():
+                            self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
+                            self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
 
-                    # agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
-                    # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
+                        # agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
+                        # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
-                    for id in new_agent_ids:
-                        self.vars_util.agents_seir_state[id] = SEIRState.Undefined
+                        for id in new_agent_ids:
+                            self.vars_util.agents_seir_state[id] = SEIRState.Undefined
 
-                    # self.num_active_tourists += num_tourists_in_group
+                        # self.num_active_tourists += num_tourists_in_group
 
     def sample_initial_tourists(self, tourist_groupids, f):
         for tour_group_id in tourist_groupids:
@@ -243,7 +253,7 @@ class Tourism:
 
                 cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
 
-                self.cells[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
+                self.cells_accommodation[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
 
                 num_tourists_in_group += len(room_members)
 
@@ -369,7 +379,7 @@ class Tourism:
 
                     cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
 
-                    self.cells[cellindex]["place"]["member_uids"] = []
+                    self.cells_accommodation[cellindex]["place"]["member_uids"] = []
 
                 self.tourists_active_groupids.remove(tour_grp_id)
 

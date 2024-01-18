@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from dask.distributed import get_worker, get_client, as_completed
 import customdict, vars, tourism, tourism_dist, util, itinerary, contactnetwork
@@ -15,7 +16,7 @@ class ActorDist:
 
         self.remote_actors = []
 
-        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, tourists, touristsgroups, touristsgroupsids_initial, dyn_params, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
+        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, tourists, touristsgroups, touristsgroupsids_initial, dyn_params, tourismparams, rooms_by_accomid_by_accomtype, age_brackets, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
 
         current_directory = os.getcwd()
         subfolder_name = logfilename.replace(".txt", "")
@@ -41,6 +42,9 @@ class ActorDist:
         # self.workers_sync_flag = None
         # self.init_worker_flags()
         self.dyn_params = dyn_params
+        self.tourismparams = tourismparams
+        self.rooms_by_accomid_by_accomtype = rooms_by_accomid_by_accomtype
+        self.age_brackets = age_brackets
         self.hh_insts = hh_insts
         self.it_agents = it_agents # this does not have to be shared with the remote nodes or returned to the client!
         self.agents_epi = agents_epi
@@ -82,10 +86,29 @@ class ActorDist:
 
         return process_index, success
     
-    def tourist_itinerary(self):
+    def itineraries(self, touristsgroupsdays_this_day):
+        f = None
+
         main_start = time.time()
 
+        touristsgroupsdays = customdict.CustomDict()
+        touristsgroupsdays[self.day] = touristsgroupsdays_this_day
+
+        log_file_name = os.path.join(self.folder_name, "it_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
         self.simstage = SimStage.TouristItinerary
+
+        # load worker data
+        if self.worker is None:
+            raise TypeError("Worker is none")
+        
+        if self.worker.data is None or len(self.worker.data) == 0:
+            raise TypeError("Worker.data is None or empty")
+        else:
+            if self.worker.data["itineraryparams"] is None or len(self.worker.data["itineraryparams"]) == 0:
+                raise TypeError("Worker.data['itineraryparams'] is None or empty")
 
         agents_ids_by_ages = self.worker.data["agents_ids_by_ages"]
         timestepmins = self.worker.data["timestepmins"]
@@ -110,6 +133,8 @@ class ActorDist:
         cells_accommodation = self.worker.data["cells_accommodation"] 
         agents_static = self.worker.data["agents_static"]
 
+        tour_start = time.time()
+        
         if self.day == 1:
             contactnetworkparams = self.worker.data["contactnetworkparams"]
             sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
@@ -118,8 +143,8 @@ class ActorDist:
 
             initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
 
-            tourist_util = tourism.Tourism(tourismparams, # to do - can be passed to the actor immediately (as light-weight)
-                                           cells, # to do - may use cells_accommodation instead, and pass it in the beginning via upload_file
+            tourist_util = tourism.Tourism(self.tourismparams, # to do - can be passed to the actor immediately (as light-weight)
+                                           cells_accommodation, # to do - may use cells_accommodation instead, and pass it in the beginning via upload_file
                                            n_locals, 
                                            self.tourists, 
                                            agents_static, 
@@ -128,12 +153,12 @@ class ActorDist:
                                            self.vars_util, 
                                            touristsgroupsdays, # to do - always pass a dict, with a single day
                                            self.touristsgroups, 
-                                           rooms_by_accomid_by_accomtype, # to do - to be passed to the actor immediately
+                                           self.rooms_by_accomid_by_accomtype, # to do - to be passed to the actor immediately
                                            self.tourists_arrivals_departures_for_day, 
                                            self.tourists_arrivals_departures_for_nextday, 
                                            self.tourists_active_groupids, 
                                            self.tourists_active_ids, 
-                                           age_brackets, # to do - to be passed to the actor immediately
+                                           self.age_brackets, # to do - to be passed to the actor immediately
                                            powerlaw_distribution_parameters, 
                                            False, # visualise 
                                            sociability_rate_min, 
@@ -143,6 +168,108 @@ class ActorDist:
                                            True) # dask_full_stateful
             
             tourist_util.sample_initial_tourists(self.touristsgroupsids_initial, f) # to do - must create f and point stdout to it
+                
+        self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
+        print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
+        if f is not None:
+            f.flush()
+
+        cells_accommodation_to_send_back = customdict.CustomDict()
+        for cellid in tourist_util.updated_cell_ids:
+            cells_accommodation_to_send_back[cellid] = cells_accommodation[cellid]
+
+        self.worker.data["cells_accommodation"] = cells_accommodation
+
+        itinerary_util = itinerary.Itinerary(itineraryparams, 
+                                            timestepmins, 
+                                            n_locals, 
+                                            n_tourists,
+                                            locals_ratio_to_full_pop,
+                                            agents_static,
+                                            self.it_agents, 
+                                            self.agents_epi, 
+                                            agents_ids_by_ages,
+                                            self.vars_util,
+                                            cells_industries_by_indid_by_wpid,
+                                            cells_restaurants,
+                                            cells_hospital, 
+                                            cells_testinghub, 
+                                            cells_vaccinationhub, 
+                                            cells_entertainment_by_activityid,
+                                            cells_religious, 
+                                            cells_households,
+                                            cells_breakfast_by_accomid,
+                                            cells_airport, 
+                                            cells_transport, 
+                                            cells_institutions, 
+                                            cells_accommodation, 
+                                            epidemiologyparams,
+                                            self.dyn_params,
+                                            self.tourists)
+
+        itinerary_util.generate_tourist_itinerary(self.day, self.weekday, self.touristsgroups, self.tourists_active_groupids, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, log_file_name, f)
+
+        tour_time_taken = time.time() - tour_start
+        print("tourism for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(tour_time_taken))
+
+        # must return partial part of cells_accommodation, relevant to current tourist set, back to main process, so it can be used with main process
+
+        self.simstage = SimStage.Itinerary
+
+        num_agents_working_schedule = 0
+        working_schedule_times_by_resid = {}
+
+        ws_time_taken = 0
+        if self.day == 1 or self.weekday_str == "Monday":
+            # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
+            ws_main_start = time.time()
+            for hh_inst in self.hh_insts:
+                ws_start = time.time()
+                # print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
+                itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
+                ws_time_taken = time.time() - ws_start
+                working_schedule_times_by_resid[hh_inst["id"]] = ws_time_taken
+                num_agents_working_schedule += len(hh_inst["resident_uids"])
+
+            ws_time_taken = time.time() - ws_main_start
+            print("generate_working_days_for_week_residence for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(ws_time_taken) + ", proc index: " + str(self.worker_index))
+
+        print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday))
+        it_start = time.time()                    
+
+        num_agents_itinerary = 0
+        itinerary_times_by_resid = {}
+        for hh_inst in self.hh_insts:
+            res_start = time.time()
+            itinerary_util.generate_local_itinerary(self.day, self.weekday, hh_inst["resident_uids"])
+            res_time_taken = time.time() - res_start
+            itinerary_times_by_resid[hh_inst["id"]] = res_time_taken
+            num_agents_itinerary += len(hh_inst["resident_uids"])
+        
+        send_results_start_time = time.time()
+        # send results
+        agents_epi_keys = self.send_results()
+        send_results_time_taken = time.time() - send_results_start_time
+        print("send results time taken: " + str(send_results_time_taken))
+
+        it_time_taken = time.time() - it_start
+
+        main_time_taken = time.time() - main_start
+
+        self.it_main_time_taken_sum += main_time_taken
+        self.it_main_time_taken_avg = self.it_main_time_taken_sum / self.day
+        print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(it_time_taken) + ", proc index: " + str(self.worker_index))
+        
+        print("process " + str(self.worker_index) + ", ended at " + str(time.time()) + ", full time taken: " + str(main_time_taken))
+        # return contact_tracing_agent_ids (that are only added to in this context) and time-logging information to client
+
+        time_takens = (main_time_taken, tour_time_taken, ws_time_taken, it_time_taken, send_results_time_taken, self.it_main_time_taken_avg)
+        
+        if f is not None:
+            # Close the file
+            f.close()
+
+        return self.worker_index, cells_accommodation_to_send_back, self.vars_util.contact_tracing_agent_ids, time_takens, agents_epi_keys
     
     def itinerary(self):
         main_start = time.time()
