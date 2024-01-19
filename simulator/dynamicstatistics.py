@@ -53,9 +53,9 @@ class DynamicStatistics:
         prev_recovered = self.total_recovered
 
         if seir_states is None:
-            seir_states, _ = self.calculate_seir_states_counts(vars_util)
+            seir_states = self.calculate_seir_states_counts(vars_util)
         else:
-            tourists_seir_states, _ = self.calculate_seir_states_counts(vars_util, False, True)
+            tourists_seir_states = self.calculate_seir_states_counts(vars_util, False, True)
             seir_states = self.combine_local_and_tourists_seir_state(seir_states, tourists_seir_states)
 
         n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = seir_states
@@ -119,30 +119,24 @@ class DynamicStatistics:
 
     def calculate_seir_states_counts(self, vars_util, ignore_tourists=False, tourists_only=False):
         n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = 0, 0, 0, 0, 0
-        ids = []
         for id, state in vars_util.agents_seir_state.items():
             if (not tourists_only and (not ignore_tourists or id < self.n_locals)) or (tourists_only and id >= self.n_locals):
                 match state:
                     case SEIRState.Deceased:
                         n_deceased += 1
-                        ids.append(id)
                     case SEIRState.Exposed:
                         n_exposed += 1
-                        ids.append(id)
                     case SEIRState.Susceptible:
                         n_susceptible += 1
-                        ids.append(id)
                     case SEIRState.Infectious:
                         n_infectious += 1
-                        ids.append(id)
                     case SEIRState.Recovered:
                         n_recovered += 1
-                        ids.append(id)
             else:
                 pass
 
         seir_states = n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered
-        return seir_states, ids
+        return seir_states
     
     def combine_local_and_tourists_seir_state(self, local_seir_states, tourists_seir_states):
         n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = local_seir_states

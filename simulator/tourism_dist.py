@@ -12,9 +12,9 @@ def update_tourist_data_remote(params, folder_name=None, it_agents=None, agents_
     original_stdout = sys.stdout
 
     try:
-        dask_full_stateful = it_agents is not None
+        sync_dynamic_agents = it_agents is not None
 
-        if not dask_full_stateful:
+        if not sync_dynamic_agents:
             if folder_name is not None:
                 day, agents_static_to_sync, departed_tourist_agent_ids, process_index = params
             else:
@@ -32,9 +32,9 @@ def update_tourist_data_remote(params, folder_name=None, it_agents=None, agents_
         
         stack_trace_log_file_name = os.path.join(folder_name, "utd_dist_stack_trace_" + str(day) + "_" + str(process_index) + ".txt")
 
-        log_file_name = os.path.join(folder_name, "utd_dist_" + str(day) + "_" + str(process_index) + ".txt")
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        # log_file_name = os.path.join(folder_name, "utd_dist_" + str(day) + "_" + str(process_index) + ".txt")
+        # f = open(log_file_name, "w")
+        # sys.stdout = f
 
         dask_worker = get_worker()
         agents_static = dask_worker.data["agents_static"]
@@ -57,7 +57,7 @@ def update_tourist_data_remote(params, folder_name=None, it_agents=None, agents_
                 props = {"age": age, "res_cellid": res_cellid, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": pub_transp_reg, "soc_rate": soc_rate}
                 agents_static.set_props(agentid, props)
 
-            if dask_full_stateful:
+            if sync_dynamic_agents:
                 it_agents[agentid] = it_agents_to_sync[agentid]
                 agents_epi[agentid] = agents_epi_to_sync[agentid]
                 vars_util.agents_seir_state[agentid] = vars_util_to_sync.agents_seir_state[agentid]
@@ -82,7 +82,7 @@ def update_tourist_data_remote(params, folder_name=None, it_agents=None, agents_
             # agents_static.set(agentid, "epi_age_bracket_index", None)
             # agents_static.set(agentid, "soc_rate", None)
 
-            if dask_full_stateful:
+            if sync_dynamic_agents:
                 del it_agents[agentid]
                 del agents_epi[agentid]
                 del vars_util.agents_seir_state[agentid]

@@ -28,7 +28,7 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
             "simulationdays": 6, # 365/20
             "loadagents": True,
@@ -43,17 +43,17 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
+            "fullpop": 100000, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 400000, # 2173531 / 400000 / 40000 / 4000
             "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": True,
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -74,7 +74,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes_n_workers": [6], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -94,7 +94,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "strat3_touropt_10k_6d.txt" # dask_strat1_1n_4w_6d_500k_full_test.txt
+            "logfilename": "dask_strat2_1n_6w_100k_6d_preliminarytests.txt" # dask_strat1_1n_4w_6d_500k_full_test.txt
         }
 
 # Load configuration
@@ -1149,7 +1149,7 @@ def main():
 
         tourist_util = None
 
-        if params["loadtourism"]:
+        if params["loadtourism"] and not params["dask_full_stateful"]:
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
             tourist_util = tourism.Tourism(tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params["visualise"], sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, params["dask_full_stateful"]) 
@@ -1327,6 +1327,7 @@ def main():
 
         for day in simdays_range: # 365 + 1 / 1 + 1
             print("simulating day {0}".format(str(day)))
+            num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
             seir_states = None # reset for every day, only incremented for dask_full_stateful flow
 
             if f is not None:
@@ -1348,7 +1349,7 @@ def main():
                 dfs_reset_start = time.time()
 
                 if day == 1:
-                    dyn_params.refresh_dynamic_parameters(day, 0, 0, 0, tourists_active_ids, vars_util)
+                    dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
 
                 futures = []
                 for actor in actors:
@@ -1374,13 +1375,13 @@ def main():
                     util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
 
                 start = time.time()
-                
-                it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
-                print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
-                if f is not None:
-                    f.flush()
 
                 if not params["dask_full_stateful"]:
+                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
+                    print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
+                    if f is not None:
+                        f.flush()
+
                     # single process tourism section
                     itinerary_util = itinerary.Itinerary(itineraryparams, 
                                                         params["timestepmins"], 
@@ -1414,7 +1415,7 @@ def main():
                     if f is not None:
                         f.flush()                      
 
-                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], params["dask_full_stateful"], cells_agents_timesteps_to_sync_by_worker, f)
+                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], False, f)
                     print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
                         f.flush()
@@ -1437,8 +1438,6 @@ def main():
             if day == 1: # from day 2 onwards always calculated at eod
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
-
-                num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
 
                 if params["loadtourism"] and not params["dask_full_stateful"]:
                     num_departures = len(tourist_util.departing_tourists_agents_ids[day])
@@ -1576,17 +1575,26 @@ def main():
                         else: # full stateful
                             futures = []
                             touristsgroupsdays_this_day = set(touristsgroupsdays[day])
-                            
+                            touristsgroupsdays_next_day = set()
+                            if day + 1 <= 365:
+                                touristsgroupsdays_next_day = set(touristsgroupsdays[day + 1])
+
                             for worker_index, actor in enumerate(actors):
                                 touristsgroupsdays_this_day_this_worker = list(touristsgroups_ids_by_worker_lookup[worker_index].intersection(touristsgroupsdays_this_day))
-                                futures.append(actor.itineraries(touristsgroupsdays_this_day_this_worker))
+                                touristsgroupsdays_next_day_this_worker = list(touristsgroups_ids_by_worker_lookup[worker_index].intersection(touristsgroupsdays_next_day))
+                                futures.append(actor.itineraries(touristsgroupsdays_this_day_this_worker, touristsgroupsdays_next_day_this_worker))
 
                             for future in as_completed(futures):
-                                a_worker_index, cells_accommodation_partial, contact_tracing_agent_ids_partial, it_times_taken, agents_epi_keys = future.result()
-                                
+                                a_worker_index, cells_accommodation_partial, arr_dep_counts, contact_tracing_agent_ids_partial, it_times_taken, agents_epi_keys = future.result()                              
+
                                 if len(cells_accommodation_partial) > 0:
                                     for cell_id, cell_value in cells_accommodation_partial.items():
                                         cells_accommodation[cell_id] = cell_value
+
+                                if arr_dep_counts is not None and len(arr_dep_counts) > 0:
+                                    num_arrivals += arr_dep_counts[0]
+                                    num_arrivals_nextday += arr_dep_counts[1]
+                                    num_departures += arr_dep_counts[2]
 
                                 if len(contact_tracing_agent_ids_partial) > 0:
                                     vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
@@ -1734,18 +1742,9 @@ def main():
                             futures.append(actor.clean_up_and_calculate_seir_states_daily())
 
                         success = True
-                        ids = []
-                        len_agent_ids = []
-                        len_it_agents = []
-                        len_agents_epi = []
                         
                         for future in as_completed(futures):
-                            seir_states_partial, ids_partial, len_agent_ids_partial, len_it_agents_partial, len_agents_epi_partial = future.result()
-                            ids.append(ids_partial)
-
-                            len_agent_ids.append(len_agent_ids_partial)
-                            len_it_agents.append(len_it_agents_partial)
-                            len_agents_epi.append(len_agents_epi_partial)
+                            seir_states_partial = future.result()
 
                             success &= seir_states_partial is not None
 
@@ -1910,9 +1909,7 @@ def main():
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
 
-                num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
-
-                if params["loadtourism"]:
+                if params["loadtourism"] and not params["dask_full_stateful"]:
                     num_departures = len(tourist_util.departing_tourists_agents_ids[day])
                     num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
                     num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)

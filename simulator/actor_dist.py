@@ -14,7 +14,7 @@ class ActorDist:
         self.worker = get_worker()
         self.client = get_client()
 
-        self.remote_actors = []
+        self.remote_actors = [] # [actor_index, actor]
 
         workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, tourists, touristsgroups, touristsgroupsids_initial, dyn_params, tourismparams, rooms_by_accomid_by_accomtype, age_brackets, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
 
@@ -22,6 +22,8 @@ class ActorDist:
         subfolder_name = logfilename.replace(".txt", "")
         log_subfolder_path = os.path.join(current_directory, logsubfoldername, subfolder_name)
 
+        self.logfilename = logfilename
+        self.logsubfoldername = logsubfoldername
         self.folder_name = log_subfolder_path
 
         self.workers_keys = workers_keys
@@ -79,20 +81,24 @@ class ActorDist:
         # self.vars_util.cells_agents_timesteps = params[-1] 
 
         # params = params[0], params[1], params[2], params[3], params[4], params[5], params[6]
+        
+        process_index, success, _, _, _ = tourism_dist.update_tourist_data_remote(params, self.folder_name)
 
-        self.simstage = SimStage.TouristSync
-
-        process_index, success, self.it_agents, self.agents_epi, self.vars_util = tourism_dist.update_tourist_data_remote(params, self.folder_name, self.it_agents, self.agents_epi, self.vars_util)
-
-        return process_index, success
+        return success
     
-    def itineraries(self, touristsgroupsdays_this_day):
+    def itineraries(self, touristsgroupsdays_this_day, touristsgroupsdays_next_day):
         f = None
+        agents_epi_keys = None
+        time_takens = None
+        cells_accommodation_to_send_back = None
 
         main_start = time.time()
 
         touristsgroupsdays = customdict.CustomDict()
         touristsgroupsdays[self.day] = touristsgroupsdays_this_day
+
+        if self.day + 1 <= 365:
+            touristsgroupsdays[self.day + 1] = touristsgroupsdays_next_day
 
         log_file_name = os.path.join(self.folder_name, "it_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
         f = open(log_file_name, "w")
@@ -134,43 +140,45 @@ class ActorDist:
         agents_static = self.worker.data["agents_static"]
 
         tour_start = time.time()
+        contactnetworkparams = self.worker.data["contactnetworkparams"]
+        sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
+        sociability_rate_min, sociability_rate_max = sociability_rate_min_max[0], sociability_rate_min_max[1]
+        powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
+
+        initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
+
+        tourist_util = tourism.Tourism(self.tourismparams, 
+                                        cells_accommodation,
+                                        n_locals, 
+                                        self.tourists, 
+                                        agents_static, 
+                                        self.it_agents, 
+                                        self.agents_epi, 
+                                        self.vars_util, 
+                                        touristsgroupsdays, 
+                                        self.touristsgroups, 
+                                        self.rooms_by_accomid_by_accomtype, 
+                                        self.tourists_arrivals_departures_for_day, 
+                                        self.tourists_arrivals_departures_for_nextday, 
+                                        self.tourists_active_groupids, 
+                                        self.tourists_active_ids, 
+                                        self.age_brackets, 
+                                        powerlaw_distribution_parameters, 
+                                        False, # visualise 
+                                        sociability_rate_min, 
+                                        sociability_rate_max, 
+                                        0, 
+                                        initial_seir_state_distribution, 
+                                        True) # dask_full_stateful
         
         if self.day == 1:
-            contactnetworkparams = self.worker.data["contactnetworkparams"]
-            sociability_rate_min_max = contactnetworkparams["sociabilityrateminmax"]
-            sociability_rate_min, sociability_rate_max = sociability_rate_min_max[0], sociability_rate_min_max[1]
-            powerlaw_distribution_parameters = contactnetworkparams["powerlawdistributionparameters"]
-
-            initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
-
-            tourist_util = tourism.Tourism(self.tourismparams, # to do - can be passed to the actor immediately (as light-weight)
-                                           cells_accommodation, # to do - may use cells_accommodation instead, and pass it in the beginning via upload_file
-                                           n_locals, 
-                                           self.tourists, 
-                                           agents_static, 
-                                           self.it_agents, 
-                                           self.agents_epi, 
-                                           self.vars_util, 
-                                           touristsgroupsdays, # to do - always pass a dict, with a single day
-                                           self.touristsgroups, 
-                                           self.rooms_by_accomid_by_accomtype, # to do - to be passed to the actor immediately
-                                           self.tourists_arrivals_departures_for_day, 
-                                           self.tourists_arrivals_departures_for_nextday, 
-                                           self.tourists_active_groupids, 
-                                           self.tourists_active_ids, 
-                                           self.age_brackets, # to do - to be passed to the actor immediately
-                                           powerlaw_distribution_parameters, 
-                                           False, # visualise 
-                                           sociability_rate_min, 
-                                           sociability_rate_max, 
-                                           0, 
-                                           initial_seir_state_distribution, 
-                                           True) # dask_full_stateful
-            
             tourist_util.sample_initial_tourists(self.touristsgroupsids_initial, f) # to do - must create f and point stdout to it
+
+            print("sample_initial_tourists. tourists active ids: " + str(self.tourists_active_ids))
                 
         self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
         print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
+        print("tourists active ids: " + str(self.tourists_active_ids))
         if f is not None:
             f.flush()
 
@@ -208,6 +216,20 @@ class ActorDist:
                                             self.tourists)
 
         itinerary_util.generate_tourist_itinerary(self.day, self.weekday, self.touristsgroups, self.tourists_active_groupids, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, log_file_name, f)
+        print("generate_tourist_itinerary (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
+        if f is not None:
+            f.flush()    
+
+        tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, f)
+        print("sync_and_clean_tourist_data (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
+        if f is not None:
+            f.flush()
+
+        num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
+        num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
+        num_departures = len(tourist_util.departing_tourists_agents_ids[self.day])
+
+        arr_dep_counts = (num_arrivals, num_arrivals_nextday, num_departures)
 
         tour_time_taken = time.time() - tour_start
         print("tourism for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(tour_time_taken))
@@ -265,11 +287,7 @@ class ActorDist:
 
         time_takens = (main_time_taken, tour_time_taken, ws_time_taken, it_time_taken, send_results_time_taken, self.it_main_time_taken_avg)
         
-        if f is not None:
-            # Close the file
-            f.close()
-
-        return self.worker_index, cells_accommodation_to_send_back, self.vars_util.contact_tracing_agent_ids, time_takens, agents_epi_keys
+        return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, time_takens, agents_epi_keys
     
     def itinerary(self):
         main_start = time.time()
@@ -581,9 +599,9 @@ class ActorDist:
                 except:
                     pass
 
-        seir_states, ids = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util, True, False) # ignore_tourists
+        seir_states = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util)
 
-        return seir_states, ids, len(self.agent_ids), len(self.it_agents), len(self.agents_epi)
+        return seir_states
 
 class SimStage(Enum):
     TouristSync = 0

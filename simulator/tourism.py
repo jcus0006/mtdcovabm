@@ -361,7 +361,15 @@ class Tourism:
 
                     # num_tourists_in_group += len(room_members)
                     for tourist_id in room_members:
-                        self.tourists_active_ids.remove(tourist_id)
+                        try:
+                            self.tourists_active_ids.remove(tourist_id)
+                        except:
+                            if tourist_id not in self.tourists_active_ids:
+                                print("cannot delete tourist_id as it doesn't exist: " + str(tourist_id))
+                                if f is not None:
+                                    f.flush()
+                                    
+                                raise
 
                         tourist = self.tourists[tourist_id]
                         agentid = tourist["agentid"]
@@ -399,52 +407,70 @@ class Tourism:
             start = time.time()
 
             futures = []
-            workers = list(client.scheduler_info()["workers"].keys()) # list()
+            
+            if len(actors) == 0:
+                workers = list(client.scheduler_info()["workers"].keys()) # list()
 
-            for worker_index, worker in enumerate(workers):
-                if len(actors) == 0:
+                for worker_index, worker in enumerate(workers):
                     params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, remote_log_subfolder_name, log_file_name, worker_index)
                     future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
                     futures.append(future)
-                else:
-                    if not dask_full_stateful:
+            else:                   
+                for worker_index, actor in enumerate(actors):
+                    if not dask_full_stateful or actor is not None: # in dask_full_stateful mode, the actor's reference to itself is not possible and instead represented by None
                         params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
-                    else:
-                        it_agents_to_sync, agents_epi_to_sync = customdict.CustomDict(), customdict.CustomDict()
-                        vars_util_to_sync = vars.Vars()
+                        # if not dask_full_stateful:
+                        #     params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
+                        # else:
+                        #     params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, actor[0])
+                        
+                        future = None
+                        if not dask_full_stateful:
+                            future = actor.run_update_tourist_data_remote(params)
+                        else:
+                            # if worker_index == 0: # temporary
+                            future = actor.tourists_sync(params)
 
-                        for agentid in self.agents_static_to_sync.keys():
-                            it_agents_to_sync[agentid] = self.it_agents[agentid]
-                            agents_epi_to_sync[agentid] = self.agents_epi[agentid]
-                            vars_util_to_sync.agents_seir_state[agentid] = self.vars_util.agents_seir_state[agentid]
-
-                        params = (day, self.agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
-
-                    actor = actors[worker_index]
-                    
-                    if not dask_full_stateful:
-                        future = actor.run_update_tourist_data_remote(params)
-                    else:
-                        future = actor.tourists_sync(params)
-
-                    futures.append(future)
+                        futures.append(future)
 
             self.agents_static_to_sync = customdict.CustomDict()
-            self.it_agents_to_sync = customdict.CustomDict()
-            self.agents_epi_to_sync = customdict.CustomDict()
+            # self.it_agents_to_sync = customdict.CustomDict()
+            # self.agents_epi_to_sync = customdict.CustomDict()
             
+            # results = None
+            # if not dask_full_stateful:
+            #     results = as_completed(futures)
+            # else:
+            #     results = futures
+
             success = False
-            for future in as_completed(futures):
-                if len(actors) == 0:
+
+            if len(actors) == 0:
+                for future in as_completed(futures):
                     process_index, success, _, _, _ = future.result()
+                      
+                    print("process_index {0}, success {1}".format(str(process_index), str(success)))
+                    if f is not None:
+                        f.flush()
 
-                    future.release()
+                    future.release()  
+            else:
+                if not dask_full_stateful:
+                    for future in as_completed(futures):
+                        process_index, success = future.result()
+                        
+                        print("process_index {0}, success {1}".format(str(process_index), str(success)))
+                        if f is not None:
+                            f.flush() 
                 else:
-                    process_index, success = future.result()                   
+                    result_index = 0
+                    for result in futures:
+                        # result = result.result()
+                        print("process_index {0}, success {1}".format(str(result_index), str(result)))
+                        if f is not None:
+                            f.flush()
 
-                print("process_index {0}, success {1}".format(str(process_index), str(success)))
-                if f is not None:
-                    f.flush()
+                    result_index += 1
 
             time_taken = time.time() - start
             print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
@@ -452,6 +478,9 @@ class Tourism:
                 f.flush()
 
         if len(prev_day_departing_tourists_agents_ids) > 0:
+            print("3")
+            if f is not None:
+                f.flush()
             start_prev_day_del = time.time()
             for agentid in prev_day_departing_tourists_agents_ids:
                 del self.it_agents[agentid]
