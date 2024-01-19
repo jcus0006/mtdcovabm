@@ -447,12 +447,13 @@ def localitinerary_distributed(client: Client,
             # worker = client.scheduler_info()["workers"][workers[0]]
             # print("local_directory: " + str(worker["local_directory"]))
 
-            prev_dask_nodes_n_workers = dask_nodes_n_workers
-            dask_nodes_n_workers = util.refresh_dask_nodes_n_workers(workers)
-            if dask_nodes_n_workers != prev_dask_nodes_n_workers:
-                print(f"refreshed dask_nodes_n_workers in itinerary_dist. one or more workers have been dropped. previous num_workers {sum(prev_dask_nodes_n_workers)}, new num_workers {sum(dask_nodes_n_workers)}")
-                print(f"prev dask_nodes_n_workers: {str(prev_dask_nodes_n_workers)}")
-                print(f"prev_dask_nodes_n_workers: {str(dask_nodes_n_workers)}")
+            if not use_mp:
+                prev_dask_nodes_n_workers = dask_nodes_n_workers
+                dask_nodes_n_workers = util.refresh_dask_nodes_n_workers(workers)
+                if dask_nodes_n_workers != prev_dask_nodes_n_workers:
+                    print(f"refreshed dask_nodes_n_workers in itinerary_dist. one or more workers have been dropped. previous num_workers {sum(prev_dask_nodes_n_workers)}, new num_workers {sum(dask_nodes_n_workers)}")
+                    print(f"prev dask_nodes_n_workers: {str(prev_dask_nodes_n_workers)}")
+                    print(f"prev_dask_nodes_n_workers: {str(dask_nodes_n_workers)}")
 
             node_worker_index_by_worker_url = {}
         
