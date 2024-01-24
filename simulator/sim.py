@@ -28,9 +28,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 6, # 365/20
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -43,16 +43,16 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 100000, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 400000, # 2173531 / 400000 / 40000 / 4000
+            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
             "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
-            "dask_use_mp": True, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
@@ -74,7 +74,7 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [6], # 3, 11
+            "dask_nodes_n_workers": [4], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -93,8 +93,9 @@ params = {  "popsubfolder": "100kagents400ktourists2019_decupd_v4", # empty take
             "logsubfoldername": "logs",
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
+            "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_strat2_1n_6w_100k_6d_preliminarytests.txt" # dask_strat1_1n_4w_6d_500k_full_test.txt
+            "logfilename": "dask_strat1_500k_1n_4w_3d.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -107,11 +108,12 @@ with open('config.json', 'r') as config_file:
 #             self.persons = json.load(read_file)
 #             self.persons_len = len(self.persons)
 
-def read_only_data(dask_worker: Worker, dask_strategy, agents_ids_by_ages, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, use_shm, use_static_dict_locals, use_static_dict_tourists, logsubfoldername, logfilename):
+def read_only_data(dask_worker: Worker, dask_strategy, agents_ids_by_ages, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, use_shm, use_static_dict_locals, use_static_dict_tourists, logsubfoldername, logfilename, popfoldername, popsubfoldername):
     import os
     import platform
 
     dask_use_mp = False
+    dask_full_stateful = False
     dask_actors = False
 
     if dask_strategy == 1 or dask_strategy == 2:
@@ -119,6 +121,8 @@ def read_only_data(dask_worker: Worker, dask_strategy, agents_ids_by_ages, times
 
         if dask_strategy == 1:
             dask_use_mp = True
+        else:
+            dask_full_stateful = True
 
     if dask_actors and platform.system() != "Linux": # mac osx uses spawn in recent Python versions; was causing "cannot pickle '_thread.lock' object" error
         mp.set_start_method("fork")
@@ -168,6 +172,19 @@ def read_only_data(dask_worker: Worker, dask_strategy, agents_ids_by_ages, times
         
         dask_worker.data["agents_static"] = agents_static
 
+    # if dask_full_stateful:
+    #     touristsfile = os.path.join(current_directory, popfoldername, popsubfoldername, "tourists.json")
+    #     with open(touristsfile, "r") as read_file: 
+    #         tourists = json.load(read_file)
+    #         tourists = {tour["tourid"]:{"groupid":tour["groupid"], "subgroupid":tour["subgroupid"], "age":tour["age"], "gender": tour["gender"]} for tour in tourists}
+    #         dask_worker.data["tourists"] = tourists
+
+    #     touristsgroupsfile = os.path.join(current_directory, popfoldername, popsubfoldername, "touristsgroups.json")
+    #     with open(touristsgroupsfile, "r") as read_file: 
+    #         touristsgroups = json.load(read_file)
+    #         touristsgroups = {tg["groupid"]:{"subgroupsmemberids":tg["subgroupsmemberids"], "accominfo":tg["accominfo"], "reftourid": tg["reftourid"], "arr": tg["arr"], "dep": tg["dep"], "purpose": tg["purpose"], "accomtype": tg["accomtype"]} for tg in touristsgroups if tg["dep"] > 0}
+    #         dask_worker.data["touristsgroups"] = touristsgroups
+            
 def load_dask_worker_data(dask_worker, filepath, propname):
     with open(filepath, "r") as read_file: 
         temp = json.load(read_file, object_hook=jsonutil.jsonKeys2int)
@@ -1006,7 +1023,7 @@ def main():
             # cluster.worker_options['local_directory'] = config["worker_working_directory"]  # Worker working directory from config
 
             start = time.time()
-            client = Client(cluster)
+            client = Client(cluster) # asynchronous=params["dask_full_stateful"]
             time_taken = time.time() - start
             print("client generation: " + str(time_taken))
             if f is not None:
@@ -1075,7 +1092,9 @@ def main():
                                 use_static_dict_locals=params["use_static_dict_locals"],
                                 use_static_dict_tourists=params["use_static_dict_tourists"],
                                 logsubfoldername=params["remotelogsubfoldername"],
-                                logfilename=params["logfilename"])
+                                logfilename=params["logfilename"],
+                                popfoldername=params["remotepopsubfoldername"],
+                                popsubfoldername=params["popsubfolder"])
                 
                 client.register_worker_callbacks(callback)
 
@@ -1216,7 +1235,7 @@ def main():
                 touristsgroups_split_ids.append(this_actor_touristsgroups_ids)
 
             agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, touristsgroups_ids_by_worker_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
-            worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+            # worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
             worker_data = customdict.CustomDict()
             
             worker_index = 0
@@ -1225,7 +1244,9 @@ def main():
                     hh_inst_split_indices_this_worker = hh_inst_split_indices[worker_index]
 
                     hh_insts_this_worker = []
-                    it_agents_this_worker, agents_epi_this_worker, tourists_this_worker, touristsgroups_this_worker = customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict(), customdict.CustomDict()
+                    it_agents_this_worker, agents_epi_this_worker = customdict.CustomDict(), customdict.CustomDict()
+                    tourists_this_worker, touristsgroups_this_worker = customdict.CustomDict(), customdict.CustomDict()
+                    # tourists_ids_this_worker, touristsgroups_ids_this_worker = [], []
                     touristsgroupsids_initial_this_worker = []
                     vars_util_this_worker = vars.Vars()
 
@@ -1241,7 +1262,7 @@ def main():
                             hh_inst_cell_ids.extend(cell_ids_by_inst_id[hh_inst["id"]]) # set all cell ids per inst (can be more than 1)
 
                         agent_ids_this_worker.extend(hh_inst["resident_uids"]) # set all agents within this residence in the same worker
-                        worker_by_res_ids_lookup[index] = worker_index
+                        # worker_by_res_ids_lookup[index] = worker_index
                         hh_insts_this_worker.append(hh_inst)
 
                     for agent_id in agent_ids_this_worker:
@@ -1250,36 +1271,48 @@ def main():
 
                         if agent_id in vars_util.agents_seir_state:
                             vars_util_this_worker.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
-                        if agent_id in vars_util.agents_seir_state_transition_for_day:
-                            vars_util_this_worker.agents_seir_state_transition_for_day[agent_id] = vars_util.agents_seir_state_transition_for_day[agent_id]
-                        if agent_id in vars_util.agents_infection_type:
-                            vars_util_this_worker.agents_infection_type[agent_id] = vars_util.agents_infection_type[agent_id]
-                        if agent_id in vars_util.agents_infection_severity:
-                            vars_util_this_worker.agents_infection_severity[agent_id] = vars_util.agents_infection_severity[agent_id]
-                        if agent_id in vars_util.agents_vaccination_doses:
-                            vars_util_this_worker.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+                        # if agent_id in vars_util.agents_seir_state_transition_for_day:
+                        #     vars_util_this_worker.agents_seir_state_transition_for_day[agent_id] = vars_util.agents_seir_state_transition_for_day[agent_id]
+                        # if agent_id in vars_util.agents_infection_type:
+                        #     vars_util_this_worker.agents_infection_type[agent_id] = vars_util.agents_infection_type[agent_id]
+                        # if agent_id in vars_util.agents_infection_severity:
+                        #     vars_util_this_worker.agents_infection_severity[agent_id] = vars_util.agents_infection_severity[agent_id]
+                        # if agent_id in vars_util.agents_vaccination_doses:
+                        #     vars_util_this_worker.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
                         
-                        worker_by_agent_ids_lookup[agent_id] = worker_index
+                        # worker_by_agent_ids_lookup[agent_id] = worker_index
 
                     cell_ids_this_worker = hh_inst_cell_ids # set residence cells
                     cell_ids_this_worker.extend(cells_split_ids[worker_index]) # extend with other cells
 
-                    for cell_id in cell_ids_this_worker:
-                        worker_by_cell_ids_lookup[cell_id] = worker_index
+                    # for cell_id in cell_ids_this_worker:
+                    #     worker_by_cell_ids_lookup[cell_id] = worker_index
 
+                    # touristsgroups_ids_this_worker = touristsgroups_split_ids[worker_index]
                     for tourist_group_id in touristsgroups_split_ids[worker_index]:
                         tourist_group = touristsgroups[tourist_group_id]
                         touristsgroups_this_worker[tourist_group_id] = tourist_group
 
                         for tour_group in tourist_group["subgroupsmemberids"]:
+                            # tourists_ids_this_worker.extend(tour_group)   
                             for tour_id in tour_group:
                                 tourists_this_worker[tour_id] = tourists[tour_id]
 
-                    touristsgroups_ids_this_worker = set(touristsgroups_this_worker.keys())
+                    touristsgroups_ids_this_worker = set(touristsgroups_split_ids[worker_index])
                     touristsgroupsids_initial_this_worker = list(set(touristsgroupsids_initial).intersection(touristsgroups_ids_this_worker))
 
-                    tourists_agentids_this_worker = [tour_id + n_locals for tour_id in tourists_this_worker.keys()]
+                    tourists_agentids_this_worker = [tour_id + n_locals for tour_id in tourists_this_worker.keys()] # tourists_ids_this_worker
                     agent_ids_this_worker.extend(tourists_agentids_this_worker)
+
+                    for agent_id in tourists_agentids_this_worker:
+                        if agent_id in it_agents:
+                            it_agents_this_worker[agent_id] = it_agents[agent_id]
+                            agents_epi_this_worker[agent_id] = agents_epi[agent_id]
+
+                            if agent_id in vars_util.agents_seir_state:
+                                vars_util_this_worker.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
+                        
+                        # worker_by_agent_ids_lookup[agent_id] = worker_index
 
                     agent_ids_by_worker_lookup[worker_index] = set(agent_ids_this_worker)
                     cell_ids_by_worker_lookup[worker_index] = set(cell_ids_this_worker)
@@ -1307,10 +1340,7 @@ def main():
                                 rooms_by_accomid_by_accomtype,
                                 age_brackets,
                                 agent_ids_by_worker_lookup, 
-                                cell_ids_by_worker_lookup, 
-                                worker_by_res_ids_lookup, 
-                                worker_by_agent_ids_lookup, 
-                                worker_by_cell_ids_lookup, 
+                                cell_ids_by_worker_lookup,
                                 params["remotelogsubfoldername"], 
                                 params["logfilename"])
                     
@@ -1325,10 +1355,35 @@ def main():
                 temp_actors = [a if i != ai else None for i, a in enumerate(actors)]
                 actor.set_remote_actors(temp_actors)
 
+        # extra clean-up for dask_full_stateful strategy
+        if params["dask_full_stateful"]:
+            it_agents = None
+            tourists = None
+            touristsgroups = None
+            agents_ids_by_ages = None
+            itineraryparams = None
+            contactnetworkparams = None
+            # all cells except those used in contact tracing
+            cells_industries_by_indid_by_wpid = None
+            cells_restaurants = None
+            cells_hospital = None 
+            cells_testinghub = None
+            cells_vaccinationhub = None
+            cells_entertainment_by_activityid = None
+            cells_religious = None
+            cells_breakfast_by_accomid = None
+            cells_airport = None
+            cells_transport = None
+            cells_type = None
+            indids_by_cellid = None
+
+            gc.collect()
+
         for day in simdays_range: # 365 + 1 / 1 + 1
             print("simulating day {0}".format(str(day)))
             num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
             seir_states = None # reset for every day, only incremented for dask_full_stateful flow
+            remote_tour_time_take_sum, remove_tour_time_taken_avg = 0, 0 # only used to calculate remote average time taken for tourists processing
 
             if f is not None:
                 f.flush()
@@ -1374,9 +1429,9 @@ def main():
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. Before tourist itinerary ")
 
-                start = time.time()
-
                 if not params["dask_full_stateful"]:
+                    start = time.time()
+
                     it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
                     print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
@@ -1582,10 +1637,13 @@ def main():
                             for worker_index, actor in enumerate(actors):
                                 touristsgroupsdays_this_day_this_worker = list(touristsgroups_ids_by_worker_lookup[worker_index].intersection(touristsgroupsdays_this_day))
                                 touristsgroupsdays_next_day_this_worker = list(touristsgroups_ids_by_worker_lookup[worker_index].intersection(touristsgroupsdays_next_day))
-                                futures.append(actor.itineraries(touristsgroupsdays_this_day_this_worker, touristsgroupsdays_next_day_this_worker))
+                                actor_future = actor.itineraries(touristsgroupsdays_this_day_this_worker, touristsgroupsdays_next_day_this_worker)
+                                futures.append(actor_future)
 
                             for future in as_completed(futures):
-                                a_worker_index, cells_accommodation_partial, arr_dep_counts, contact_tracing_agent_ids_partial, it_times_taken, agents_epi_keys = future.result()                              
+                                print("processing itineraries result")
+
+                                a_worker_index, cells_accommodation_partial, arr_dep_counts, contact_tracing_agent_ids_partial, it_times_taken = future.result()                            
 
                                 if len(cells_accommodation_partial) > 0:
                                     for cell_id, cell_value in cells_accommodation_partial.items():
@@ -1599,10 +1657,29 @@ def main():
                                 if len(contact_tracing_agent_ids_partial) > 0:
                                     vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
 
-                                a_it_main_tt, tour_tt, a_ws_tt, a_it_tt, a_it_results_tt, a_it_avg_tt = it_times_taken
+                                a_it_main_tt, tour_tt, a_ws_tt, a_it_tt, a_it_avg_tt = it_times_taken
+
+                                remote_tour_time_take_sum += tour_tt
                                 
-                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, send results time taken: {a_it_results_tt}, avg time taken: {a_it_avg_tt}")
-                
+                                print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, avg time taken: {a_it_avg_tt}")
+                            
+                            remove_tour_time_taken_avg = remote_tour_time_take_sum / len(actors)
+                            perf_timings_df.loc[day, "tourismitinerary_day"] = 0 # this is irrelevant, there is no way to calculate it
+                            perf_timings_df.loc[day, "tourismitinerary_avg"] = round(remove_tour_time_taken_avg, 2)
+
+                            # sync results of actors
+                            start_send_results = time.time()
+                            for worker_index, actor in enumerate(actors):
+                                start_send_results_actor = time.time()
+                                actor_future = actor.send_results()
+                                success = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
+
+                                time_taken_send_results_actor = time.time() - start_send_results_actor
+                                print(f"send_results (after IT) of actor {worker_index}, time_taken: {time_taken_send_results_actor}")
+
+                            time_taken_send_results = time.time() - start_send_results
+                            print(f"send_results (after IT) total time taken: {time_taken_send_results}")
+
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "After itinerary. Before gc.collect() ")
@@ -1703,6 +1780,22 @@ def main():
 
                                 print(f"contact network. actor worker index {cn_worker_index}, direct contacts: {len(directcontacts_by_simcelltype_by_day_partial)}, time taken: {cn_time_taken}")                          
 
+                            # sync results of actors
+                            start_send_results = time.time()
+                            for worker_index, actor in enumerate(actors):
+                                start_send_results_actor = time.time()
+                                actor_future = actor.send_results()
+                                success, agents_epi_partial = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
+                                if agents_epi_partial is not None:
+                                    for id, agent_epi in agents_epi_partial.items():
+                                        agents_epi[id] = agent_epi
+
+                                time_taken_send_results_actor = time.time() - start_send_results_actor
+                                print(f"send_results (after CN) of actor {worker_index}, time_taken: {time_taken_send_results_actor}")
+
+                            time_taken_send_results = time.time() - start_send_results
+                            print(f"send_results (after CN) total time taken: {time_taken_send_results}")
+                            
                     if params["logmemoryinfo"]:
                         util.log_memory_usage(f, "After contact network. Before gc.collect() ")
                         
@@ -1888,7 +1981,7 @@ def main():
                             agents_epi_to_send = customdict.CustomDict()
                             vars_util_to_send = vars.Vars()
 
-                            agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_to_sync_this_worker, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send)
+                            agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids_end_of_day_sync(agents_to_sync_this_worker, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send, n_locals)
 
                             agents_to_sync_by_worker.append((agents_epi_to_send, vars_util_to_send))
 
@@ -2152,3 +2245,7 @@ def calculate_memory_info(day, log_memory_info, it_agents, agents_epi, vars_util
 
 if __name__ == '__main__':
     main()
+    # if not params["dask_full_stateful"]:
+    #     main()
+    # else:
+    #     asyncio.run(main())

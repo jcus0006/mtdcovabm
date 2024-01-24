@@ -431,7 +431,11 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
 
 def split_agents_epi_by_agentsids(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send):
     for agent_id in agents_ids_to_send:
+        if agent_id > 9999:
+            print("syncing tourist_agent_id " + str(agent_id) + ", agents_seir_state valid: " + str(agent_id in vars_util.agents_seir_state))
+
         agents_epi_to_send[agent_id] = agents_epi[agent_id]
+
         vars_util_to_send.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
 
         # should the below be uncommented, this should only apply for the Itinerary SimStage
@@ -446,6 +450,19 @@ def split_agents_epi_by_agentsids(agents_ids_to_send, agents_epi, vars_util, age
 
         if agent_id in vars_util.agents_vaccination_doses:
             vars_util_to_send.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+
+    return agents_epi_to_send, vars_util_to_send
+
+def split_agents_epi_by_agentsids_end_of_day_sync(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send, n_locals=None):
+    for agent_id in agents_ids_to_send:
+        try:
+            agents_epi_to_send[agent_id] = agents_epi[agent_id]
+
+            if agent_id in vars_util.agents_vaccination_doses:
+                vars_util_to_send.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+        except: # if n_locals is specified, tourists might have been removed from sim already, in that case do not raise exception (if not passed, or local, raise)
+            if n_locals is None or agent_id < n_locals: 
+                raise
 
     return agents_epi_to_send, vars_util_to_send
 
@@ -544,6 +561,17 @@ def sync_state_info_by_agentsids_agents_epi(agents_ids, agents_epi, vars_util, a
         # updated_count += 1  
 
     # print("synced " + str(updated_count) + " agents")
+    
+    return agents_epi, vars_util
+
+def sync_state_info_by_agentsids_agents_epi_end_of_day_sync(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+
+        if agentid in vars_util_partial.agents_vaccination_doses:
+            vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
     
     return agents_epi, vars_util
 

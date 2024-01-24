@@ -6,6 +6,7 @@ from epidemiologyclasses import SEIRState
 from dask.distributed import Client, SSHCluster, as_completed
 import customdict
 import gc
+from dask.distributed import get_worker
 
 class Tourism:
     def __init__(self, tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
@@ -40,6 +41,7 @@ class Tourism:
         self.afternoon_timesteps = np.arange(72, 144)
 
         self.agents_static_to_sync = customdict.CustomDict()
+        self.prev_day_departing_tourists_agents_ids = []
 
         self.dask_full_stateful = dask_full_stateful
 
@@ -94,8 +96,7 @@ class Tourism:
 
                     tourists_arrivals_departures[tour_group_id] = {"ts": arrival_ts, "airport_duration": arrival_airport_duration, "arrival": True}
 
-                    if not is_next_day:
-                        self.tourists_active_groupids.append(tour_group_id) 
+                    self.tourists_active_groupids.append(tour_group_id) 
                 else:
                     if departureday - arrivalday == 1: # if only 1 day trip force departure to be in the afternoon
                         timesteps = self.afternoon_timesteps
@@ -126,10 +127,9 @@ class Tourism:
 
                         room_members = subgroupsmemberids[accinfoindex] # this room
 
-                        if not is_next_day:
-                            cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
-                            self.cells_accommodation[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
-                            self.updated_cell_ids.append(cellindex)
+                        cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
+                        self.cells_accommodation[cellindex]["place"]["member_uids"] = np.array(room_members) + self.n_locals 
+                        self.updated_cell_ids.append(cellindex)
 
                         num_tourists_in_group += len(room_members)
 
@@ -144,85 +144,82 @@ class Tourism:
                             else:
                                 self.arriving_tourists_next_day_agents_ids.append(new_agent_id)
 
-                            if not is_next_day:
-                                new_agent_ids.append(new_agent_id)
-                                res_cell_ids.append(cellindex)
-                                tourist["agentid"] = new_agent_id
-                                tourist["initial_tourist"] = True
+                            new_agent_ids.append(new_agent_id)
+                            res_cell_ids.append(cellindex)
+                            tourist["agentid"] = new_agent_id
+                            tourist["initial_tourist"] = True
 
-                                age_bracket_index = -1
-                                for i, ab in enumerate(self.age_brackets):
-                                    if tourist["age"] >= ab[0] and tourist["age"] <= ab[1]:
-                                        age_bracket_index = i
-                                        break
-
-                                ages.append(tourist["age"])
-
-                                if tourist["age"] < 16:
-                                    under_age_agent = True
-
-                                epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
-
-                                self.it_agents[new_agent_id] = None
-                                self.agents_epi[new_agent_id] = None
-
-                                new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
-                                new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
-
-                                age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
-
-                                self.it_agents[new_agent_id] = new_it_agent
-                                self.agents_epi[new_agent_id] = new_agent_epi          
-
-                                # stbd_exists = "state_transition_by_day" in self.agents_epi[new_agent_id]
-                                # print(f"new agent id {new_agent_id} tourist id {tourist_id} state_transition_by_day exists {str(stbd_exists)}")
-                                # if f is not None:
-                                #     f.flush()
-
-                                if not self.agents_static.use_tourists_dict:
-                                    self.agents_static.set(new_agent_id, "age", tourist["age"])
-                                    self.agents_static.set(new_agent_id, "res_cellid", cellindex)
-                                    self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
-                                    self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
-                                    self.agents_static.set(new_agent_id, "pub_transp_reg", True)
-                                else:
-                                    props = {"age": tourist["age"], "res_cellid": cellindex, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "soc_rate": 0}
-                                    self.agents_static.set_props(new_agent_id, props)
-
-                                self.agents_static_to_sync[new_agent_id] = [tourist["age"], cellindex, age_bracket_index, epi_age_bracket_index, True, 0]
-
-                                self.tourists_active_ids.append(tourist_id)
-
-                        if not is_next_day:
-                            tourists_group["under_age_agent"] = under_age_agent
-                            tourists_group["group_accom_id"] = group_accom_id
-                            tourists_group["agent_ids"] = new_agent_ids
-                            tourists_group["res_cell_ids"] = res_cell_ids
-                            tourists_group["pub_transp_reg"] = True
-                            tourists_group["initial_tourist"] = True
-
-                            avg_age = round(sum(ages) / num_tourists_in_group)
-
+                            age_bracket_index = -1
                             for i, ab in enumerate(self.age_brackets):
-                                if avg_age >= ab[0] and avg_age <= ab[1]:
-                                    tourists_group["age_bracket_index"] = i
+                                if tourist["age"] >= ab[0] and tourist["age"] <= ab[1]:
+                                    age_bracket_index = i
                                     break
+
+                            ages.append(tourist["age"])
+
+                            if tourist["age"] < 16:
+                                under_age_agent = True
+
+                            epi_age_bracket_index = util.get_sus_mort_prog_age_bracket_index(tourist["age"])
+
+                            self.it_agents[new_agent_id] = None
+                            self.agents_epi[new_agent_id] = None
+
+                            new_it_agent = { "touristid": tourist_id, "itinerary": {}, "itinerary_nextday": {}}
+                            new_agent_epi = {"touristid": tourist_id, "state_transition_by_day": None, "test_day": None, "test_result_day": None, "quarantine_days": None, "hospitalisation_days": None}
+
+                            age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets = util.set_age_brackets_tourists(tourist["age"], agents_ids_by_ages, new_agent_id, self.age_brackets, agents_ids_by_agebrackets)
+
+                            self.it_agents[new_agent_id] = new_it_agent
+                            self.agents_epi[new_agent_id] = new_agent_epi          
+
+                            # stbd_exists = "state_transition_by_day" in self.agents_epi[new_agent_id]
+                            # print(f"new agent id {new_agent_id} tourist id {tourist_id} state_transition_by_day exists {str(stbd_exists)}")
+                            # if f is not None:
+                            #     f.flush()
+
+                            if not self.agents_static.use_tourists_dict:
+                                self.agents_static.set(new_agent_id, "age", tourist["age"])
+                                self.agents_static.set(new_agent_id, "res_cellid", cellindex)
+                                self.agents_static.set(new_agent_id, "age_bracket_index", age_bracket_index)
+                                self.agents_static.set(new_agent_id, "epi_age_bracket_index", epi_age_bracket_index)
+                                self.agents_static.set(new_agent_id, "pub_transp_reg", True)
+                            else:
+                                props = {"age": tourist["age"], "res_cellid": cellindex, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "soc_rate": 0}
+                                self.agents_static.set_props(new_agent_id, props)
+
+                            self.agents_static_to_sync[new_agent_id] = [tourist["age"], cellindex, age_bracket_index, epi_age_bracket_index, True, 0]
+
+                            self.tourists_active_ids.append(tourist_id)
+
+                        tourists_group["under_age_agent"] = under_age_agent
+                        tourists_group["group_accom_id"] = group_accom_id
+                        tourists_group["agent_ids"] = new_agent_ids
+                        tourists_group["res_cell_ids"] = res_cell_ids
+                        tourists_group["pub_transp_reg"] = True
+                        tourists_group["initial_tourist"] = True
+
+                        avg_age = round(sum(ages) / num_tourists_in_group)
+
+                        for i, ab in enumerate(self.age_brackets):
+                            if avg_age >= ab[0] and avg_age <= ab[1]:
+                                tourists_group["age_bracket_index"] = i
+                                break
                     
-                    if not is_next_day:
-                        new_soc_rates = {agentid:{} for agentid in new_agent_ids}
-                        new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.visualise, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
+                    new_soc_rates = {agentid:{} for agentid in new_agent_ids}
+                    new_soc_rates = util.generate_sociability_rate_powerlaw_dist(new_soc_rates, agents_ids_by_agebrackets, self.powerlaw_distribution_parameters, self.visualise, self.sociability_rate_min, self.sociability_rate_max, self.figure_count)
 
-                        for agentid, prop in new_soc_rates.items():
-                            self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
-                            self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
+                    for agentid, prop in new_soc_rates.items():
+                        self.agents_static.set(agentid, "soc_rate", prop["soc_rate"])
+                        self.agents_static_to_sync[agentid][5] = prop["soc_rate"] # index 5 is soc_rate
 
-                        # agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
-                        # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
+                    # agents_seir_state_tourists_subset = self.agents_seir_state[new_agent_ids] # subset from agents_seir_state with new_agent_ids as indices
+                    # agents_seir_state_tourists_subset = seirstateutil.initialize_agent_states(len(agents_seir_state_tourists_subset), self.initial_seir_state_distribution, agents_seir_state_tourists_subset)
 
-                        for id in new_agent_ids:
-                            self.vars_util.agents_seir_state[id] = SEIRState.Undefined
+                    for id in new_agent_ids:
+                        self.vars_util.agents_seir_state[id] = SEIRState.Undefined
 
-                        # self.num_active_tourists += num_tourists_in_group
+                    # self.num_active_tourists += num_tourists_in_group
 
     def sample_initial_tourists(self, tourist_groupids, f):
         for tour_group_id in tourist_groupids:
@@ -299,6 +296,7 @@ class Tourism:
                     else:
                         props = {"age": tourist["age"], "res_cellid": cellindex, "age_bracket_index": age_bracket_index, "epi_age_bracket_index": epi_age_bracket_index, "pub_transp_reg": True, "soc_rate": 0}
                         self.agents_static.set_props(new_agent_id, props)
+                        # print(f"sample_initial_tourists, adding to dict. age {tourist['age']}, agentid {new_agent_id}, res_cellid: {cellindex}, abi: {age_bracket_index}, epi_abi: {epi_age_bracket_index}, pub_transp_reg: {True}, soc_rate: {0}")
 
                     self.agents_static_to_sync[new_agent_id] = [tourist["age"], cellindex, age_bracket_index, epi_age_bracket_index, True, 0]
 
@@ -417,6 +415,172 @@ class Tourism:
                     futures.append(future)
             else:                   
                 for worker_index, actor in enumerate(actors):
+                    if not dask_full_stateful or actor is not None: # in dask_full_stateful mode, the actor's reference to itself is not possible and instead represented by None                        
+                        future = None
+                        if not dask_full_stateful:
+                            params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
+                            future = actor.run_update_tourist_data_remote(params)
+                        else:
+                            self.prev_day_departing_tourists_agents_ids = prev_day_departing_tourists_agents_ids
+                            # future = actor.tourists_sync(params)
+
+                        futures.append(future)
+            
+            if not dask_full_stateful: # if dask_full_stateful, sync will happen later, cannot clear for now
+                self.agents_static_to_sync = customdict.CustomDict()
+
+            # self.it_agents_to_sync = customdict.CustomDict()
+            # self.agents_epi_to_sync = customdict.CustomDict()
+            
+            # results = None
+            # if not dask_full_stateful:
+            #     results = as_completed(futures)
+            # else:
+            #     results = futures
+
+            success = True
+
+            if len(actors) == 0:
+                for future in as_completed(futures):
+                    process_index, success_partial, _, _, _ = future.result()
+                      
+                    print("process_index {0}, success {1}".format(str(process_index), str(success_partial)))
+                    if f is not None:
+                        f.flush()
+
+                    future.release()  
+
+                    success &= success_partial
+            else:
+                if not dask_full_stateful:
+                    for future in as_completed(futures):
+                        process_index, success_partial = future.result()
+                        
+                        print("process_index {0}, success {1}".format(str(process_index), str(success_partial)))
+                        if f is not None:
+                            f.flush() 
+
+                        success &= success_partial
+                # else:
+                #     result_index = 0
+                #     for result in futures:
+                #         process_index, success_partial = result.result()
+                #         # result = result.result()
+                #         print("process_index {0}, success {1}".format(str(result_index), str(success_partial)))
+                #         if f is not None:
+                #             f.flush()
+
+                #         success &= success_partial
+
+                #     result_index += 1
+
+            time_taken = time.time() - start
+            print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
+            if f is not None:
+                f.flush()
+
+        if len(prev_day_departing_tourists_agents_ids) > 0:
+            if f is not None:
+                f.flush()
+
+            start_prev_day_del = time.time()
+            for agentid in prev_day_departing_tourists_agents_ids:
+                del self.it_agents[agentid]
+                del self.agents_epi[agentid] #       
+                del self.vars_util.agents_seir_state[agentid]
+
+                if agentid in self.vars_util.agents_infection_type:
+                    del self.vars_util.agents_infection_type[agentid]
+
+                if agentid in self.vars_util.agents_infection_severity:
+                    del self.vars_util.agents_infection_severity[agentid]
+
+                self.agents_static.delete(agentid)
+                # print(f"deleted agent {agentid} from agents_static")
+    
+            del self.departing_tourists_agents_ids[day-1]
+            time_taken_prev_day_del = time.time() - start_prev_day_del
+            print(f"deleting departuring tourists from main node, time_taken: {time_taken_prev_day_del}")
+
+            gc.collect()
+
+    async def sync_and_clean_tourist_data_async(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
+        departing_tourists_agent_ids = []
+
+        start = time.time()
+        for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
+            if not grp_arr_dep_info["arrival"]:
+                tourists_group = self.touristsgroups[tour_grp_id]
+
+                accomtype = tourists_group["accomtype"]
+                accominfo = tourists_group["accominfo"]
+                subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
+
+                # num_tourists_in_group = 0
+
+                for accinfoindex, accinfo in enumerate(accominfo):
+                    accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
+
+                    room_members = subgroupsmemberids[accinfoindex] # this room
+
+                    # num_tourists_in_group += len(room_members)
+                    for tourist_id in room_members:
+                        try:
+                            self.tourists_active_ids.remove(tourist_id)
+                        except:
+                            if tourist_id not in self.tourists_active_ids:
+                                print("cannot delete tourist_id as it doesn't exist: " + str(tourist_id))
+                                if f is not None:
+                                    f.flush()
+                                    
+                                raise
+
+                        tourist = self.tourists[tourist_id]
+                        agentid = tourist["agentid"]
+
+                        departing_tourists_agent_ids.append(agentid)
+
+                        # self.agents_static.delete(agentid)
+                        # self.agents_static.set(agentid, "age", None)
+                        # self.agents_static.set(agentid, "res_cellid", None)
+                        # self.agents_static.set(agentid, "age_bracket_index", None)
+                        # self.agents_static.set(agentid, "epi_age_bracket_index", None)
+                        # self.agents_static.set(agentid, "pub_transp_reg", None)
+
+                    # self.tourists_active_ids.extend(room_members)
+
+                    cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
+
+                    self.cells_accommodation[cellindex]["place"]["member_uids"] = []
+
+                self.tourists_active_groupids.remove(tour_grp_id)
+
+        self.departing_tourists_agents_ids[day] = departing_tourists_agent_ids
+        time_taken = time.time() - start
+        print("sync_and_clean_tourist_data on client: " + str(time_taken))
+        if f is not None:
+            f.flush()
+
+        # sync new tourists with remote workers and remove tourists who have left on the previous day
+        prev_day_departing_tourists_agents_ids = []
+            
+        if day-1 in self.departing_tourists_agents_ids:
+            prev_day_departing_tourists_agents_ids = self.departing_tourists_agents_ids[day-1]
+
+        if client is not None:
+            start = time.time()
+
+            futures = []
+            
+            if len(actors) == 0:
+                workers = list(client.scheduler_info()["workers"].keys()) # list()
+
+                for worker_index, worker in enumerate(workers):
+                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, remote_log_subfolder_name, log_file_name, worker_index)
+                    future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
+                    futures.append(future)
+            else:                   
+                for worker_index, actor in enumerate(actors):
                     if not dask_full_stateful or actor is not None: # in dask_full_stateful mode, the actor's reference to itself is not possible and instead represented by None
                         params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
                         # if not dask_full_stateful:
@@ -429,7 +593,7 @@ class Tourism:
                             future = actor.run_update_tourist_data_remote(params)
                         else:
                             # if worker_index == 0: # temporary
-                            future = actor.tourists_sync(params)
+                            future = await actor.tourists_sync(params)
 
                         futures.append(future)
 
@@ -443,32 +607,39 @@ class Tourism:
             # else:
             #     results = futures
 
-            success = False
+            success = True
 
             if len(actors) == 0:
                 for future in as_completed(futures):
-                    process_index, success, _, _, _ = future.result()
+                    process_index, success_partial, _, _, _ = future.result()
                       
-                    print("process_index {0}, success {1}".format(str(process_index), str(success)))
+                    print("process_index {0}, success {1}".format(str(process_index), str(success_partial)))
                     if f is not None:
                         f.flush()
 
                     future.release()  
+
+                    success &= success_partial
             else:
                 if not dask_full_stateful:
                     for future in as_completed(futures):
-                        process_index, success = future.result()
+                        process_index, success_partial = future.result()
                         
-                        print("process_index {0}, success {1}".format(str(process_index), str(success)))
+                        print("process_index {0}, success {1}".format(str(process_index), str(success_partial)))
                         if f is not None:
                             f.flush() 
+
+                    success &= success_partial
                 else:
                     result_index = 0
                     for result in futures:
+                        process_index, success_partial = await result.result()
                         # result = result.result()
-                        print("process_index {0}, success {1}".format(str(result_index), str(result)))
+                        print("process_index {0}, success {1}".format(str(result_index), str(success_partial)))
                         if f is not None:
                             f.flush()
+
+                        success &= success_partial
 
                     result_index += 1
 
@@ -478,7 +649,6 @@ class Tourism:
                 f.flush()
 
         if len(prev_day_departing_tourists_agents_ids) > 0:
-            print("3")
             if f is not None:
                 f.flush()
             start_prev_day_del = time.time()

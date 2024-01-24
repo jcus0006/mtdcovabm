@@ -5,6 +5,7 @@ from dask.distributed import get_worker, get_client, as_completed
 import customdict, vars, tourism, tourism_dist, util, itinerary, contactnetwork
 from cellsclasses import CellType
 from enum import Enum
+import gc
 
 # the client will start each stage on each actor
 # it will also maintain a flag to monitor progress (for each stage: itinerary, contact network)
@@ -16,7 +17,7 @@ class ActorDist:
 
         self.remote_actors = [] # [actor_index, actor]
 
-        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, tourists, touristsgroups, touristsgroupsids_initial, dyn_params, tourismparams, rooms_by_accomid_by_accomtype, age_brackets, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, worker_by_res_ids_lookup, worker_by_agent_ids_lookup, worker_by_cell_ids_lookup, logsubfoldername, logfilename = params
+        workers_keys, workerindex, hh_insts, it_agents, agents_epi, vars_util, tourists, touristsgroups, touristsgroupsids_initial, dyn_params, tourismparams, rooms_by_accomid_by_accomtype, age_brackets, agent_ids_by_worker_lookup, cell_ids_by_worker_lookup, logsubfoldername, logfilename = params
 
         current_directory = os.getcwd()
         subfolder_name = logfilename.replace(".txt", "")
@@ -29,13 +30,10 @@ class ActorDist:
         self.workers_keys = workers_keys
         self.worker_index = workerindex
         self.worker_key = self.workers_keys[self.worker_index]
-        self.agent_ids_by_process_lookup = agent_ids_by_worker_lookup
-        self.cell_ids_by_process_lookup = cell_ids_by_worker_lookup
-        self.worker_by_res_ids_lookup = worker_by_res_ids_lookup # {id: worker_id}
-        self.worker_by_agent_ids_lookup = worker_by_agent_ids_lookup
-        self.worker_by_cell_ids_lookup = worker_by_cell_ids_lookup
-        self.agent_ids = set(self.agent_ids_by_process_lookup[self.worker_index])
-        self.cell_ids = set(self.cell_ids_by_process_lookup[self.worker_index])
+        self.agent_ids_by_worker_lookup = agent_ids_by_worker_lookup
+        self.cell_ids_by_worker_lookup = cell_ids_by_worker_lookup
+        self.agent_ids = set(self.agent_ids_by_worker_lookup[self.worker_index])
+        self.cell_ids = set(self.cell_ids_by_worker_lookup[self.worker_index])
 
         self.day = None # 1 - 365
         self.weekday = None
@@ -52,6 +50,19 @@ class ActorDist:
         self.agents_epi = agents_epi
         self.vars_util = vars_util # direct contacts do not have to be shared with the remote nodes, it can be simply returned to the client
 
+        self.tourist_util = None # set in itineraries, cleared after sending result
+
+        self.tourists = tourists
+        self.touristsgroups = touristsgroups
+        # method that loads whole tourists and touristsgroups remotely
+        # tourists = self.worker.data["tourists"]
+        # self.tourists = {tourid: tour for tourid, tour in tourists.items() if tourid in tourists_ids}
+        # touristsgroups = self.worker.data["touristsgroups"]
+        # self.touristsgroups = {tourgroupid: tourgroup for tourgroupid, tourgroup in touristsgroups.items() if tourgroupid in touristsgroups_ids}
+
+        # self.worker.data["tourists"] = None
+        # self.worker.data["touristsgroups"] = None
+
         self.tourists = tourists
         self.touristsgroups = touristsgroups
         self.touristsgroupsids_initial = touristsgroupsids_initial
@@ -59,6 +70,8 @@ class ActorDist:
         self.tourists_active_groupids = []
         self.tourists_arrivals_departures_for_day = {} # handles both incoming and outgoing, arrivals and departures. handled as a dict, as only represents day
         self.tourists_arrivals_departures_for_nextday = {}
+
+        self.updated_agent_ids = [] # represents updated agent ids in CN (set in CN, cleared after sending result)
 
         self.it_main_time_taken_sum = 0
         self.it_main_time_taken_avg = 0
@@ -77,18 +90,14 @@ class ActorDist:
     # tourists are handled in the main process (adding new tourists and tourism itinerary). 
     # the distributed stage starts immediately by syncing the cells_agents_timesteps created in the tourism itinerary, 
     # as well as syncing new (initial and arriving) tourists and deleting departing tourists
-    def tourists_sync(self, params):
-        # self.vars_util.cells_agents_timesteps = params[-1] 
+    # def tourists_sync(self, params):
+    #     process_index, success, _, _, _ = tourism_dist.update_tourist_data_remote(params, self.folder_name)
 
-        # params = params[0], params[1], params[2], params[3], params[4], params[5], params[6]
-        
-        process_index, success, _, _, _ = tourism_dist.update_tourist_data_remote(params, self.folder_name)
-
-        return success
+    #     return success
     
     def itineraries(self, touristsgroupsdays_this_day, touristsgroupsdays_next_day):
         f = None
-        agents_epi_keys = None
+        original_stdout = sys.stdout
         time_takens = None
         cells_accommodation_to_send_back = None
 
@@ -147,7 +156,7 @@ class ActorDist:
 
         initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
 
-        tourist_util = tourism.Tourism(self.tourismparams, 
+        self.tourist_util = tourism.Tourism(self.tourismparams, 
                                         cells_accommodation,
                                         n_locals, 
                                         self.tourists, 
@@ -172,18 +181,19 @@ class ActorDist:
                                         True) # dask_full_stateful
         
         if self.day == 1:
-            tourist_util.sample_initial_tourists(self.touristsgroupsids_initial, f) # to do - must create f and point stdout to it
+            self.tourist_util.sample_initial_tourists(self.touristsgroupsids_initial, f)
 
-            print("sample_initial_tourists. tourists active ids: " + str(self.tourists_active_ids))
+            self.touristsgroupsids_initial = None
+            gc.collect()
                 
-        self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
+        self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
         print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
-        print("tourists active ids: " + str(self.tourists_active_ids))
+
         if f is not None:
             f.flush()
 
         cells_accommodation_to_send_back = customdict.CustomDict()
-        for cellid in tourist_util.updated_cell_ids:
+        for cellid in self.tourist_util.updated_cell_ids:
             cells_accommodation_to_send_back[cellid] = cells_accommodation[cellid]
 
         self.worker.data["cells_accommodation"] = cells_accommodation
@@ -220,19 +230,23 @@ class ActorDist:
         if f is not None:
             f.flush()    
 
-        tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, f)
+        self.tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, f)
+        
         print("sync_and_clean_tourist_data (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
         if f is not None:
             f.flush()
 
-        num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
-        num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
-        num_departures = len(tourist_util.departing_tourists_agents_ids[self.day])
+        # num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
+        num_arrivals = len(self.tourist_util.arriving_tourists_agents_ids)
+        num_arrivals_nextday = len(self.tourist_util.arriving_tourists_next_day_agents_ids)
+        num_departures = len(self.tourist_util.departing_tourists_agents_ids[self.day])
 
         arr_dep_counts = (num_arrivals, num_arrivals_nextday, num_departures)
 
         tour_time_taken = time.time() - tour_start
         print("tourism for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(tour_time_taken))
+        if f is not None:
+            f.flush()
 
         # must return partial part of cells_accommodation, relevant to current tourist set, back to main process, so it can be used with main process
 
@@ -255,8 +269,13 @@ class ActorDist:
 
             ws_time_taken = time.time() - ws_main_start
             print("generate_working_days_for_week_residence for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(ws_time_taken) + ", proc index: " + str(self.worker_index))
+            if f is not None:
+                f.flush()
 
         print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday))
+        if f is not None:
+            f.flush()
+
         it_start = time.time()                    
 
         num_agents_itinerary = 0
@@ -267,12 +286,6 @@ class ActorDist:
             res_time_taken = time.time() - res_start
             itinerary_times_by_resid[hh_inst["id"]] = res_time_taken
             num_agents_itinerary += len(hh_inst["resident_uids"])
-        
-        send_results_start_time = time.time()
-        # send results
-        agents_epi_keys = self.send_results()
-        send_results_time_taken = time.time() - send_results_start_time
-        print("send results time taken: " + str(send_results_time_taken))
 
         it_time_taken = time.time() - it_start
 
@@ -281,13 +294,23 @@ class ActorDist:
         self.it_main_time_taken_sum += main_time_taken
         self.it_main_time_taken_avg = self.it_main_time_taken_sum / self.day
         print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(it_time_taken) + ", proc index: " + str(self.worker_index))
-        
-        print("process " + str(self.worker_index) + ", ended at " + str(time.time()) + ", full time taken: " + str(main_time_taken))
+
         # return contact_tracing_agent_ids (that are only added to in this context) and time-logging information to client
 
-        time_takens = (main_time_taken, tour_time_taken, ws_time_taken, it_time_taken, send_results_time_taken, self.it_main_time_taken_avg)
-        
-        return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, time_takens, agents_epi_keys
+        time_takens = (main_time_taken, tour_time_taken, ws_time_taken, it_time_taken, self.it_main_time_taken_avg)
+
+        if f is not None:
+            f.flush()
+
+        print("process " + str(self.worker_index) + ", ended at " + str(time.time()) + ", full time taken: " + str(main_time_taken))
+        if f is not None:
+            f.flush()
+
+        # sys.stdout = original_stdout
+        # if f is not None:
+        #     f.close()
+
+        return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, time_takens
     
     def itinerary(self):
         main_start = time.time()
@@ -413,6 +436,17 @@ class ActorDist:
 
         self.simstage = SimStage.ContactNetwork
 
+        f = None
+        original_stdout = sys.stdout
+
+        log_file_name = os.path.join(self.folder_name, "cn_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
+        print("starting contact network")
+        if f is not None:
+            f.flush()
+
         n_locals = self.worker.data["n_locals"]
         n_tourists = self.worker.data["n_tourists"]
         locals_ratio_to_full_pop = self.worker.data["locals_ratio_to_full_pop"]
@@ -451,15 +485,15 @@ class ActorDist:
         self.vars_util.agents_vaccination_doses = customdict.CustomDict()
         
         main_time_taken = time.time() - main_start
-
-        # send results
-        self.send_results(list(agents_epi_partial.keys()))
         
         # return direct contacts and time-logging information to client
+        sys.stdout = original_stdout
+        if f is not None:
+            f.close()
 
         return self.worker_index, self.vars_util.directcontacts_by_simcelltype_by_day, main_time_taken
 
-    def send_results(self, updated_agent_ids=None):
+    def send_results(self):
         # if itinerary, get list of cell ids from cells_agents_timesteps, then get list of cell ids that are not in self.cells_ids (difference with sets)
         # these are the cases for which the contact network will be computed on another remote node
         # iterate on the workers, skipping this one, build a dict of the following structure: {worker_index: (agents_epi, vars_util)} 
@@ -476,7 +510,7 @@ class ActorDist:
             cells_ids = set(self.vars_util.cells_agents_timesteps.keys()) # convert to set to enable set functions
             cells_ids = cells_ids.difference(self.cell_ids) # get the newly created cell ids that are not local to this worker
             
-            for wi, w_cell_ids in self.cell_ids_by_process_lookup.items():
+            for wi, w_cell_ids in self.cell_ids_by_worker_lookup.items():
                 if wi != self.worker_index:
                     cells_ids_to_send = cells_ids.intersection(w_cell_ids) # get the matching cell ids to send to this worker specifically
 
@@ -493,17 +527,18 @@ class ActorDist:
 
                     agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_ids_to_send, self.agents_epi, self.vars_util, agents_epi_to_send, vars_util_to_send)
 
-                    send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
+                    send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send, self.tourist_util.agents_static_to_sync, self.tourist_util.prev_day_departing_tourists_agents_ids]
+                    # send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
 
             self.clean_cells_agents_timesteps(cells_ids)
         else:
-            updated_agent_ids = set(updated_agent_ids) # convert to set to enable set functions
+            self.updated_agent_ids = set(self.updated_agent_ids) # convert to set to enable set functions
 
-            updated_agent_ids = updated_agent_ids.difference(self.agent_ids) # get the updated agent ids that are not local to this worker
+            self.updated_agent_ids = self.updated_agent_ids.difference(self.agent_ids) # get the updated agent ids that are not local to this worker
 
-            for wi, w_agent_ids in self.agent_ids_by_process_lookup.items():
+            for wi, w_agent_ids in self.agent_ids_by_worker_lookup.items():
                 if wi != self.worker_index:
-                    agents_ids_to_send = updated_agent_ids.intersection(w_agent_ids) # get the matching agent ids to send to this worker specifically
+                    agents_ids_to_send = self.updated_agent_ids.intersection(w_agent_ids) # get the matching agent ids to send to this worker specifically
 
                     agents_epi_to_send = customdict.CustomDict()
                     vars_util_to_send = vars.Vars()
@@ -521,27 +556,57 @@ class ActorDist:
                 results.append(result)
                 # results.append(self.remote_actors[wi].receive_results(params))
                 # self.client.submit(receive_results, (self.worker.address, self.simstage, data), workers=worker_key)
+        
+        send_results_by_worker_id = None
 
         result_index = 0
+        success = True
         for result in results:
-            # result = result.result()
-            print("Message Result {0}: {1}".format(str(result_index), str(result)))
+            success &= result.result()
+            print("Message Result {0}: {1}".format(str(result_index), str(success)))
             result_index += 1
 
-        return list(self.agents_epi.keys())
+        gc.collect()
 
+        if self.simstage == SimStage.Itinerary:
+            self.tourist_util = None
+            return success
+        elif self.simstage == SimStage.ContactNetwork:
+            self.updated_agent_ids = []
+            return success, self.agents_epi
+    
     def receive_results(self, params):
         sender_worker_index, simstage, data = params
 
         # sync results after itinerary or contact network
-
-        agents_epi_partial, vars_util_partial = data
         
         if simstage == SimStage.Itinerary:
+            agents_epi_partial, vars_util_partial, agents_static_to_sync, departed_tourist_agent_ids = data
+            start = time.time()
             util.sync_state_info_cells_agents_timesteps(self.vars_util, vars_util_partial)
-
-        self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
-
+            time_taken = time.time() - start
+            print("sync_state_info cells_agents_timesteps time_taken: " + str(time_taken))
+            start = time.time()
+            self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
+            time_taken = time.time() - start
+            print("sync state info agents_epi time_taken: " + str(time_taken))
+            start = time.time()
+            params = [self.day, agents_static_to_sync, departed_tourist_agent_ids, sender_worker_index]
+            tourism_dist.update_tourist_data_remote(params, self.folder_name, self.worker, self_actor_index=self.worker_index)
+            time_taken = time.time() - start
+            print("sync state info update_tourist_data_remote time_taken: " + str(time_taken))
+        elif simstage == SimStage.ContactNetwork:
+            agents_epi_partial, vars_util_partial = data
+            start = time.time()
+            self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
+            time_taken = time.time() - start
+            print("sync state info agents_epi time_taken: " + str(time_taken))
+        elif simstage == SimStage.EndOfDaySync:
+            start = time.time()
+            agents_epi_partial, vars_util_partial = data
+            self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi_end_of_day_sync(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
+            time_taken = time.time() - start
+            print("sync state info (end of day) agents_epi time_taken: " + str(time_taken))
         # self.workers_sync_flag[sender_worker_index] = True
 
         return True
@@ -550,7 +615,7 @@ class ActorDist:
     #     self.workers_sync_flag = customdict.CustomDict({
     #         i:False for i in range(len(self.workers_keys)) if i != self.worker_index
     #     })
-
+    
     def reset_day(self, new_day, new_weekday, new_weekday_str, new_dyn_params):
         self.day = new_day
         self.weekday = new_weekday
@@ -571,7 +636,7 @@ class ActorDist:
         self.vars_util.reset_daily_structures()
 
         for id in list(self.agents_epi.keys()): # can try BST search and compare times
-            if id < n_locals and id not in self.agent_ids:
+            if id not in self.agent_ids: # if id < n_locals and id not in self.agent_ids: // id not in self.agent_ids
                 del self.agents_epi[id]
 
                 try:
@@ -600,6 +665,8 @@ class ActorDist:
                     pass
 
         seir_states = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util)
+
+        gc.collect()
 
         return seir_states
 
