@@ -41,17 +41,24 @@ class DynamicStatistics:
         self.new_hospitalized = 0
         self.average_contacts_per_person = 0
 
-    def refresh_rates(self, day, arr_tourists, arr_nextday_tourists, dep_tourists, tourists_active_ids, vars_util): # optimised
+    def refresh_rates(self, day, arr_tourists, arr_nextday_tourists, dep_tourists, tourists_active_ids, vars_util, seir_states=None): # optimised
         start = time.time()
 
         self.tourists_active_ids = tourists_active_ids
         
-        # deceased
         prev_deceased = self.total_deceased
+        prev_exposed = self.total_exposed
+        prev_susceptible = self.total_susceptible
+        prev_infectious = self.total_infectious
+        prev_recovered = self.total_recovered
 
-        n_deceased = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Deceased])
-        # n_deceased = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Deceased])
-        # n_deceased += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Deceased])
+        if seir_states is None:
+            seir_states = self.calculate_seir_states_counts(vars_util)
+        else:
+            tourists_seir_states = self.calculate_seir_states_counts(vars_util, False, True)
+            seir_states = self.combine_local_and_tourists_seir_state(seir_states, tourists_seir_states)
+
+        n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = seir_states
         
         if day == 1:
             self.new_deaths = n_deceased
@@ -61,11 +68,6 @@ class DynamicStatistics:
         self.total_deceased = n_deceased
         
         # exposed
-        prev_exposed = self.total_exposed
-
-        n_exposed = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Exposed])
-        # n_exposed = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Exposed])
-        # n_exposed += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Exposed])
 
         if day == 1:
             self.new_exposed = n_exposed
@@ -75,12 +77,7 @@ class DynamicStatistics:
         self.total_exposed = n_exposed
 
         # susceptible
-        prev_susceptible = self.total_susceptible
-
-        n_susceptible = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Susceptible])
-        # n_susceptible = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Susceptible])
-        # n_susceptible += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Susceptible])
-
+    
         if day == 1:
             self.new_susceptible = n_susceptible
         else:
@@ -89,12 +86,7 @@ class DynamicStatistics:
         self.total_susceptible = n_susceptible
 
         # infectious
-        prev_infectious = self.total_infectious
 
-        n_infectious = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Infectious])
-        # n_infectious = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Infectious])
-        # n_infectious += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Infectious])
-        
         if day == 1:
             self.new_infectious = n_infectious
         else:
@@ -102,11 +94,7 @@ class DynamicStatistics:
         
         self.total_infectious = n_infectious
 
-        prev_recovered = self.total_recovered
-
-        n_recovered = sum([1 for state in vars_util.agents_seir_state.values() if state == SEIRState.Recovered])
-        # n_recovered = sum([1 for index, state in enumerate(vars_util.agents_seir_state) if index < self.n_locals and state == SEIRState.Recovered])
-        # n_recovered += sum([1 for tourist_id in self.tourists_active_ids if vars_util.agents_seir_state[self.n_locals + tourist_id] == SEIRState.Recovered])
+        # recovered
 
         if day == 1:
             self.new_recovered = n_recovered
@@ -128,6 +116,40 @@ class DynamicStatistics:
         self.infectious_rate = n_infectious / self.total_active_population
         self.recovery_rate = n_recovered / self.total_active_population
         self.mortality_rate = n_deceased / self.total_active_population
+
+    def calculate_seir_states_counts(self, vars_util, ignore_tourists=False, tourists_only=False):
+        n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = 0, 0, 0, 0, 0
+        for id, state in vars_util.agents_seir_state.items():
+            if (not tourists_only and (not ignore_tourists or id < self.n_locals)) or (tourists_only and id >= self.n_locals):
+                match state:
+                    case SEIRState.Deceased:
+                        n_deceased += 1
+                    case SEIRState.Exposed:
+                        n_exposed += 1
+                    case SEIRState.Susceptible:
+                        n_susceptible += 1
+                    case SEIRState.Infectious:
+                        n_infectious += 1
+                    case SEIRState.Recovered:
+                        n_recovered += 1
+            else:
+                pass
+
+        seir_states = n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered
+        return seir_states
+    
+    def combine_local_and_tourists_seir_state(self, local_seir_states, tourists_seir_states):
+        n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = local_seir_states
+
+        n_deceased += tourists_seir_states[0]
+        n_exposed += tourists_seir_states[1]
+        n_susceptible += tourists_seir_states[2]
+        n_infectious += tourists_seir_states[3]
+        n_recovered += tourists_seir_states[4]
+
+        local_seir_states = n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered
+
+        return local_seir_states
 
     def update_statistics_df(self, day, df):
         df.loc[day, "total_active_population"] = self.total_active_population

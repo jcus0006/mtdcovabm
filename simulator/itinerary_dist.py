@@ -10,7 +10,7 @@ import math
 import numpy as np
 # import numpy.ma as ma
 import traceback
-import itinerary, itinerary_mp, actor_dist_mp, vars, shared_mp, jsonutil, customdict, daskutil, util
+import itinerary, itinerary_mp, vars, shared_mp, jsonutil, customdict, daskutil, util
 import time
 from copy import copy, deepcopy
 from dask.distributed import Client, get_worker, as_completed, Variable, performance_report

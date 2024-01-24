@@ -176,7 +176,7 @@ def set_age_brackets_tourists(age, agents_ids_by_ages, agent_uid, age_brackets, 
 
     return age_bracket_index, agents_ids_by_ages, agents_ids_by_agebrackets
 
-def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, params, sociability_rate_min, sociability_rate_max, figure_count):
+def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebrackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count):
     for agebracket_index, agents_ids_in_bracket in agents_ids_by_agebrackets.items():
         powerlaw_dist_params = powerlaw_distribution_parameters[agebracket_index]
 
@@ -193,7 +193,7 @@ def generate_sociability_rate_powerlaw_dist(temp_agents, agents_ids_by_agebracke
 
                 normalized_arr = (agents_contact_propensity - min_arr) / (max_arr - min_arr) * (sociability_rate_max - sociability_rate_min) + sociability_rate_min
 
-                if params["visualise"]:
+                if visualise:
                     figure_count += 1
                     plt.figure(figure_count)
                     bins = np.logspace(np.log10(min(agents_contact_propensity)), np.log10(max(agents_contact_propensity)), 50)
@@ -429,6 +429,43 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
 
     return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
 
+def split_agents_epi_by_agentsids(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send):
+    for agent_id in agents_ids_to_send:
+        if agent_id > 9999:
+            print("syncing tourist_agent_id " + str(agent_id) + ", agents_seir_state valid: " + str(agent_id in vars_util.agents_seir_state))
+
+        agents_epi_to_send[agent_id] = agents_epi[agent_id]
+
+        vars_util_to_send.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
+
+        # should the below be uncommented, this should only apply for the Itinerary SimStage
+        # if agent_id in self.vars_util.agents_seir_state_transition_for_day:
+        #     vars_util_to_send.agents_seir_state_transition_for_day[agent_id] = self.vars_util.agents_seir_state_transition_for_day[agent_id]
+
+        if agent_id in vars_util.agents_infection_type:
+            vars_util_to_send.agents_infection_type[agent_id] = vars_util.agents_infection_type[agent_id]
+
+        if agent_id in vars_util.agents_infection_severity:
+            vars_util_to_send.agents_infection_severity[agent_id] = vars_util.agents_infection_severity[agent_id]
+
+        if agent_id in vars_util.agents_vaccination_doses:
+            vars_util_to_send.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+
+    return agents_epi_to_send, vars_util_to_send
+
+def split_agents_epi_by_agentsids_end_of_day_sync(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send, n_locals=None):
+    for agent_id in agents_ids_to_send:
+        try:
+            agents_epi_to_send[agent_id] = agents_epi[agent_id]
+
+            if agent_id in vars_util.agents_vaccination_doses:
+                vars_util_to_send.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+        except: # if n_locals is specified, tourists might have been removed from sim already, in that case do not raise exception (if not passed, or local, raise)
+            if n_locals is None or agent_id < n_locals: 
+                raise
+
+    return agents_epi_to_send, vars_util_to_send
+
 def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agents_partial, agents_epi_partial, vars_util_partial, contact_tracing=False):
     # updated_count = 0
     for agentindex, agentid in enumerate(agents_ids):
@@ -447,6 +484,9 @@ def sync_state_info_by_agentsids(agents_ids, agents, agents_epi, vars_util, agen
         if not contact_tracing:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
 
+            # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+            #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+        
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
 
@@ -469,11 +509,8 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
         
         agents_epi[agentid] = curr_agent_epi
 
-        # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
-        #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
-
         if agentid in vars_util_partial.agents_seir_state:
-            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+            vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) # agentindex
 
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
@@ -498,6 +535,45 @@ def sync_state_info_by_agentsids_ct(agents_ids, agents_epi, agents_epi_partial):
         agents_epi[agentid] = curr_agent_epi
     
     return agents_epi
+
+def sync_state_info_by_agentsids_agents_epi(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+    # updated_count = 0
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+
+        vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
+
+        # should this be uncommented it needs to apply only to the Itinerary SimStage
+        # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+        #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+        
+        if agentid in vars_util_partial.agents_infection_type:
+            vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
+
+        if agentid in vars_util_partial.agents_infection_severity:
+            vars_util.agents_infection_severity[agentid] = vars_util_partial.agents_infection_severity[agentid]
+
+        if agentid in vars_util_partial.agents_vaccination_doses:
+            vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
+
+        # updated_count += 1  
+
+    # print("synced " + str(updated_count) + " agents")
+    
+    return agents_epi, vars_util
+
+def sync_state_info_by_agentsids_agents_epi_end_of_day_sync(agents_ids, agents_epi, vars_util, agents_epi_partial, vars_util_partial):
+    for _, agentid in enumerate(agents_ids):
+        curr_agent_epi = agents_epi_partial[agentid]
+        
+        agents_epi[agentid] = curr_agent_epi
+
+        if agentid in vars_util_partial.agents_vaccination_doses:
+            vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
+    
+    return agents_epi, vars_util
 
 def sync_state_info_sets(day, vars_util, vars_util_partial):
     if len(vars_util_partial.contact_tracing_agent_ids) > 0:
@@ -628,8 +704,16 @@ def split_balanced_partitions(x, n):
     remainder = x % n
     partitions = [base_value] * n
 
-    for i in range(remainder):
-        partitions[i] += 1
+    while remainder > 0:
+        temp_remainder = remainder
+        for i in range(remainder):
+            if i < len(partitions):
+                partitions[i] += 1
+                temp_remainder -= 1
+            else:
+                break
+        
+        remainder = temp_remainder
 
     return partitions
 
