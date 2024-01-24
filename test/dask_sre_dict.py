@@ -73,8 +73,8 @@ for batch in as_completed(futures, with_results=True).batches():
                     persons[id] = res_persons[id]
                     my_dict[id] = res_result[id]
             except:
-                with open("logs/dask_sre_dict_log.txt", 'a') as f:
-                    traceback.print_exc(file=f)
+                with open("logs/dask_sre_dict_log.txt", 'a') as fi:
+                    traceback.print_exc(file=fi)
             finally:
                 future.release()
     except:

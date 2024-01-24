@@ -29,7 +29,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 6, # 365/20
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -42,9 +42,9 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "fullpop": 10000, # 519562 / 100000 / 10000 / 1000
+            "fulltourpop": 40000, # 2173531 / 400000 / 40000 / 4000
+            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
@@ -71,11 +71,11 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
-            "dask_nodes": ["localhost"], # 192.168.1.24
-            "dask_nodes_n_workers": [8], # 3, 11
+            "dask_nodes": ["localhost"], # 192.168.1.23
+            "dask_nodes_n_workers": [4], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
-            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
             # "dask_nodes_n_workers": [3, 4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
@@ -92,7 +92,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "datasubfoldername": "data",
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "logmemoryinfo": False,
-            "logfilename": "quick10ktest_daskstrat2_itinerarybugissue.txt" # dask_5n_20w_500k_3d_opt.txt
+            "logfilename": "temp_dask_mp_test.txt" # dask_5n_20w_500k_3d_opt.txt
         }
 
 # Load configuration
@@ -442,7 +442,7 @@ def main():
 
     # # transmission model
     agents_seir_state = customdict.CustomDict() # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
-    agents_seir_state_transition_for_day = customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
+    agents_seir_state_transition_for_day = None # customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
     agents_infection_type = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_infection_severity = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_vaccination_doses = customdict.CustomDict() # number of doses per agent

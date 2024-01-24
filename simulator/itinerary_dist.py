@@ -138,8 +138,8 @@ def localitinerary_distributed_finegrained(client: Client,
         time_taken = time.time() - start
         print("localitinerary_finegrained_distributed time_taken: " + str(time_taken))
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
 def localitinerary_distributed_finegrained_chunks(client: Client, 
                                                 hh_insts, 
@@ -276,8 +276,8 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
             time_taken = time.time() - start
             print("client shutdown time taken " + str(time_taken))         
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
 def localitinerary_distributed_map_batched(client: Client, 
                                     hh_insts, 
@@ -397,8 +397,8 @@ def localitinerary_distributed_map_batched(client: Client,
             time_taken = time.time() - start
             print("client shutdown time taken " + str(time_taken))         
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
 def localitinerary_distributed(client: Client,
                             day,
@@ -447,6 +447,14 @@ def localitinerary_distributed(client: Client,
             # worker = client.scheduler_info()["workers"][workers[0]]
             # print("local_directory: " + str(worker["local_directory"]))
 
+            if not use_mp:
+                prev_dask_nodes_n_workers = dask_nodes_n_workers
+                dask_nodes_n_workers = util.refresh_dask_nodes_n_workers(workers)
+                if dask_nodes_n_workers != prev_dask_nodes_n_workers:
+                    print(f"refreshed dask_nodes_n_workers in itinerary_dist. one or more workers have been dropped. previous num_workers {sum(prev_dask_nodes_n_workers)}, new num_workers {sum(dask_nodes_n_workers)}")
+                    print(f"prev dask_nodes_n_workers: {str(prev_dask_nodes_n_workers)}")
+                    print(f"prev_dask_nodes_n_workers: {str(dask_nodes_n_workers)}")
+
             node_worker_index_by_worker_url = {}
         
             w_index = 0
@@ -466,9 +474,16 @@ def localitinerary_distributed(client: Client,
 
             start = time.time()
 
+            dask_workers_time_taken_keys = list(dask_workers_time_taken.keys())
+
+            assign_specific_workers = False
             if not use_mp and dask_combined_scores_nworkers is not None: # load balancing
+                assign_specific_workers = True
+
                 mp_hh_inst_indices = util.itinerary_load_balancing(hh_insts, dask_numtasks, dask_nodes_n_workers, dask_combined_scores_nworkers)
             elif not use_mp and dask_dynamic_load_balancing and dask_workers_time_taken is not None:
+                assign_specific_workers = True
+
                 inverted_dask_nodes_time_taken = {i: 1/v for i,v in dask_workers_time_taken.items()} # invert to assign less work to slower nodes, and more work to faster nodes
                 inverted_dask_nodes_time_taken = dict(sorted(inverted_dask_nodes_time_taken.items(), key=lambda item: item[1])) # sort by slowest first
                 workers = [workers[wid[1]] for wid in inverted_dask_nodes_time_taken.keys()] # re-arrange workers to slowest first based on inverted_dask_nodes_time_taken
@@ -491,6 +506,9 @@ def localitinerary_distributed(client: Client,
 
                 mp_hh_inst_indices = temp_mp_hh_inst_indices
                 dask_numtasks = len(workers)
+
+            if use_mp:
+                assign_specific_workers = True
 
             time_taken = time.time() - start
             print("split residences by indices (load balancing): " + str(time_taken))
@@ -516,8 +534,12 @@ def localitinerary_distributed(client: Client,
                 # cells_partial = {}
                 hh_insts_partial = []
 
-                worker_url = workers[worker_index]
-                remote_worker_index = node_worker_index_by_worker_url[worker_url]
+                worker_url, remote_worker_index = None, None
+                if assign_specific_workers:
+                    worker_url = workers[worker_index]
+                    remote_worker_index = node_worker_index_by_worker_url[worker_url]
+                else:
+                    remote_worker_index = worker_index # in this case we cannot know which worker Dask will assign based on availability
 
                 mp_hh_inst_ids_this_proc = mp_hh_inst_indices[worker_index] # worker_index
 
@@ -604,7 +626,10 @@ def localitinerary_distributed(client: Client,
                 worker_assign_time_taken = time.time() - worker_assign_start
                 
                 if not use_mp:
-                    dask_workers_time_taken[remote_worker_index] = [worker_assign_time_taken, None]
+                    if isinstance(remote_worker_index, tuple):
+                        dask_workers_time_taken[remote_worker_index] = [worker_assign_time_taken, None]
+                    else:
+                        dask_workers_time_taken[dask_workers_time_taken_keys[remote_worker_index]] = [worker_assign_time_taken, None]
                 else:
                     dask_workers_time_taken[remote_worker_index[0]] = [worker_assign_time_taken, None]
 
@@ -635,7 +660,7 @@ def localitinerary_distributed(client: Client,
             else:
                 method_type = MethodType.ItineraryDistMP
 
-            it_agents, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken)
+            it_agents, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
@@ -651,8 +676,8 @@ def localitinerary_distributed(client: Client,
                 if f is not None:
                     f.flush()
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
         raise
 
 def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
@@ -679,8 +704,8 @@ def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, ag
         
             agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
         except:
-            with open(task_results_stack_trace_log_file_name, 'a') as f:
-                traceback.print_exc(file=f)
+            with open(task_results_stack_trace_log_file_name, 'a') as fi:
+                traceback.print_exc(file=fi)
         finally:
             future.release()
 
@@ -711,8 +736,8 @@ def handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, a
         
             agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None
         except:
-            with open(task_results_stack_trace_log_file_name, 'a') as f:
-                traceback.print_exc(file=f)
+            with open(task_results_stack_trace_log_file_name, 'a') as fi:
+                traceback.print_exc(file=fi)
         finally:
             future.release()
 
@@ -852,8 +877,8 @@ def localitinerary_worker_res(params):
         # return agents_dynamic, vars_util_mp.cells_agents_timesteps, vars_util_mp.agents_seir_state, vars_util_mp.agents_infection_type, vars_util_mp.agents_infection_severity, vars_util_mp.agents_seir_state_transition_for_day, vars_util_mp.contact_tracing_agent_ids
         return agents_dynamic, agents_epi, vars_util_mp
     except:
-        with open(stack_trace_log_file_name, 'a+') as f: # it_res_stack_trace.txt
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'a+') as fi: # it_res_stack_trace.txt
+            traceback.print_exc(file=fi)
     finally:
         if original_stdout is not None:
             sys.stdout = original_stdout
@@ -969,8 +994,8 @@ def localitinerary_dist_worker(params):
 
         return worker_index, agents_partial, vars_util_partial
     except:
-        with open(stack_trace_log_file_name, 'w') as f: # it_dist_stack_trace.txt
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi: # it_dist_stack_trace.txt
+            traceback.print_exc(file=fi)
     finally:
         # process_counter.value -= 1
 

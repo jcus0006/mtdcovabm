@@ -125,8 +125,8 @@ class ActorDistMP:
             # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
-            with open(actual_stack_trace_log_file_name, 'w') as f:
-                traceback.print_exc(file=f)
+            with open(actual_stack_trace_log_file_name, 'w') as fi:
+                traceback.print_exc(file=fi)
 
             return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
         finally:
@@ -205,7 +205,7 @@ class ActorDistMP:
 
             # certain data does not have to go back because it would not have been updated in this context
             vars_util.cells_agents_timesteps = customdict.CustomDict()
-            vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
+            # vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
             vars_util.agents_vaccination_doses = customdict.CustomDict()
 
             # util.log_memory_usage(f, "Before returning. ")
@@ -218,8 +218,8 @@ class ActorDistMP:
             # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
-            with open(actual_stack_trace_log_file_name, 'w') as f:
-                traceback.print_exc(file=f)
+            with open(actual_stack_trace_log_file_name, 'w') as fi:
+                traceback.print_exc(file=fi)
 
             return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
         finally:
@@ -410,7 +410,7 @@ def run_contactnetwork_single(params):
 
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
-        vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
+        # vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
         vars_util.agents_vaccination_doses = customdict.CustomDict()
 
         main_time_taken = time.time() - main_start

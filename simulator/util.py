@@ -382,8 +382,8 @@ def split_dicts_by_agentsids(agents_ids, agents, vars_util, agents_partial, vars
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
-        if not is_itinerary and uid in vars_util.agents_seir_state_transition_for_day: # although will never have data if is_itinerary
-            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
+        # if not is_itinerary and uid in vars_util.agents_seir_state_transition_for_day: # although will never have data if is_itinerary
+        #     vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
 
         if uid in vars_util.agents_infection_type:
             vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
@@ -412,8 +412,8 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
         if is_itinerary and agents_ids_by_ages is not None and agents_ids_by_ages_partial is not None:
             agents_ids_by_ages_partial[uid] = agents_ids_by_ages[uid]
 
-        if not is_itinerary and uid in vars_util.agents_seir_state_transition_for_day: # although will never have data if is_itinerary
-            vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
+        # if not is_itinerary and uid in vars_util.agents_seir_state_transition_for_day: # although will never have data if is_itinerary
+        #     vars_util_partial.agents_seir_state_transition_for_day[uid] = vars_util.agents_seir_state_transition_for_day[uid]
 
         if uid in vars_util.agents_infection_type:
             vars_util_partial.agents_infection_type[uid] = vars_util.agents_infection_type[uid]
@@ -469,8 +469,8 @@ def sync_state_info_by_agentsids_cn(agents_ids, agents_epi, vars_util, agents_ep
         
         agents_epi[agentid] = curr_agent_epi
 
-        if agentid in vars_util_partial.agents_seir_state_transition_for_day:
-            vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+        # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
+        #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
 
         if agentid in vars_util_partial.agents_seir_state:
             vars_util.agents_seir_state[agentid] = seirstateutil.agents_seir_state_get(vars_util_partial.agents_seir_state, agentid) #agentindex
@@ -714,7 +714,35 @@ def asizeof_list_formatted(data):
         temp_sum += asizeof.asizeof(d)
 
     return round(temp_sum / (1024 ** 2), 2)
+
+def refresh_dask_nodes_n_workers(workers):
+    dask_nodes_n_workers = []
+    curr_worker = ""
+    curr_worker_count = 0
+    worker_count_open = False
+
+    for w in workers:
+        if curr_worker_count == 0:
+            worker_count_open = True
+
+        temp_w = w.replace(":" + w[w.rindex(':') + 1:], "").replace("tcp://", "")
+        if curr_worker == "" or temp_w == curr_worker:
+            curr_worker_count += 1
+        else:
+            dask_nodes_n_workers.append(curr_worker_count)
+            worker_count_open = False
+            curr_worker_count = 0
+
+        curr_worker = temp_w
         
+    if worker_count_open: # last worker will not be closed within the loop
+        if len(dask_nodes_n_workers) > 0: # if single worker, don't need to increment
+            curr_worker_count += 1
+        
+        dask_nodes_n_workers.append(curr_worker_count) # close it off
+
+    return dask_nodes_n_workers
+
 # this inefficient in that it takes longer than the actual work done in the worker processes. another strategy will be opted for and this will not be used.
 # def split_for_contacttracing(agents, directcontacts_by_simcelltype_by_day, agentids, cells_households, cells_institutions, cells_accommodation):
 #     agents_partial = {}

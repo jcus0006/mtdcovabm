@@ -148,8 +148,8 @@ def contacttracing_distributed(client: Client,
                 if f is not None:
                     f.flush()
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
 def contacttracing_worker(params):
     from shared_mp import agents_static
@@ -217,8 +217,8 @@ def contacttracing_worker(params):
        # log on the node where it happened
         actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
-        with open(actual_stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(actual_stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
         return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
     finally:

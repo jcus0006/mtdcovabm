@@ -366,15 +366,20 @@ class ContactNetwork:
         
     def delete_all_pairs_by_id(self, agents_potentialcontacts, id):
         for pairid in list(agents_potentialcontacts.keys()):
-            if id in pairid:
-                try:
-                    del agents_potentialcontacts[pairid]
-                    # print("deleted id {0} from pairid {1}".format(str(id), str(pairid)))
-                except:
-                    if pairid not in agents_potentialcontacts:
-                        print("pairid {0} does not exist in agents_potentialcontacts!")
+            try:
+                if id in pairid:
+                    try:
+                        del agents_potentialcontacts[pairid]
+                        # print("deleted id {0} from pairid {1}".format(str(id), str(pairid)))
+                    except:
+                        if pairid not in agents_potentialcontacts:
+                            print(f"error: pairid {pairid} does not exist in agents_potentialcontacts!")
 
-                    raise
+                        raise
+            except Exception as e:
+                print(f"error: {e}, id: {id}, pairid: {str(pairid)}, id type: {str(type(id))}, pairid type: {str(type(pairid))}")
+
+                raise
 
         return agents_potentialcontacts
     

@@ -37,6 +37,26 @@ def binary_search_2d_all_indices(arr, target):
 
     return indices  # Empty list if no matches found
 
+dask_nodes_n_workers = [4, 4, 4, 4]
+prev_dask_nodes_n_workers = [4, 4, 4, 3]
+
+if dask_nodes_n_workers != prev_dask_nodes_n_workers:
+    print(f"refreshed dask_nodes_n_workers in itinerary_dist. one or more workers have been dropped. previous num_workers {sum(prev_dask_nodes_n_workers)}, new num_workers {sum(dask_nodes_n_workers)}")
+    print(f"prev dask_nodes_n_workers: {str(prev_dask_nodes_n_workers)}")
+    print(f"prev_dask_nodes_n_workers: {str(dask_nodes_n_workers)}")
+
+id = None
+pairid = None
+try:
+    if id in pairid:
+        try:
+            pass
+        except:
+            raise
+except Exception as e:
+    print(f"error: exception {e}, id {id}, pairid: {str(pairid)}, id type: {str(type(id))}, pairid type: {str(type(pairid))}")
+    raise
+
 # memory test
 import sys
 dircon = [[i, i*i] for i in range(2000)]

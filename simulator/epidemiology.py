@@ -93,83 +93,83 @@ class Epidemiology:
             primary_agent_id, secondary_agent_id = pairid[0], pairid[1]
 
             primary_agent_state, secondary_agent_state = seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, primary_agent_id, self.agents_seir_indices), seirstateutil.agents_seir_state_get(self.vars_util.agents_seir_state, secondary_agent_id, self.agents_seir_indices)
+            # Imp: Not considering in-day transition anymore. an agent is considered as infectious or suscetible for whole day
+            # primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = None, None, None
+            # if primary_agent_id in self.vars_util.agents_seir_state_transition_for_day:
+            #     primary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[primary_agent_id]
+            #     primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = primary_agent_state_transition_for_day[0], primary_agent_state_transition_for_day[1], primary_agent_state_transition_for_day[5]
 
-            primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = None, None, None
-            if primary_agent_id in self.vars_util.agents_seir_state_transition_for_day:
-                primary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[primary_agent_id]
-                primary_agent_new_seir_state, primary_agent_old_seir_state, primary_agent_state_transition_timestep = primary_agent_state_transition_for_day[0], primary_agent_state_transition_for_day[1], primary_agent_state_transition_for_day[5]
+            # secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = None, None, None
+            # if secondary_agent_id in self.vars_util.agents_seir_state_transition_for_day:
+            #     secondary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[secondary_agent_id]
+            #     secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = secondary_agent_state_transition_for_day[0], secondary_agent_state_transition_for_day[1], secondary_agent_state_transition_for_day[5]
 
-            secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = None, None, None
-            if secondary_agent_id in self.vars_util.agents_seir_state_transition_for_day:
-                secondary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[secondary_agent_id]
-                secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = secondary_agent_state_transition_for_day[0], secondary_agent_state_transition_for_day[1], secondary_agent_state_transition_for_day[5]
-
-            if (((primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible) or
-                (primary_agent_state == SEIRState.Susceptible and secondary_agent_state == SEIRState.Infectious)) or 
-                ((primary_agent_new_seir_state == SEIRState.Infectious or primary_agent_old_seir_state == SEIRState.Infectious) and
-                (secondary_agent_new_seir_state == SEIRState.Susceptible or secondary_agent_old_seir_state == SEIRState.Susceptible)) or
-                ((primary_agent_new_seir_state == SEIRState.Susceptible or primary_agent_old_seir_state == SEIRState.Susceptible) and
-                (secondary_agent_new_seir_state == SEIRState.Infectious or secondary_agent_old_seir_state == SEIRState.Infectious))): # 1 infected and 1 susceptible (either or)  
+            if (primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible or
+                primary_agent_state == SEIRState.Susceptible and secondary_agent_state == SEIRState.Infectious): # or 
+                # ((primary_agent_new_seir_state == SEIRState.Infectious or primary_agent_old_seir_state == SEIRState.Infectious) and
+                # (secondary_agent_new_seir_state == SEIRState.Susceptible or secondary_agent_old_seir_state == SEIRState.Susceptible)) or
+                # ((primary_agent_new_seir_state == SEIRState.Susceptible or primary_agent_old_seir_state == SEIRState.Susceptible) and
+                # (secondary_agent_new_seir_state == SEIRState.Infectious or secondary_agent_old_seir_state == SEIRState.Infectious))): # 1 infected and 1 susceptible (either or)  
                 contact_duration = 0
 
                 # (Timestep, True/False) True = Transition To Type, False = Transition From Type 
                 # e.g. (20, True) not applicable prior to 20 as had not been transitioned to exposed/infected yet (consider from timestep 20 onwards)
                 # e.g. (20, False) applicable prior to 20 as was still exposed/infected prior (applicable until 20)
-                primary_timestep_cutoff, primary_transition_to_type = None, None 
+                # primary_timestep_cutoff, primary_transition_to_type = None, None 
                 
-                if primary_agent_new_seir_state is not None:
-                    if primary_agent_old_seir_state == SEIRState.Exposed and primary_agent_new_seir_state == SEIRState.Infectious:
-                        primary_timestep_cutoff, primary_transition_to_type = (primary_agent_state_transition_timestep, True)
-                    elif primary_agent_old_seir_state == SEIRState.Infectious and primary_agent_new_seir_state == SEIRState.Recovered:
-                        primary_timestep_cutoff, primary_transition_to_type = (primary_agent_state_transition_timestep, False)
-                    elif primary_agent_old_seir_state == SEIRState.Recovered and primary_agent_new_seir_state == SEIRState.Exposed:
-                        primary_timestep_cutoff, primary_transition_to_type = (primary_agent_state_transition_timestep, True)
+                # if primary_agent_new_seir_state is not None:
+                #     if primary_agent_old_seir_state == SEIRState.Exposed and primary_agent_new_seir_state == SEIRState.Infectious:
+                #         primary_timestep_cutoff, primary_transition_to_type = (primary_agent_state_transition_timestep, True)
+                #     elif primary_agent_old_seir_state == SEIRState.Infectious and primary_agent_new_seir_state == SEIRState.Recovered:
+                #         primary_timestep_cutoff, primary_transition_to_type = (primary_agent_state_transition_timestep, False)
+                #     elif primary_agent_old_seir_state == SEIRState.Recovered and primary_agent_new_seir_state == SEIRState.Exposed:
+                #         primary_timestep_cutoff, primary_transition_to_type = (primary_agent_state_transition_timestep, True)
 
-                    primary_agent_state = primary_agent_new_seir_state
+                #     primary_agent_state = primary_agent_new_seir_state
 
-                secondary_timestep_cutoff, secondary_timestep_higher = None, None # (Timestep, True/False) True: Higher, False: Lower, e.g. (20, True) consider from timestep 20 onwards
+                # secondary_timestep_cutoff, secondary_timestep_higher = None, None # (Timestep, True/False) True: Higher, False: Lower, e.g. (20, True) consider from timestep 20 onwards
                 
-                if secondary_agent_new_seir_state is not None:
-                    if secondary_agent_old_seir_state == SEIRState.Exposed and secondary_agent_new_seir_state == SEIRState.Infectious:
-                        secondary_timestep_cutoff, secondary_timestep_higher = (secondary_agent_state_transition_timestep, True)
-                    elif secondary_agent_old_seir_state == SEIRState.Infectious and secondary_agent_new_seir_state == SEIRState.Recovered:
-                        secondary_timestep_cutoff, secondary_timestep_higher = (secondary_agent_state_transition_timestep, False)
-                    elif secondary_agent_old_seir_state == SEIRState.Recovered and secondary_agent_new_seir_state == SEIRState.Exposed:
-                        secondary_timestep_cutoff, secondary_timestep_higher = (secondary_agent_state_transition_timestep, True)
+                # if secondary_agent_new_seir_state is not None:
+                #     if secondary_agent_old_seir_state == SEIRState.Exposed and secondary_agent_new_seir_state == SEIRState.Infectious:
+                #         secondary_timestep_cutoff, secondary_timestep_higher = (secondary_agent_state_transition_timestep, True)
+                #     elif secondary_agent_old_seir_state == SEIRState.Infectious and secondary_agent_new_seir_state == SEIRState.Recovered:
+                #         secondary_timestep_cutoff, secondary_timestep_higher = (secondary_agent_state_transition_timestep, False)
+                #     elif secondary_agent_old_seir_state == SEIRState.Recovered and secondary_agent_new_seir_state == SEIRState.Exposed:
+                #         secondary_timestep_cutoff, secondary_timestep_higher = (secondary_agent_state_transition_timestep, True)
 
-                    secondary_agent_state = secondary_agent_new_seir_state
+                #     secondary_agent_state = secondary_agent_new_seir_state
 
                 overlapping_timesteps = []
                 for start_timestep, end_timestep in timesteps:
-                    add_timesteps = True
+                    # add_timesteps = True
 
-                    if primary_timestep_cutoff is not None:
-                        if primary_transition_to_type:
-                            if primary_timestep_cutoff > end_timestep: # transition happened "too-late", hence, does not apply
-                                add_timesteps = False
-                            elif primary_timestep_cutoff > start_timestep and primary_timestep_cutoff < end_timestep: # if co-inciding, transition time is the start_timestep (transition time until end_timestep)
-                                start_timestep = primary_timestep_cutoff
-                        else:
-                            if primary_timestep_cutoff < start_timestep: # transition happened before, hence, does not apply
-                                add_timesteps = False
-                            elif primary_timestep_cutoff > start_timestep and primary_timestep_cutoff < end_timestep: # if co-inciding, transition time is the end_timestep (start_timestep until transition time)
-                                end_timestep = primary_timestep_cutoff
+                    # if primary_timestep_cutoff is not None:
+                    #     if primary_transition_to_type:
+                    #         if primary_timestep_cutoff > end_timestep: # transition happened "too-late", hence, does not apply
+                    #             add_timesteps = False
+                    #         elif primary_timestep_cutoff > start_timestep and primary_timestep_cutoff < end_timestep: # if co-inciding, transition time is the start_timestep (transition time until end_timestep)
+                    #             start_timestep = primary_timestep_cutoff
+                    #     else:
+                    #         if primary_timestep_cutoff < start_timestep: # transition happened before, hence, does not apply
+                    #             add_timesteps = False
+                    #         elif primary_timestep_cutoff > start_timestep and primary_timestep_cutoff < end_timestep: # if co-inciding, transition time is the end_timestep (start_timestep until transition time)
+                    #             end_timestep = primary_timestep_cutoff
 
-                    if secondary_timestep_cutoff is not None:
-                        if secondary_timestep_higher:
-                            if secondary_timestep_cutoff > end_timestep:
-                                add_timesteps = False
-                            elif secondary_timestep_cutoff > start_timestep and secondary_timestep_cutoff < end_timestep:
-                                start_timestep = secondary_timestep_cutoff
-                        else:
-                            if secondary_timestep_cutoff < start_timestep:
-                                add_timesteps = False
-                            elif secondary_timestep_cutoff > start_timestep and secondary_timestep_cutoff < end_timestep:
-                                end_timestep = secondary_timestep_cutoff
+                    # if secondary_timestep_cutoff is not None:
+                    #     if secondary_timestep_higher:
+                    #         if secondary_timestep_cutoff > end_timestep:
+                    #             add_timesteps = False
+                    #         elif secondary_timestep_cutoff > start_timestep and secondary_timestep_cutoff < end_timestep:
+                    #             start_timestep = secondary_timestep_cutoff
+                    #     else:
+                    #         if secondary_timestep_cutoff < start_timestep:
+                    #             add_timesteps = False
+                    #         elif secondary_timestep_cutoff > start_timestep and secondary_timestep_cutoff < end_timestep:
+                    #             end_timestep = secondary_timestep_cutoff
 
-                    if add_timesteps:
-                        contact_duration += (end_timestep - start_timestep) + 1 # ensures that if overlapping range is the same (just 10 mins), it is considered 1 timestep
-                        overlapping_timesteps.append(np.arange(start_timestep, end_timestep + 1))
+                    # if add_timesteps:
+                    contact_duration += (end_timestep - start_timestep) + 1 # ensures that if overlapping range is the same (just 10 mins), it is considered 1 timestep
+                    overlapping_timesteps.append(np.arange(start_timestep, end_timestep + 1))
 
                 if contact_duration > 0:
                     overlapping_timesteps = [ts for ot in overlapping_timesteps for ts in ot] # flatten
@@ -514,8 +514,8 @@ class Epidemiology:
             # test_day = self.agents_mp.get(agent_id, "test_day")
 
             if test_day is not None and len(test_day) > 0:
-                if abs(test_day[0] - incremental_days) <= 5:
-                    test_already_scheduled = True
+                # if abs(test_day[0] - incremental_days) <= 5:
+                test_already_scheduled = True # the presence of a test_day is enough (it will only be cleared from the itinerary when it can be cleared)
 
             if not test_already_scheduled:
                 test_after_symptoms_rand = -1
