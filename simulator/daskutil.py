@@ -5,7 +5,7 @@ from dask.distributed import as_completed
 from copy import copy
 from util import MethodType
 
-def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, workers_remote_time_taken=None, processes_remote_time_taken=None):       
+def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, extra_params=False, log_timings=False, dask_full_array_mapping=False, f=None, workers_remote_time_taken=None, processes_remote_time_taken=None, dask_workers_time_taken_keys=None):       
     future_count = 0
 
     if method_type != MethodType.ItineraryMP and method_type != MethodType.ContactNetworkMP:
@@ -40,8 +40,11 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
 
             if remote_time_taken is not None and workers_remote_time_taken is not None and len(workers_remote_time_taken) > 0:
                 if method_type != MethodType.ItineraryDistMP and method_type != MethodType.ContactNetworkDistMP:
-                    workers_remote_time_taken[remote_worker_index][1] = remote_time_taken
-                else:
+                    if method_type == MethodType.ItineraryMP or method_type == MethodType.ContactNetworkMP or isinstance(remote_worker_index, tuple):
+                        workers_remote_time_taken[remote_worker_index][1] = remote_time_taken
+                    else:
+                        workers_remote_time_taken[dask_workers_time_taken_keys[remote_worker_index]][1] = remote_time_taken
+                else: # dist_mp (dask strat 2)
                     if processes_remote_time_taken is not None:
                         for k, v in remote_time_taken.items():
                             processes_remote_time_taken[k] = v
@@ -60,9 +63,9 @@ def handle_futures(method_type: MethodType, day, futures, it_agents, agents_epi,
         else: # exception
             exception_info = result
 
-            with open(exception_info["logfilename"], "a") as f:
-                f.write(f"Exception: {exception_info['exception']}\n")
-                f.write(f"Traceback: {exception_info['traceback']}\n")
+            with open(exception_info["logfilename"], "a") as fi:
+                fi.write(f"Exception: {exception_info['exception']}\n")
+                fi.write(f"Traceback: {exception_info['traceback']}\n")
 
             raise exception_info['exception']
         
@@ -97,14 +100,14 @@ def handle_futures_batches(day, futures, agents, agents_epi, vars_util, task_res
             
                     agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
                 except:
-                    with open(task_results_stack_trace_log_file_name, 'a') as f:
-                        traceback.print_exc(file=f)
+                    with open(task_results_stack_trace_log_file_name, 'a') as fi:
+                        traceback.print_exc(file=fi)
                 finally:
                     future.release()
                     future_count += 1
         except:
-            with open(main_log_file_name, 'a') as f:
-                    traceback.print_exc(file=f)
+            with open(main_log_file_name, 'a') as fi2:
+                    traceback.print_exc(file=fi2)
 
     return agents, agents_epi, vars_util
     

@@ -375,13 +375,13 @@ def localitinerary_parallel(manager,
             else:
                 exception_info = result
 
-                with open(exception_info["logfilename"], "a") as f:
-                    f.write(f"Exception Type: {exception_info['type']}\n")
-                    f.write(f"Exception Message: {exception_info['message']}\n")
-                    f.write(f"Traceback: {exception_info['traceback']}\n")
+                with open(exception_info["logfilename"], "a") as fi:
+                    fi.write(f"Exception Type: {exception_info['type']}\n")
+                    fi.write(f"Exception Message: {exception_info['message']}\n")
+                    fi.write(f"Traceback: {exception_info['traceback']}\n")
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi2:
+            traceback.print_exc(file=fi2)
         raise
     finally:
         gc.collect()
@@ -538,7 +538,7 @@ def localitinerary_worker(params, single_proc=False):
             
         # print("cells_agents_timesteps id in process " + str(process_index) + " is " + str(id(vars_util_mp.cells_agents_timesteps)))
         # print(f"Itinerary Worker Child #{node_worker_index[1]+1} at {str(time.time())}", flush=True)
-        if not use_mp:
+        if isinstance(node_worker_index, tuple):
             print("Itinerary Worker Child #{0} at {1}".format(str(node_worker_index[1]+1), {str(time.time())}))
         else:
             print("Itinerary Worker Child #{0} at {1}".format(str(node_worker_index+1), {str(time.time())}))

@@ -54,6 +54,14 @@ def contactnetwork_distributed(client: Client,
         with performance_report(filename=dask_perf_log_file_name):
             workers = list(client.scheduler_info()["workers"].keys()) 
 
+            if not use_mp:
+                prev_dask_nodes_n_workers = dask_nodes_n_workers
+                dask_nodes_n_workers = util.refresh_dask_nodes_n_workers(workers)
+                if dask_nodes_n_workers != prev_dask_nodes_n_workers:
+                    print(f"refreshed dask_nodes_n_workers in contactnetwork_dist. one or more workers have been dropped. previous num_workers {sum(prev_dask_nodes_n_workers)}, new num_workers {sum(dask_nodes_n_workers)}")
+                    print(f"prev dask_nodes_n_workers: {str(prev_dask_nodes_n_workers)}")
+                    print(f"prev_dask_nodes_n_workers: {str(dask_nodes_n_workers)}")
+
             node_worker_index_by_worker_url = {}
         
             w_index = 0
@@ -74,6 +82,10 @@ def contactnetwork_distributed(client: Client,
             start = time.time()
             cells_agents_timesteps_dicts = util.split_cellsagentstimesteps_balanced(vars_util.cells_agents_timesteps, dask_numtasks)
             
+            dask_workers_time_taken_keys = list(dask_workers_time_taken.keys())
+
+            assign_specific_workers = False
+
             # just for dask with mp strategy, re-join the workers into a per-node split. will be re-split into separate processes in each dask worker node 
             if use_mp and use_mp_innerproc_assignment:
                 temp_cells_agents_timesteps_dicts = [customdict.CustomDict() for _ in range(len(workers))]
@@ -86,6 +98,9 @@ def contactnetwork_distributed(client: Client,
 
                 cells_agents_timesteps_dicts = temp_cells_agents_timesteps_dicts
                 dask_numtasks = len(workers)
+                
+            if use_mp:
+                assign_specific_workers = True
 
             time_taken = time.time() - start
             print("split_cellsagentstimesteps_balanced (load balancing): " + str(time_taken))
@@ -103,8 +118,13 @@ def contactnetwork_distributed(client: Client,
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
 
-                worker_url = workers[worker_index]
-                remote_worker_index = node_worker_index_by_worker_url[worker_url]
+                worker_url, remote_worker_index = None, None
+
+                if assign_specific_workers:
+                    worker_url = workers[worker_index]
+                    remote_worker_index = node_worker_index_by_worker_url[worker_url]
+                else:
+                    remote_worker_index = worker_index # in this case we cannot know which worker Dask will assign based on availability
                 # cells_partial = {}
 
                 cells_agents_timesteps_partial = customdict.CustomDict()
@@ -170,9 +190,12 @@ def contactnetwork_distributed(client: Client,
                     futures.append(future)
 
                 worker_assign_time_taken = time.time() - worker_assign_start
-                
+
                 if not use_mp:
-                    dask_workers_time_taken[remote_worker_index] = [worker_assign_time_taken, None]
+                    if isinstance(remote_worker_index, tuple):
+                        dask_workers_time_taken[remote_worker_index] = [worker_assign_time_taken, None]
+                    else:
+                        dask_workers_time_taken[dask_workers_time_taken_keys[remote_worker_index]] = [worker_assign_time_taken, None]
                 else:
                     dask_workers_time_taken[remote_worker_index[0]] = [worker_assign_time_taken, None]
 
@@ -203,7 +226,7 @@ def contactnetwork_distributed(client: Client,
             else:
                 method_type = MethodType.ContactNetworkDistMP
 
-            _, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken)
+            _, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
                 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
@@ -219,8 +242,8 @@ def contactnetwork_distributed(client: Client,
                 if f is not None:
                     f.flush()
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
         raise
 
 def contactnetwork_worker(params):
@@ -278,7 +301,7 @@ def contactnetwork_worker(params):
         
         # certain data does not have to go back because it would not have been updated in this context
         vars_util.cells_agents_timesteps = customdict.CustomDict()
-        vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
+        # vars_util.agents_seir_state_transition_for_day = customdict.CustomDict()
         vars_util.agents_vaccination_doses = customdict.CustomDict()
         
         main_time_taken = time.time() - main_start
@@ -289,8 +312,8 @@ def contactnetwork_worker(params):
         # log on the node where it happened
         actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
 
-        with open(actual_stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(actual_stack_trace_log_file_name, 'w') as fi:
+            traceback.print_exc(file=fi)
 
         return {"exception": e, "traceback": traceback.format_exc(), "logfilename": stack_trace_log_file_name}
     finally:

@@ -161,8 +161,8 @@ def contacttracing_worker(params):
 
         return process_index, updated_agent_ids, agents_partial, vars_util
     except:
-        with open(stack_trace_log_file_name, 'w') as f: # ct_mp_stack_trace.txt
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi: # ct_mp_stack_trace.txt
+            traceback.print_exc(file=fi)
     finally:
         process_counter.value -= 1
 

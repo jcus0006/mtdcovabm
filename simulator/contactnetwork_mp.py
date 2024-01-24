@@ -218,13 +218,13 @@ def contactnetwork_parallel(manager,
             else:
                 exception_info = result
 
-                with open(exception_info["logfilename"], "a") as f:
-                    f.write(f"Exception Type: {exception_info['type']}\n")
-                    f.write(f"Exception Message: {exception_info['message']}\n")
-                    f.write(f"Traceback: {exception_info['traceback']}\n")
+                with open(exception_info["logfilename"], "a") as fi:
+                    fi.write(f"Exception Type: {exception_info['type']}\n")
+                    fi.write(f"Exception Message: {exception_info['message']}\n")
+                    fi.write(f"Traceback: {exception_info['traceback']}\n")
     except:
-        with open(stack_trace_log_file_name, 'w') as f:
-            traceback.print_exc(file=f)
+        with open(stack_trace_log_file_name, 'w') as fi2:
+            traceback.print_exc(file=fi2)
         raise
     finally:
         gc.collect()

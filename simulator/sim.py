@@ -73,11 +73,11 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "dask_persist": False, # NOT USED: persist data (with dask collections and delayed library)
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
-            "dask_nodes": ["localhost"], # 192.168.1.24
+            "dask_nodes": ["localhost"], # 192.168.1.23
             "dask_nodes_n_workers": [4], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
-            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19", "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
+            # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
             # "dask_nodes_n_workers": [3, 4, 4, 6, 3], # num of workers on each node - 4, 4, 4, 4, 4, 3
             "dask_nodes_cpu_scores": None, # [13803, 7681, 6137, 3649, 6153, 2503] if specified, static load balancing is applied based on these values 
             "dask_dynamic_load_balancing": False,
@@ -224,7 +224,8 @@ def main():
     data_load_start_time = time.time()
 
     simdays_range = range(1, params["simulationdays"] + 1)
-    perf_timings_df = pd.DataFrame(index=simdays_range, columns=["day",
+    
+    perf_timings_df = pd.DataFrame(index=simdays_range, columns=["day_day",
                                                               "tourismitinerary_day", 
                                                               "localitinerary_day", 
                                                               "contactnetwork_day", 
@@ -480,7 +481,7 @@ def main():
 
     # # transmission model
     agents_seir_state = customdict.CustomDict() # whole population with following states, 0: undefined, 1: susceptible, 2: exposed, 3: infectious, 4: recovered, 5: deceased
-    agents_seir_state_transition_for_day = customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
+    agents_seir_state_transition_for_day = None # customdict.CustomDict() # handled as dict, because it will only apply for a subset of agents per day
     agents_infection_type = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_infection_severity = customdict.CustomDict() # handled as dict, because not every agent will be infected
     agents_vaccination_doses = customdict.CustomDict() # number of doses per agent
@@ -927,6 +928,7 @@ def main():
     gc.collect()
     gc_time_taken = time.time() - gc_start
     print("gc time_taken: " + str(gc_time_taken))
+
     if params["logmemoryinfo"]:
         util.log_memory_usage(f, "Loaded data. After gc.collect() ")
     
@@ -1172,6 +1174,7 @@ def main():
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. Before sample_initial_tourists ")
             tourist_util = tourism.Tourism(tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, params["visualise"], sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, params["dask_full_stateful"]) 
+
             tourist_util.sample_initial_tourists(touristsgroupsids_initial, f)
             if params["logmemoryinfo"]:
                 util.log_memory_usage(f, "Loaded data. After sample_initial_tourists ")
@@ -1468,8 +1471,8 @@ def main():
                     itinerary_util.generate_tourist_itinerary(day, weekday, touristsgroups, tourists_active_groupids, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, log_file_name, f)
                     print("generate_tourist_itinerary (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
-                        f.flush()                      
-
+                        f.flush()                
+                        
                     tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], False, f)
                     print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
@@ -2043,6 +2046,9 @@ def main():
             simdays_sum_time_taken += day_time_taken
             simdays_avg_time_taken = simdays_sum_time_taken / day
             perf_timings_df.loc[day, "day"] = round(day_time_taken, 2)
+            perf_timings_df.loc[day, "day_avg"] = round(simdays_avg_time_taken, 2)
+
+            perf_timings_df.loc[day, "day_day"] = round(day_time_taken, 2)
             perf_timings_df.loc[day, "day_avg"] = round(simdays_avg_time_taken, 2)
 
             print("simulation day: " + str(day) + ", weekday " + str(weekday) + ", curr infectious rate: " + str(round(dyn_params.statistics.infectious_rate, 2)) + ", time taken: " + str(day_time_taken) + ", avg time taken: " + str(simdays_avg_time_taken))
