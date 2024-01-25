@@ -6,24 +6,31 @@ import gc
 
 # agents_static_to_sync are tourists who are arriving today
 # departed_tourist_agent_ids are tourists who left the previous day
-def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_agents=None, agents_epi=None, vars_util=None, f=None, self_actor_index=None):
+def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_agents=None, agents_epi=None, vars_util=None, f=None, self_actor_index=None, tourists=None, touristsgroups=None, n_locals=None):
     f = None
     stack_trace_log_file_name = ""
     original_stdout = sys.stdout
 
     try:
         sync_dynamic_agents = it_agents is not None
+        departed_tourist_group_ids = []
 
-        if not sync_dynamic_agents:
+        if tourists is not None: # dask_full_stateful case
             if folder_name is not None:
-                day, agents_static_to_sync, departed_tourist_agent_ids, process_index = params
+                day, agents_static_to_sync, departed_tourist_agent_ids, departed_tourist_group_ids, process_index = params
             else:
-                day, agents_static_to_sync, departed_tourist_agent_ids, logfoldername, logfilename, process_index = params
+                day, agents_static_to_sync, departed_tourist_agent_ids, departed_tourist_group_ids, logfoldername, logfilename, process_index = params
         else:
-            if folder_name is not None:
-                day, agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, departed_tourist_agent_ids, process_index = params
+            if not sync_dynamic_agents:
+                if folder_name is not None:
+                    day, agents_static_to_sync, departed_tourist_agent_ids, process_index = params
+                else:
+                    day, agents_static_to_sync, departed_tourist_agent_ids, logfoldername, logfilename, process_index = params
             else:
-                day, agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, departed_tourist_agent_ids, logfoldername, logfilename, process_index = params
+                if folder_name is not None:
+                    day, agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, departed_tourist_agent_ids, process_index = params
+                else:
+                    day, agents_static_to_sync, it_agents_to_sync, agents_epi_to_sync, vars_util_to_sync, departed_tourist_agent_ids, logfoldername, logfilename, process_index = params
 
         if folder_name is None:
             current_directory = os.getcwd()
@@ -97,6 +104,9 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
             # agents_static.set(agentid, "epi_age_bracket_index", None)
             # agents_static.set(agentid, "soc_rate", None)
 
+            if tourists is not None:
+                del tourists[agentid - n_locals]
+            
             if sync_dynamic_agents:
                 del it_agents[agentid]
                 del agents_epi[agentid]
@@ -107,6 +117,12 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
 
                 if agentid in vars_util.agents_infection_severity:
                     del vars_util.agents_infection_severity[agentid]
+
+        if touristsgroups is not None:
+            for groupid in departed_tourist_group_ids:
+                del touristsgroups[groupid]
+
+        gc.collect()
 
         return process_index, True, it_agents, agents_epi, vars_util
     except Exception as e:

@@ -42,12 +42,14 @@ class Tourism:
 
         self.agents_static_to_sync = customdict.CustomDict()
         self.prev_day_departing_tourists_agents_ids = []
+        self.prev_day_departing_tourists_group_ids = []
 
         self.dask_full_stateful = dask_full_stateful
 
         self.arriving_tourists_agents_ids = [] # [id1, id2] - reset everyday
         self.arriving_tourists_next_day_agents_ids = [] # see above
         self.departing_tourists_agents_ids = {} # {day: []} - cleaned the day after
+        self.departing_tourists_group_ids = {} # {day: []} - cleaned the day after
 
         self.updated_cell_ids = [] # required by strat3, remote worker will use this to only send subset of data back to main process to be used with contact tracing
 
@@ -340,6 +342,7 @@ class Tourism:
 
     def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
         departing_tourists_agent_ids = []
+        departing_tourists_group_ids = []
 
         start = time.time()
         for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
@@ -351,6 +354,8 @@ class Tourism:
                 subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
 
                 # num_tourists_in_group = 0
+
+                departing_tourists_group_ids.append(tour_grp_id)
 
                 for accinfoindex, accinfo in enumerate(accominfo):
                     accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
@@ -390,6 +395,7 @@ class Tourism:
                 self.tourists_active_groupids.remove(tour_grp_id)
 
         self.departing_tourists_agents_ids[day] = departing_tourists_agent_ids
+        self.departing_tourists_group_ids[day] = departing_tourists_group_ids
         time_taken = time.time() - start
         print("sync_and_clean_tourist_data on client: " + str(time_taken))
         if f is not None:
@@ -397,9 +403,13 @@ class Tourism:
 
         # sync new tourists with remote workers and remove tourists who have left on the previous day
         prev_day_departing_tourists_agents_ids = []
+        prev_day_departing_tourists_group_ids = []
             
         if day-1 in self.departing_tourists_agents_ids:
             prev_day_departing_tourists_agents_ids = self.departing_tourists_agents_ids[day-1]
+
+        if day-1 in self.departing_tourists_group_ids:
+            prev_day_departing_tourists_group_ids = self.departing_tourists_group_ids[day-1]
 
         if client is not None:
             start = time.time()
@@ -422,21 +432,13 @@ class Tourism:
                             future = actor.run_update_tourist_data_remote(params)
                         else:
                             self.prev_day_departing_tourists_agents_ids = prev_day_departing_tourists_agents_ids
+                            self.prev_day_departing_tourists_group_ids = prev_day_departing_tourists_group_ids
                             # future = actor.tourists_sync(params)
 
                         futures.append(future)
             
             if not dask_full_stateful: # if dask_full_stateful, sync will happen later, cannot clear for now
                 self.agents_static_to_sync = customdict.CustomDict()
-
-            # self.it_agents_to_sync = customdict.CustomDict()
-            # self.agents_epi_to_sync = customdict.CustomDict()
-            
-            # results = None
-            # if not dask_full_stateful:
-            #     results = as_completed(futures)
-            # else:
-            #     results = futures
 
             success = True
 
@@ -461,32 +463,23 @@ class Tourism:
                             f.flush() 
 
                         success &= success_partial
-                # else:
-                #     result_index = 0
-                #     for result in futures:
-                #         process_index, success_partial = result.result()
-                #         # result = result.result()
-                #         print("process_index {0}, success {1}".format(str(result_index), str(success_partial)))
-                #         if f is not None:
-                #             f.flush()
-
-                #         success &= success_partial
-
-                #     result_index += 1
 
             time_taken = time.time() - start
             print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
             if f is not None:
                 f.flush()
 
+        gc_coll = False
         if len(prev_day_departing_tourists_agents_ids) > 0:
+            gc_coll = True
             if f is not None:
                 f.flush()
 
             start_prev_day_del = time.time()
             for agentid in prev_day_departing_tourists_agents_ids:
+                del self.tourists[agentid - self.n_locals]
                 del self.it_agents[agentid]
-                del self.agents_epi[agentid] #       
+                del self.agents_epi[agentid]      
                 del self.vars_util.agents_seir_state[agentid]
 
                 if agentid in self.vars_util.agents_infection_type:
@@ -502,6 +495,13 @@ class Tourism:
             time_taken_prev_day_del = time.time() - start_prev_day_del
             print(f"deleting departuring tourists from main node, time_taken: {time_taken_prev_day_del}")
 
+        if len(prev_day_departing_tourists_group_ids) > 0:
+            gc_coll = True
+
+            for tour_group_id in prev_day_departing_tourists_group_ids:
+                del self.touristsgroups[tour_group_id]
+
+        if gc_coll:
             gc.collect()
 
     async def sync_and_clean_tourist_data_async(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):

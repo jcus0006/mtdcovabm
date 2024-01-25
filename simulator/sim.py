@@ -53,7 +53,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": False,
+            "dask_full_stateful": True,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -95,7 +95,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_strat1_500k_1n_4w_3d.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "dask_strat3_500k_1n_4w_3d_memopt.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -168,7 +168,7 @@ def read_only_data(dask_worker: Worker, dask_strategy, agents_ids_by_ages, times
         temp_agents = json.load(read_file)
 
         agents_static = static.Static()
-        agents_static.populate(temp_agents, n_locals, n_tourists, use_shm, use_static_dict_locals, use_static_dict_tourists, True, dask_use_mp)
+        agents_static.populate(temp_agents, n_locals, n_tourists, use_shm, use_static_dict_locals, use_static_dict_tourists, True, dask_use_mp, False)
         
         dask_worker.data["agents_static"] = agents_static
 
@@ -380,22 +380,6 @@ def main():
 
     manager, pool, agents_static, static_agents_dict = None, None, None, None # mp         
     client = None # dask
-    # if params["use_mp"] and params["numprocesses"] > 1:
-    #     agents_static_start = time.time()
-    #     agents = {i:None for i in range(params["fullpop"])}
-    #     agents_static = static.Static()
-    #     agents_static.populate(agents, params["fullpop"], params["fulltourpop"], params["use_shm"], params["use_static_dict_locals"], params["use_static_dict_tourists"]) # for now trying without multiprocessing.RawArray
-    #     agents_static_time_taken = time.time() - agents_static_start
-
-    #     if params["use_shm"]:
-    #         print(f"initializing empty shm: {agents_static_time_taken}")
-    #     else:
-    #         print(f"initializing empty np.array: {agents_static_time_taken}")
-
-    #     manager = mp.Manager()
-    #     static_agents_dict = manager.dict()
-    #     pool = mp.Pool(processes=params["numprocesses"], initializer=shared_mp.init_pool_processes, initargs=(agents_static,))
-    #     agents_static.static_agents_dict = static_agents_dict
 
     json_paths_to_upload = [] # to be uploaded to remote nodes
     
@@ -873,20 +857,10 @@ def main():
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "indids_by_cellid_updated.json", indids_by_cellid))
         json_paths_to_upload.append(jsonutil.convert_to_json_file(current_directory, "population", population_sub_folder, "agents_updated.json", agents))
 
-    # if params["use_mp"] and params["numprocesses"] > 1:
-    #     agents_static_start = time.time()
-    #     agents_static.populate_shm(agents) # for now trying without multiprocessing.RawArray
-    #     agents_static_time_taken = time.time() - agents_static_start
-    # else: # might not be needed for Dask cases, if the tourism itinerary is also handled remotely. in that case, remote handling might be enough
-    #     agents_static_start = time.time()
-    #     agents_static = static.Static()
-    #     agents_static.populate(agents, n_locals, n_tourists, params["use_shm"], params["use_static_dict_locals"], params["use_static_dict_tourists"]) # for now trying without multiprocessing.RawArray
-    #     agents_static_time_taken = time.time() - agents_static_start
-
     #  might not be needed for Dask cases, if the tourism itinerary is also handled remotely. in that case, remote handling might be enough
     agents_static_start = time.time()
     agents_static = static.Static()
-    agents_static.populate(agents, n_locals, n_tourists, params["use_shm"], params["use_static_dict_locals"], params["use_static_dict_tourists"]) # for now trying without multiprocessing.RawArray
+    agents_static.populate(agents, n_locals, n_tourists, params["use_shm"], params["use_static_dict_locals"], params["use_static_dict_tourists"], False, False, params["dask_full_stateful"]) # for now trying without multiprocessing.RawArray
     agents_static_time_taken = time.time() - agents_static_start
 
     agents_static_size = util.asizeof_formatted(agents_static) # mem: agents_static_size
@@ -1379,6 +1353,7 @@ def main():
             cells_transport = None
             cells_type = None
             indids_by_cellid = None
+            worker_data = None
 
             gc.collect()
 

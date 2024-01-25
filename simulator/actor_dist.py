@@ -52,8 +52,8 @@ class ActorDist:
 
         self.tourist_util = None # set in itineraries, cleared after sending result
 
-        self.tourists = tourists
-        self.touristsgroups = touristsgroups
+        # self.tourists = tourists
+        # self.touristsgroups = touristsgroups
         # method that loads whole tourists and touristsgroups remotely
         # tourists = self.worker.data["tourists"]
         # self.tourists = {tourid: tour for tourid, tour in tourists.items() if tourid in tourists_ids}
@@ -311,125 +311,6 @@ class ActorDist:
         #     f.close()
 
         return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, time_takens
-    
-    def itinerary(self):
-        main_start = time.time()
-
-        self.simstage = SimStage.Itinerary
-
-        # load worker data
-        if self.worker is None:
-            raise TypeError("Worker is none")
-        
-        if self.worker.data is None or len(self.worker.data) == 0:
-            raise TypeError("Worker.data is None or empty")
-        else:
-            if self.worker.data["itineraryparams"] is None or len(self.worker.data["itineraryparams"]) == 0:
-                raise TypeError("Worker.data['itineraryparams'] is None or empty")
-        
-        # new_tourists = worker.data["new_tourists"]
-        # print("new tourists {0}".format(str(new_tourists)))
-
-        agents_ids_by_ages = self.worker.data["agents_ids_by_ages"]
-        timestepmins = self.worker.data["timestepmins"]
-        n_locals = self.worker.data["n_locals"]
-        n_tourists = self.worker.data["n_tourists"]
-        locals_ratio_to_full_pop = self.worker.data["locals_ratio_to_full_pop"]
-
-        itineraryparams = self.worker.data["itineraryparams"]
-        epidemiologyparams = self.worker.data["epidemiologyparams"]
-        cells_industries_by_indid_by_wpid = self.worker.data["cells_industries_by_indid_by_wpid"] 
-        cells_restaurants = self.worker.data["cells_restaurants"] 
-        cells_hospital = self.worker.data["cells_hospital"] 
-        cells_testinghub = self.worker.data["cells_testinghub"] 
-        cells_vaccinationhub = self.worker.data["cells_vaccinationhub"] 
-        cells_entertainment_by_activityid = self.worker.data["cells_entertainment_by_activityid"] 
-        cells_religious = self.worker.data["cells_religious"] 
-        cells_households = self.worker.data["cells_households"] 
-        cells_breakfast_by_accomid = self.worker.data["cells_breakfast_by_accomid"] 
-        cells_airport = self.worker.data["cells_airport"] 
-        cells_transport = self.worker.data["cells_transport"] 
-        cells_institutions = self.worker.data["cells_institutions"] 
-        cells_accommodation = self.worker.data["cells_accommodation"] 
-        agents_static = self.worker.data["agents_static"]
-
-        itinerary_util = itinerary.Itinerary(itineraryparams,
-                                            timestepmins, 
-                                            n_locals, 
-                                            n_tourists, 
-                                            locals_ratio_to_full_pop, 
-                                            agents_static,
-                                            self.it_agents, 
-                                            self.agents_epi,
-                                            agents_ids_by_ages,
-                                            self.vars_util,
-                                            cells_industries_by_indid_by_wpid, 
-                                            cells_restaurants,
-                                            cells_hospital,
-                                            cells_testinghub, 
-                                            cells_vaccinationhub, 
-                                            cells_entertainment_by_activityid,
-                                            cells_religious, 
-                                            cells_households,
-                                            cells_breakfast_by_accomid,
-                                            cells_airport, 
-                                            cells_transport, 
-                                            cells_institutions, 
-                                            cells_accommodation,
-                                            epidemiologyparams, 
-                                            self.dyn_params,
-                                            process_index=self.worker_index)
-
-        num_agents_working_schedule = 0
-        working_schedule_times_by_resid = {}
-
-        ws_time_taken = 0
-        if self.day == 1 or self.weekday_str == "Monday":
-            # print("generate_working_days_for_week_residence for simday " + str(day) + ", weekday " + str(weekday))
-            ws_main_start = time.time()
-            for hh_inst in self.hh_insts:
-                ws_start = time.time()
-                # print("day " + str(day) + ", res id: " + str(hh_inst["id"]) + ", is_hh: " + str(hh_inst["is_hh"]))
-                itinerary_util.generate_working_days_for_week_residence(hh_inst["resident_uids"], hh_inst["is_hh"])
-                ws_time_taken = time.time() - ws_start
-                working_schedule_times_by_resid[hh_inst["id"]] = ws_time_taken
-                num_agents_working_schedule += len(hh_inst["resident_uids"])
-
-            ws_time_taken = time.time() - ws_main_start
-            print("generate_working_days_for_week_residence for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(ws_time_taken) + ", proc index: " + str(self.worker_index))
-
-        print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday))
-        it_start = time.time()                    
-
-        num_agents_itinerary = 0
-        itinerary_times_by_resid = {}
-        for hh_inst in self.hh_insts:
-            res_start = time.time()
-            itinerary_util.generate_local_itinerary(self.day, self.weekday, hh_inst["resident_uids"])
-            res_time_taken = time.time() - res_start
-            itinerary_times_by_resid[hh_inst["id"]] = res_time_taken
-            num_agents_itinerary += len(hh_inst["resident_uids"])
-        
-        send_results_start_time = time.time()
-        # send results
-        agents_epi_keys = self.send_results()
-        send_results_time_taken = time.time() - send_results_start_time
-        print("send results time taken: " + str(send_results_time_taken))
-
-        it_time_taken = time.time() - it_start
-
-        main_time_taken = time.time() - main_start
-
-        self.it_main_time_taken_sum += main_time_taken
-        self.it_main_time_taken_avg = self.it_main_time_taken_sum / self.day
-        print("generate_itinerary_hh for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(it_time_taken) + ", proc index: " + str(self.worker_index))
-        
-        print("process " + str(self.worker_index) + ", ended at " + str(time.time()) + ", full time taken: " + str(main_time_taken))
-        # return contact_tracing_agent_ids (that are only added to in this context) and time-logging information to client
-
-        time_takens = (main_time_taken, ws_time_taken, it_time_taken, send_results_time_taken, self.it_main_time_taken_avg)
-        
-        return self.worker_index, self.vars_util.contact_tracing_agent_ids, time_takens, agents_epi_keys
 
     def contact_network(self):
         main_start = time.time()
@@ -527,7 +408,7 @@ class ActorDist:
 
                     agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_ids_to_send, self.agents_epi, self.vars_util, agents_epi_to_send, vars_util_to_send)
 
-                    send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send, self.tourist_util.agents_static_to_sync, self.tourist_util.prev_day_departing_tourists_agents_ids]
+                    send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send, self.tourist_util.agents_static_to_sync, self.tourist_util.prev_day_departing_tourists_agents_ids, self.tourist_util.prev_day_departing_tourists_group_ids]
                     # send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
 
             self.clean_cells_agents_timesteps(cells_ids)
@@ -578,10 +459,11 @@ class ActorDist:
     def receive_results(self, params):
         sender_worker_index, simstage, data = params
 
+        n_locals = self.worker.data["n_locals"]
         # sync results after itinerary or contact network
         
         if simstage == SimStage.Itinerary:
-            agents_epi_partial, vars_util_partial, agents_static_to_sync, departed_tourist_agent_ids = data
+            agents_epi_partial, vars_util_partial, agents_static_to_sync, departed_tourist_agent_ids, departed_tourist_group_ids = data
             start = time.time()
             util.sync_state_info_cells_agents_timesteps(self.vars_util, vars_util_partial)
             time_taken = time.time() - start
@@ -591,8 +473,8 @@ class ActorDist:
             time_taken = time.time() - start
             print("sync state info agents_epi time_taken: " + str(time_taken))
             start = time.time()
-            params = [self.day, agents_static_to_sync, departed_tourist_agent_ids, sender_worker_index]
-            tourism_dist.update_tourist_data_remote(params, self.folder_name, self.worker, self_actor_index=self.worker_index)
+            params = [self.day, agents_static_to_sync, departed_tourist_agent_ids, departed_tourist_group_ids, sender_worker_index]
+            tourism_dist.update_tourist_data_remote(params, self.folder_name, self.worker, self_actor_index=self.worker_index, tourists=self.tourists, touristsgroups=self.touristsgroups, n_locals=n_locals)
             time_taken = time.time() - start
             print("sync state info update_tourist_data_remote time_taken: " + str(time_taken))
         elif simstage == SimStage.ContactNetwork:
@@ -624,14 +506,14 @@ class ActorDist:
 
         return True
 
-    # clean cells_agents_timesteps, otherwise this worker will compute cells that do not reside on this worker by default
+    # clean cells_agents_timesteps, otherwise this worker will compute cells that do not reside on this worker by default (called after sending cat info to default nodes)
     def clean_cells_agents_timesteps(self, keys_to_del):
         for key in keys_to_del:
             del self.vars_util.cells_agents_timesteps[key]
 
-    # called at the end of the simulation day and removes any data that does not reside on this worker by default
+    # removes any data that does not reside on this worker by default (called at the end of the simulation day)
     def clean_up_and_calculate_seir_states_daily(self):
-        n_locals = self.worker.data["n_locals"]
+        # n_locals = self.worker.data["n_locals"]
 
         self.vars_util.reset_daily_structures()
 
