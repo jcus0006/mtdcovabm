@@ -11,6 +11,7 @@ from enum import IntEnum
 import psutil
 import time
 from pympler import asizeof
+import heapq
 
 def day_of_year_to_day_of_week(day_of_year, year):
     date = datetime.datetime(year, 1, 1) + datetime.timedelta(day_of_year - 1)
@@ -431,9 +432,6 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
 
 def split_agents_epi_by_agentsids(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send):
     for agent_id in agents_ids_to_send:
-        if agent_id > 9999:
-            print("syncing tourist_agent_id " + str(agent_id) + ", agents_seir_state valid: " + str(agent_id in vars_util.agents_seir_state))
-
         agents_epi_to_send[agent_id] = agents_epi[agent_id]
 
         vars_util_to_send.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
@@ -642,6 +640,40 @@ def split_residences_by_weight(residences, num_partitions):
     # print(process_residences_indices_lengths)
 
     return process_residences_indices
+
+def split_cells_by_member_load(cells_with_length, num_partitions):
+    cells_with_length.sort(reverse=True)
+
+    workers_heap = [(0, wi) for wi in range(num_partitions)]
+
+    heapq.heapify(workers_heap)
+
+    process_cell_ids = [[] for worker in range(num_partitions)]
+    empty_cell_ids = []
+    for members_len, id in cells_with_length: # split the cells as equally as possible using a min-heap
+        if members_len > 0:
+            # pop the least loaded worker
+            load, wi = heapq.heappop(workers_heap)
+
+            # assign cell to this worker
+            process_cell_ids[wi].append(id)
+
+            # update the load
+            load += members_len
+
+            # push the worker back into the heap with updated load
+            heapq.heappush(workers_heap, (load, wi))
+        else:
+            empty_cell_ids.append(id)
+
+    cursor = 0
+    while cursor < len(empty_cell_ids): # split the empty cells equally
+        for index in range(num_partitions):
+            if cursor < len(empty_cell_ids):
+                process_cell_ids[index].append(empty_cell_ids[cursor])
+                cursor += 1
+
+    return process_cell_ids, workers_heap
 
 # weights are worker based
 def itinerary_load_balancing(residences, num_workers, weights):

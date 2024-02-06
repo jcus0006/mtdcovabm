@@ -12,6 +12,7 @@ import time
 import matplotlib.pyplot as plt
 import traceback
 from cells import Cells
+from cellsclasses import CellType
 import util, itinerary, epidemiology, itinerary_mp, itinerary_dist, contactnetwork_mp, contactnetwork_dist, contacttracing_dist, tourism, vars, agentsutil, static, shared_mp, jsonutil, customdict
 from actor_dist_mp import ActorDistMP
 from actor_dist import ActorDist, SimStage
@@ -28,9 +29,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 365, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -43,17 +44,17 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "quicktourismrun": False,
             "quickitineraryrun": False,
             "visualise": False,
-            "fullpop": 519562, # 519562 / 100000 / 10000 / 1000
-            "fulltourpop": 2173531, # 2173531 / 400000 / 40000 / 4000
-            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "fullpop": 519562, # do not change this (only used to generate ratio)
+            "fulltourpop": 2173531, # do not change this (only used to generate ratio)
+            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": True,
+            "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -95,7 +96,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_strat3_500k_1n_4w_3d_memopt.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "epistats_10k_7d_mp_8p_quadparams_fixedstatetransition.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -352,13 +353,13 @@ def main():
         shutil.rmtree(log_subfolder_path)
         os.makedirs(log_subfolder_path)
 
-    data_subfolder_path = os.path.join(current_directory, params["datasubfoldername"], subfolder_name)
+    # data_subfolder_path = os.path.join(current_directory, params["datasubfoldername"], subfolder_name)
 
-    if not os.path.exists(data_subfolder_path):
-        os.makedirs(data_subfolder_path)
-    else:
-        shutil.rmtree(data_subfolder_path)
-        os.makedirs(data_subfolder_path)
+    # if not os.path.exists(data_subfolder_path):
+    #     os.makedirs(data_subfolder_path)
+    # else:
+    #     shutil.rmtree(data_subfolder_path)
+    #     os.makedirs(data_subfolder_path)
 
     log_file_name = os.path.join(log_subfolder_path, params["logfilename"])
     perf_timings_file_name = os.path.join(log_subfolder_path, params["logfilename"].replace(".txt", "_perf_timings.csv"))
@@ -553,7 +554,7 @@ def main():
         if f is not None:
             f.flush()
 
-    cells_util = Cells(agents, cells, cellindex)
+    cells_util = Cells(agents, cells, cellindex, locals_ratio_to_full_pop, params["dask_full_stateful"])
     
     num_households, num_institutions = 0, 0
     if params["loadhouseholds"]:
@@ -1172,29 +1173,32 @@ def main():
             # else:
             #     dask_num_tasks = num_inner_processes
 
-            # split residences
+            # split residences (these need to be together for itinerary)
             hh_inst_split_indices = util.split_residences_by_weight(hh_insts, num_actors)
             
-            inst_keys = list(cells_institutions.keys())
-            first_inst_key = inst_keys[0]
-            last_inst_key = inst_keys[-1]
+            # inst_keys = list(cells_institutions.keys())
+            # first_inst_key = inst_keys[0]
+            # last_inst_key = inst_keys[-1]
+            # cells_ids = np.array(list(cells.keys())[last_inst_key+1:]) # from last inst + 1 until end
+            # np.random.shuffle(cells_ids)
 
-            # split cells (except households and institutions - for now)
-            cells_ids = np.array(list(cells.keys())[last_inst_key+1:]) # from last inst + 1 until end
-            np.random.shuffle(cells_ids)
-
-            num_cells_per_actor = util.split_balanced_partitions(len(cells_ids), num_actors)
+            # split all other cells (balanced by number of members, which would have been pre-populated)
+            cells_split_ids, num_members_per_process = util.split_cells_by_member_load(cells_util.cell_ids_by_num_members, num_actors)
             
-            cells_split_ids = []
-            cells_index = 0
-            for num_cells_this_actor in num_cells_per_actor:
-                this_actor_cells_ids = []
+            num_cells_per_worker = (len(cells_split_ids[0]), len(cells_split_ids[1]), len(cells_split_ids[2]), len(cells_split_ids[3]))
+            print(f"split_cells_by_member_load. num_cells_per_worker: {num_cells_per_worker} num_members_per_process: {num_members_per_process}")
+            # num_cells_per_actor = util.split_balanced_partitions(len(cells_ids), num_actors)
+            
+            # cells_split_ids = []
+            # cells_index = 0
+            # for num_cells_this_actor in num_cells_per_actor:
+            #     this_actor_cells_ids = []
 
-                for _ in range(num_cells_this_actor):
-                    this_actor_cells_ids.append(cells_ids[cells_index])
-                    cells_index += 1
+            #     for _ in range(num_cells_this_actor):
+            #         this_actor_cells_ids.append(cells_ids[cells_index])
+            #         cells_index += 1
 
-                cells_split_ids.append(this_actor_cells_ids)
+            #     cells_split_ids.append(this_actor_cells_ids)
 
             num_touristsgroups_per_actor = util.split_balanced_partitions(len(touristsgroups), num_actors)
             
@@ -1485,6 +1489,10 @@ def main():
             if not params["quicktourismrun"]:
                 start = time.time()  
 
+                print("generating_local_itinerary for simday " + str(day) + ", weekday " + str(weekday))
+                if f is not None:
+                    f.flush()
+
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. Before local itinerary ")
 
@@ -1620,6 +1628,8 @@ def main():
 
                             for future in as_completed(futures):
                                 print("processing itineraries result")
+                                if f is not None:
+                                    f.flush()
 
                                 a_worker_index, cells_accommodation_partial, arr_dep_counts, contact_tracing_agent_ids_partial, it_times_taken = future.result()                            
 
@@ -1640,7 +1650,9 @@ def main():
                                 remote_tour_time_take_sum += tour_tt
                                 
                                 print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, avg time taken: {a_it_avg_tt}")
-                            
+                                if f is not None:
+                                    f.flush()
+
                             remove_tour_time_taken_avg = remote_tour_time_take_sum / len(actors)
                             perf_timings_df.loc[day, "tourismitinerary_day"] = 0 # this is irrelevant, there is no way to calculate it
                             perf_timings_df.loc[day, "tourismitinerary_avg"] = round(remove_tour_time_taken_avg, 2)
@@ -1649,14 +1661,22 @@ def main():
                             start_send_results = time.time()
                             for worker_index, actor in enumerate(actors):
                                 start_send_results_actor = time.time()
+                                print("sending results (after IT) of actor {worker_index}")
+                                if f is not None:
+                                    f.flush()
+
                                 actor_future = actor.send_results()
                                 success = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
 
                                 time_taken_send_results_actor = time.time() - start_send_results_actor
                                 print(f"send_results (after IT) of actor {worker_index}, time_taken: {time_taken_send_results_actor}")
+                                if f is not None:
+                                    f.flush()
 
                             time_taken_send_results = time.time() - start_send_results
                             print(f"send_results (after IT) total time taken: {time_taken_send_results}")
+                            if f is not None:
+                                f.flush()
 
                 # may use dask_workers_time_taken and dask_mp_processes_time_taken for historical performance data
                 if params["logmemoryinfo"]:
@@ -1757,6 +1777,8 @@ def main():
                                     vars_util.directcontacts_by_simcelltype_by_day.extend(directcontacts_by_simcelltype_by_day_partial)
 
                                 print(f"contact network. actor worker index {cn_worker_index}, direct contacts: {len(directcontacts_by_simcelltype_by_day_partial)}, time taken: {cn_time_taken}")                          
+                                if f is not None:
+                                    f.flush()
 
                             # sync results of actors
                             start_send_results = time.time()
@@ -1770,9 +1792,13 @@ def main():
 
                                 time_taken_send_results_actor = time.time() - start_send_results_actor
                                 print(f"send_results (after CN) of actor {worker_index}, time_taken: {time_taken_send_results_actor}")
+                                if f is not None:
+                                    f.flush()
 
                             time_taken_send_results = time.time() - start_send_results
                             print(f"send_results (after CN) total time taken: {time_taken_send_results}")
+                            if f is not None:
+                                f.flush()
                             
                     if params["logmemoryinfo"]:
                         util.log_memory_usage(f, "After contact network. Before gc.collect() ")
