@@ -177,36 +177,37 @@ class ActorDist:
 
             initial_seir_state_distribution = epidemiologyparams["initialseirstatedistribution"]
 
-            self.tourist_util = tourism.Tourism(self.tourismparams, 
-                                            cells_accommodation,
-                                            n_locals, 
-                                            self.tourists, 
-                                            agents_static, 
-                                            self.it_agents, 
-                                            self.agents_epi, 
-                                            self.vars_util, 
-                                            touristsgroupsdays, 
-                                            self.touristsgroups, 
-                                            self.rooms_by_accomid_by_accomtype, 
-                                            self.tourists_arrivals_departures_for_day, 
-                                            self.tourists_arrivals_departures_for_nextday, 
-                                            self.tourists_active_groupids, 
-                                            self.tourists_active_ids, 
-                                            self.age_brackets, 
-                                            powerlaw_distribution_parameters, 
-                                            False, # visualise 
-                                            sociability_rate_min, 
-                                            sociability_rate_max, 
-                                            0, 
-                                            initial_seir_state_distribution, 
-                                            True) # dask_full_stateful
-            
             if self.day == 1:
+                self.tourist_util = tourism.Tourism(self.tourismparams, 
+                                                cells_accommodation,
+                                                n_locals, 
+                                                self.tourists, 
+                                                agents_static, 
+                                                self.it_agents, 
+                                                self.agents_epi, 
+                                                self.vars_util, 
+                                                touristsgroupsdays, 
+                                                self.touristsgroups, 
+                                                self.rooms_by_accomid_by_accomtype, 
+                                                self.tourists_arrivals_departures_for_day, 
+                                                self.tourists_arrivals_departures_for_nextday, 
+                                                self.tourists_active_groupids, 
+                                                self.tourists_active_ids, 
+                                                self.age_brackets, 
+                                                powerlaw_distribution_parameters, 
+                                                False, # visualise 
+                                                sociability_rate_min, 
+                                                sociability_rate_max, 
+                                                0, 
+                                                initial_seir_state_distribution, 
+                                                True) # dask_full_stateful
+                
                 self.tourist_util.sample_initial_tourists(self.touristsgroupsids_initial, f)
-
                 self.touristsgroupsids_initial = None
                 
                 gc.collect()
+            else:
+                self.tourist_util.touristsgroupsdays = touristsgroupsdays
                     
             self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
             print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
@@ -259,11 +260,12 @@ class ActorDist:
                 f.flush()
 
             # num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
+            num_active = len(self.tourist_util.tourists_active_ids)
             num_arrivals = len(self.tourist_util.arriving_tourists_agents_ids)
             num_arrivals_nextday = len(self.tourist_util.arriving_tourists_next_day_agents_ids)
             num_departures = len(self.tourist_util.departing_tourists_agents_ids[self.day])
 
-            arr_dep_counts = (num_arrivals, num_arrivals_nextday, num_departures)
+            arr_dep_counts = (num_active, num_arrivals, num_arrivals_nextday, num_departures)
 
             tour_time_taken = time.time() - tour_start
             print("tourism for simday " + str(self.day) + ", weekday " + str(self.weekday) + ", time taken: " + str(tour_time_taken))
@@ -393,7 +395,7 @@ class ActorDist:
                                                                 self.dyn_params, 
                                                                 process_index=self.worker_index)
 
-            _, _, agents_epi_partial, self.vars_util = contact_network_util.simulate_contact_network(self.day, self.weekday)
+            _, self.updated_agent_ids, _, self.vars_util = contact_network_util.simulate_contact_network(self.day, self.weekday)
             
             # certain data does not have to go back because it would not have been updated in this context
             self.vars_util.cells_agents_timesteps = customdict.CustomDict()
@@ -435,16 +437,16 @@ class ActorDist:
         original_stdout = sys.stdout
         stack_trace_log_file_name = ""
 
-        try:
-            stack_trace_log_file_name = os.path.join(self.folder_name, "sendres_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
-
-            log_file_name = os.path.join(self.folder_name, "sendres_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
-            f = open(log_file_name, "w")
-            sys.stdout = f
-        
+        try:        
             send_results_by_worker_id = customdict.CustomDict()
 
             if self.simstage == SimStage.Itinerary:
+                stack_trace_log_file_name = os.path.join(self.folder_name, "sendres_it_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+
+                log_file_name = os.path.join(self.folder_name, "sendres_it_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+                f = open(log_file_name, "w")
+                sys.stdout = f
+
                 print("sending results for itinerary")
                 if f is not None:
                     f.flush()
@@ -467,6 +469,10 @@ class ActorDist:
                             for agent_id, _, _ in cats_by_cell_id:
                                 agents_ids_to_send.add(agent_id)
 
+                        # print(f"agents_ids_to_send: {agents_ids_to_send}")
+                        # if f is not None:
+                        #     f.flush()
+
                         agents_epi_to_send, vars_util_to_send = util.split_agents_epi_by_agentsids(agents_ids_to_send, self.agents_epi, self.vars_util, agents_epi_to_send, vars_util_to_send)
 
                         send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send, self.tourist_util.agents_static_to_sync, self.tourist_util.prev_day_departing_tourists_agents_ids, self.tourist_util.prev_day_departing_tourists_group_ids]
@@ -478,8 +484,13 @@ class ActorDist:
                 if f is not None:
                     f.flush()
             else:
-                print("sending results for contact network. updated_agents_ids len: " + str(len(self.updated_agent_ids)))
+                stack_trace_log_file_name = os.path.join(self.folder_name, "sendres_cn_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
 
+                log_file_name = os.path.join(self.folder_name, "sendres_cn_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+                f = open(log_file_name, "w")
+                sys.stdout = f
+            
+                print("sending results for contact network. updated_agents_ids len: " + str(len(self.updated_agent_ids)))
                 if f is not None:
                     f.flush()
 
@@ -490,6 +501,9 @@ class ActorDist:
                 for wi, w_agent_ids in self.agent_ids_by_worker_lookup.items():
                     if wi != self.worker_index:
                         agents_ids_to_send = self.updated_agent_ids.intersection(w_agent_ids) # get the matching agent ids to send to this worker specifically
+                        # print(f"agents_ids_to_send: {agents_ids_to_send}")
+                        # if f is not None:
+                        #     f.flush()
 
                         agents_epi_to_send = customdict.CustomDict()
                         vars_util_to_send = vars.Vars()
@@ -522,7 +536,6 @@ class ActorDist:
                 result_index += 1
 
             if self.simstage == SimStage.Itinerary:
-                self.tourist_util = None
                 return success
             elif self.simstage == SimStage.ContactNetwork:
                 self.updated_agent_ids = []
@@ -579,6 +592,9 @@ class ActorDist:
                 if f is not None:
                     f.flush()
                 start = time.time()
+                # print(f"agents {agents_epi_partial.keys()}")
+                # if f is not None:
+                #     f.flush()
                 self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
                 time_taken = time.time() - start
                 print("sync state info agents_epi time_taken: " + str(time_taken))
@@ -593,8 +609,13 @@ class ActorDist:
                     f.flush()
             elif simstage == SimStage.ContactNetwork:
                 print("receiving results for contact network")
+                if f is not None:
+                    f.flush()
                 agents_epi_partial, vars_util_partial = data
                 start = time.time()
+                # print(f"agents {agents_epi_partial.keys()}")
+                # if f is not None:
+                #     f.flush()
                 self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
                 time_taken = time.time() - start
                 print("sync state info agents_epi time_taken: " + str(time_taken))
@@ -606,6 +627,9 @@ class ActorDist:
                     f.flush()
                 start = time.time()
                 agents_epi_partial, vars_util_partial = data
+                # print(f"agents {agents_epi_partial.keys()}")
+                # if f is not None:
+                #     f.flush()
                 self.agents_epi, self.vars_util = util.sync_state_info_by_agentsids_agents_epi_end_of_day_sync(agents_epi_partial.keys(), self.agents_epi, self.vars_util, agents_epi_partial, vars_util_partial)
                 time_taken = time.time() - start
                 print("sync state info (end of day) agents_epi time_taken: " + str(time_taken))
@@ -648,6 +672,16 @@ class ActorDist:
     def clean_up_and_calculate_seir_states_daily(self):
         # n_locals = self.worker.data["n_locals"]
 
+        f = None
+        original_stdout = sys.stdout
+
+        stack_trace_log_file_name = ""
+        stack_trace_log_file_name = os.path.join(self.folder_name, "clean_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+        
+        log_file_name = os.path.join(self.folder_name, "clean_actor_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+        f = open(log_file_name, "w")
+        sys.stdout = f
+
         self.vars_util.reset_daily_structures()
 
         for id in list(self.agents_epi.keys()): # can try BST search and compare times
@@ -682,6 +716,12 @@ class ActorDist:
         seir_states = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util)
 
         # gc.collect()
+        if f is not None:
+            # Close the file
+            f.close()
+
+        if original_stdout is not None:
+            sys.stdout = original_stdout
 
         return seir_states
 

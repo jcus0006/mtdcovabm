@@ -431,23 +431,28 @@ def split_dicts_by_agentsids_copy(agents_ids, agents, agents_epi, vars_util, age
     return agents_partial, agents_epi_partial, agents_ids_by_ages_partial, vars_util_partial
 
 def split_agents_epi_by_agentsids(agents_ids_to_send, agents_epi, vars_util, agents_epi_to_send, vars_util_to_send):
-    for agent_id in agents_ids_to_send:
-        agents_epi_to_send[agent_id] = agents_epi[agent_id]
+    for agentid in agents_ids_to_send:
+        agents_epi_to_send[agentid] = agents_epi[agentid]
 
-        vars_util_to_send.agents_seir_state[agent_id] = vars_util.agents_seir_state[agent_id]
+        vars_util_to_send.agents_seir_state[agentid] = vars_util.agents_seir_state[agentid]
 
         # should the below be uncommented, this should only apply for the Itinerary SimStage
         # if agent_id in self.vars_util.agents_seir_state_transition_for_day:
         #     vars_util_to_send.agents_seir_state_transition_for_day[agent_id] = self.vars_util.agents_seir_state_transition_for_day[agent_id]
 
-        if agent_id in vars_util.agents_infection_type:
-            vars_util_to_send.agents_infection_type[agent_id] = vars_util.agents_infection_type[agent_id]
+        # if "state_transition_by_day" in agents_epi_to_send[agentid] and agents_epi_to_send[agentid]["state_transition_by_day"] is not None and len(agents_epi_to_send[agentid]["state_transition_by_day"]) > 0:
+        #     if agentid not in vars_util.agents_infection_type:
+        #         print(f"major league problem, agent {agentid} has state_transition {agents_epi_to_send[agentid]['state_transition_by_day']} and no agents_infection_type")
+        #         raise Exception(f"major league problem, agent {agentid} has state_transition {agents_epi_to_send[agentid]['state_transition_by_day']} and no agents_infection_type")
 
-        if agent_id in vars_util.agents_infection_severity:
-            vars_util_to_send.agents_infection_severity[agent_id] = vars_util.agents_infection_severity[agent_id]
+        if agentid in vars_util.agents_infection_type:
+            vars_util_to_send.agents_infection_type[agentid] = vars_util.agents_infection_type[agentid]
 
-        if agent_id in vars_util.agents_vaccination_doses:
-            vars_util_to_send.agents_vaccination_doses[agent_id] = vars_util.agents_vaccination_doses[agent_id]
+        if agentid in vars_util.agents_infection_severity:
+            vars_util_to_send.agents_infection_severity[agentid] = vars_util.agents_infection_severity[agentid]
+
+        if agentid in vars_util.agents_vaccination_doses:
+            vars_util_to_send.agents_vaccination_doses[agentid] = vars_util.agents_vaccination_doses[agentid]
 
     return agents_epi_to_send, vars_util_to_send
 
@@ -546,6 +551,11 @@ def sync_state_info_by_agentsids_agents_epi(agents_ids, agents_epi, vars_util, a
         # should this be uncommented it needs to apply only to the Itinerary SimStage
         # if agentid in vars_util_partial.agents_seir_state_transition_for_day:
         #     vars_util.agents_seir_state_transition_for_day[agentid] = vars_util_partial.agents_seir_state_transition_for_day[agentid]
+
+        # if "state_transition_by_day" in agents_epi[agentid] and agents_epi[agentid]["state_transition_by_day"] is not None and len(agents_epi[agentid]["state_transition_by_day"]) > 0:
+        #     if agentid not in vars_util_partial.agents_infection_type:
+        #         print(f"major league problem, agent {agentid} has state_transition and no agents_infection_type")
+        #         raise Exception(f"major league problem, agent {agentid} has state_transition and no agents_infection_type")
         
         if agentid in vars_util_partial.agents_infection_type:
             vars_util.agents_infection_type[agentid] = vars_util_partial.agents_infection_type[agentid]
@@ -567,6 +577,9 @@ def sync_state_info_by_agentsids_agents_epi_end_of_day_sync(agents_ids, agents_e
         curr_agent_epi = agents_epi_partial[agentid]
         
         agents_epi[agentid] = curr_agent_epi
+
+        # if "state_transition_by_day" in agents_epi[agentid] and agents_epi[agentid]["state_transition_by_day"] is not None and len(agents_epi[agentid]["state_transition_by_day"]) > 0:
+        #     print(f"agent {agentid} has state_transition and being synced in end of day sync with no agents_infection_type")
 
         if agentid in vars_util_partial.agents_vaccination_doses:
             vars_util.agents_vaccination_doses[agentid] = vars_util_partial.agents_vaccination_doses[agentid]
