@@ -224,8 +224,9 @@ class Epidemiology:
                         self.vars_util.agents_infection_type[exposed_agent_id] = agent_infection_type
                         # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
                         self.vars_util.agents_infection_severity[exposed_agent_id] = agent_infection_severity
-                        
 
+                        # print(f"updating agent {exposed_agent_id}, state {self.vars_util.agents_seir_state[exposed_agent_id]}, inf_type {self.vars_util.agents_infection_type[exposed_agent_id]}, inf_sev {self.vars_util.agents_infection_severity[exposed_agent_id]}")
+                        
         # print(f"vaccination multiplier total time taken {vacc_mult_time_taken}")
 
         return updated_agents_ids
