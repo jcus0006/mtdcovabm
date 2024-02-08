@@ -31,7 +31,7 @@ import psutil
 
 params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 7, # 365/20
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -75,7 +75,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.23
-            "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes_n_workers": [3], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_strat3_1n_4w_500k_7d_withmajorfixes.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "dask_strat3_1n_3w_500k_3d_withmajorfixes_withoutstatetransition2.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -1185,7 +1185,7 @@ def main():
             # split all other cells (balanced by number of members, which would have been pre-populated)
             cells_split_ids, num_members_per_process = util.split_cells_by_member_load(cells_util.cell_ids_by_num_members, num_actors)
             
-            num_cells_per_worker = (len(cells_split_ids[0]), len(cells_split_ids[1]), len(cells_split_ids[2]), len(cells_split_ids[3]))
+            num_cells_per_worker = [len(cell_split) for cell_split in cells_split_ids]
             print(f"split_cells_by_member_load. num_cells_per_worker: {num_cells_per_worker} num_members_per_process: {num_members_per_process}")
             # num_cells_per_actor = util.split_balanced_partitions(len(cells_ids), num_actors)
             

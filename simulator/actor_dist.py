@@ -321,6 +321,8 @@ class ActorDist:
 
             # return contact_tracing_agent_ids (that are only added to in this context) and time-logging information to client
 
+            util.log_memory_usage(f, "End of itineraries ")
+
             time_takens = (main_time_taken, tour_time_taken, ws_time_taken, it_time_taken, self.it_main_time_taken_avg)
 
             print("process " + str(self.worker_index) + ", ended at " + str(time.time()) + ", full time taken: " + str(main_time_taken))
@@ -405,6 +407,8 @@ class ActorDist:
             main_time_taken = time.time() - main_start
             
             # return direct contacts and time-logging information to client
+
+            util.log_memory_usage(f, "End of contact networks ")
 
             return self.worker_index, self.vars_util.directcontacts_by_simcelltype_by_day, main_time_taken
         except Exception as e:
@@ -535,6 +539,8 @@ class ActorDist:
 
                 result_index += 1
 
+            util.log_memory_usage(f, "End of send_results ")
+
             if self.simstage == SimStage.Itinerary:
                 return success
             elif self.simstage == SimStage.ContactNetwork:
@@ -635,6 +641,8 @@ class ActorDist:
                 print("sync state info (end of day) agents_epi time_taken: " + str(time_taken))
                 if f is not None:
                     f.flush()
+            
+            util.log_memory_usage(f, "End of receive_results ")
 
             return True
         except Exception as e:
