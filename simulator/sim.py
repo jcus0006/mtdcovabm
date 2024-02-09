@@ -29,7 +29,7 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
             "simulationdays": 7, # 365/20
             "loadagents": True,
@@ -75,7 +75,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.23
-            "dask_nodes_n_workers": [3], # 3, 11
+            "dask_nodes_n_workers": [4], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "epistats_10k_7d_dask_fs_4p_interventionstotals.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "epistats_10k_7d_dask_fs_2_4p_interventionstotals.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -1374,7 +1374,7 @@ def main():
             day_start = time.time()
 
             if day == 1:
-                dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
+                dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util)
             
             if day > 1 and not params["use_mp"] and params["dask_cluster_restart_days"] != -1 and day % params["dask_cluster_restart_days"] == 0: # force clean-up every X days
                 restart_start = time.time()
