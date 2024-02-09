@@ -46,7 +46,12 @@ def update_agent_state(agents_seir_state, agents_infection_type, agents_infectio
     if today_index > -1:
         _, seir_state_transition, timestep = agent["state_transition_by_day"][today_index]
         current_seir_state = agents_seir_state_get(agents_seir_state, agentid) #agentindex
-        current_infection_type = agents_infection_type[agentid]
+        try:
+            current_infection_type = agents_infection_type[agentid]
+        except:
+            print(f"infection type does not exist for agent id: {agentid}, will crash. seir state is {current_seir_state}")
+            raise
+
         current_infection_severity = agents_infection_severity[agentid]
 
         new_seir_state, new_infection_type, new_infection_severity = convert_state_transition_to_new_state(current_seir_state, current_infection_type, current_infection_severity, seir_state_transition)

@@ -6,6 +6,7 @@ import gc
 
 # agents_static_to_sync are tourists who are arriving today
 # departed_tourist_agent_ids are tourists who left the previous day
+# sync_dynamic_agents is never True; handling was retained but not used
 def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_agents=None, agents_epi=None, vars_util=None, f=None, self_actor_index=None, tourists=None, touristsgroups=None, n_locals=None):
     f = None
     stack_trace_log_file_name = ""
@@ -80,11 +81,11 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
                 agents_epi[agentid] = agents_epi_to_sync[agentid]
                 vars_util.agents_seir_state[agentid] = vars_util_to_sync.agents_seir_state[agentid]
 
-                # if agentid in vars_util_to_sync.agents_infection_type:
-                #     vars_util.agents_infection_type[agentid] = vars_util_to_sync.agents_infection_type[agentid]
+                if agentid in vars_util_to_sync.agents_infection_type:
+                    vars_util.agents_infection_type[agentid] = vars_util_to_sync.agents_infection_type[agentid]
                 
-                # if agentid in vars_util_to_sync.agents_infection_severity:
-                #     vars_util.agents_infection_severity[agentid] = vars_util_to_sync.agents_infection_severity[agentid]
+                if agentid in vars_util_to_sync.agents_infection_severity:
+                    vars_util.agents_infection_severity[agentid] = vars_util_to_sync.agents_infection_severity[agentid]
 
                 print(f"synced it_agents and agents_epi {agentid}")
                 if f is not None:
@@ -104,8 +105,9 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
             # agents_static.set(agentid, "epi_age_bracket_index", None)
             # agents_static.set(agentid, "soc_rate", None)
 
-            if tourists is not None:
-                del tourists[agentid - n_locals]
+            # this cannot work because the tourists dict is not synced upon arrival in the first place
+            # if tourists is not None:
+            #     del tourists[agentid - n_locals]
             
             if sync_dynamic_agents:
                 del it_agents[agentid]
@@ -117,12 +119,11 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
 
                 if agentid in vars_util.agents_infection_severity:
                     del vars_util.agents_infection_severity[agentid]
-
-        if touristsgroups is not None:
-            for groupid in departed_tourist_group_ids:
-                del touristsgroups[groupid]
-
-        gc.collect()
+        
+        # this cannot work because the touristsgroups dict is not synced upon arrival in the first place
+        # if touristsgroups is not None:
+        #     for groupid in departed_tourist_group_ids:
+        #         del touristsgroups[groupid]
 
         return process_index, True, it_agents, agents_epi, vars_util
     except Exception as e:

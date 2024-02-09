@@ -29,9 +29,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 365, # 365/20
+            "simulationdays": 3, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -46,15 +46,15 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "visualise": False,
             "fullpop": 519562, # do not change this (only used to generate ratio)
             "fulltourpop": 2173531, # do not change this (only used to generate ratio)
-            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": False,
+            "dask_full_stateful": True,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -75,7 +75,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.23
-            "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes_n_workers": [3], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -1187,7 +1187,7 @@ def main():
             # split all other cells (balanced by number of members, which would have been pre-populated)
             cells_split_ids, num_members_per_process = util.split_cells_by_member_load(cells_util.cell_ids_by_num_members, num_actors)
             
-            num_cells_per_worker = (len(cells_split_ids[0]), len(cells_split_ids[1]), len(cells_split_ids[2]), len(cells_split_ids[3]))
+            num_cells_per_worker = [len(cell_split) for cell_split in cells_split_ids]
             print(f"split_cells_by_member_load. num_cells_per_worker: {num_cells_per_worker} num_members_per_process: {num_members_per_process}")
             # num_cells_per_actor = util.split_balanced_partitions(len(cells_ids), num_actors)
             
@@ -1365,7 +1365,7 @@ def main():
 
         for day in simdays_range: # 365 + 1 / 1 + 1
             print("simulating day {0}".format(str(day)))
-            num_arrivals, num_arrivals_nextday, num_departures = 0, 0, 0
+            tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures = 0, 0, 0, 0
             seir_states = None # reset for every day, only incremented for dask_full_stateful flow
             remote_tour_time_take_sum, remove_tour_time_taken_avg = 0, 0 # only used to calculate remote average time taken for tourists processing
 
@@ -1479,11 +1479,12 @@ def main():
                     util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters ")
 
                 if params["loadtourism"] and not params["dask_full_stateful"]:
-                    num_departures = len(tourist_util.departing_tourists_agents_ids[day])
-                    num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
-                    num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
+                    tourists_num_active = len(tourists_active_ids)
+                    tourists_num_departures = len(tourist_util.departing_tourists_agents_ids[day])
+                    tourists_num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
+                    tourists_num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
             
-                    dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
+                    dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util)
 
                     if params["logmemoryinfo"]:
                         util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters ")
@@ -1640,9 +1641,10 @@ def main():
                                         cells_accommodation[cell_id] = cell_value
 
                                 if arr_dep_counts is not None and len(arr_dep_counts) > 0:
-                                    num_arrivals += arr_dep_counts[0]
-                                    num_arrivals_nextday += arr_dep_counts[1]
-                                    num_departures += arr_dep_counts[2]
+                                    tourists_num_active += arr_dep_counts[0]
+                                    tourists_num_arrivals += arr_dep_counts[1]
+                                    tourists_num_arrivals_nextday += arr_dep_counts[2]
+                                    tourists_num_departures += arr_dep_counts[3]
 
                                 if len(contact_tracing_agent_ids_partial) > 0:
                                     vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
@@ -2009,11 +2011,12 @@ def main():
                     util.log_memory_usage(f, "Loaded data. Before refreshing dynamic parameters and updating statistics ")
 
                 if params["loadtourism"] and not params["dask_full_stateful"]:
-                    num_departures = len(tourist_util.departing_tourists_agents_ids[day])
-                    num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
-                    num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
+                    tourists_num_active = len(tourists_active_ids)
+                    tourists_num_departures = len(tourist_util.departing_tourists_agents_ids[day])
+                    tourists_num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
+                    tourists_num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
                     
-                dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util, seir_states=seir_states)
+                dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util, seir_states=seir_states)
                 interventions_logs_df, statistics_logs_df = dyn_params.update_logs_df(day, interventions_logs_df, statistics_logs_df)
                 if params["logmemoryinfo"]:
                     util.log_memory_usage(f, "Loaded data. After refreshing dynamic parameters and updating statistics ")
@@ -2042,8 +2045,8 @@ def main():
             gc_time_taken = time.time() - gc_start
             print("gc time_taken: " + str(gc_time_taken))
 
-            if params["logmemoryinfo"]:
-                util.log_memory_usage(f, "End of sim day. After gc.collect() ")
+            # if params["logmemoryinfo"]:
+            util.log_memory_usage(f, "End of sim day ") # logging regardless
                               
             day_time_taken = time.time() - day_start
             simdays_sum_time_taken += day_time_taken

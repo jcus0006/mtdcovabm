@@ -66,6 +66,7 @@ class Tourism:
                 self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, airport_lockdown, f)
             else:
                 self.tourists_arrivals_departures_for_day = copy(self.tourists_arrivals_departures_for_nextday)
+                self.arriving_tourists_agents_ids = copy(self.arriving_tourists_next_day_agents_ids)
           
         self.tourists_arrivals_departures_for_nextday = {}
         if len(tourist_groupids_by_nextday) > 0:
