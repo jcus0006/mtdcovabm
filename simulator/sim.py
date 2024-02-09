@@ -52,7 +52,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
             "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "epistats_10k_7d_mp_8p_quadparams_fixedstatetransition.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "epistats_10k_365d_mp_8p_strictstrategies_debug.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -300,6 +300,8 @@ def main():
                                                                     "workplaces_lockdown",
                                                                     "schools_lockdown",
                                                                     "entertainment_lockdown",
+                                                                    "activities_lockdown",
+                                                                    "airport_lockdown",
                                                                     "masks_hygiene_distancing_multiplier",
                                                                     "vaccination_propensity",
                                                                     "last_vaccination_propensity"])
@@ -1371,6 +1373,9 @@ def main():
                 f.flush()
             
             day_start = time.time()
+
+            if day == 1:
+                dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
             
             if day > 1 and not params["use_mp"] and params["dask_cluster_restart_days"] != -1 and day % params["dask_cluster_restart_days"] == 0: # force clean-up every X days
                 restart_start = time.time()
@@ -1384,9 +1389,6 @@ def main():
 
             if params["dask_full_stateful"]:
                 dfs_reset_start = time.time()
-
-                if day == 1:
-                    dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
 
                 futures = []
                 for actor in actors:
@@ -1414,7 +1416,7 @@ def main():
                 if not params["dask_full_stateful"]:
                     start = time.time()
 
-                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
+                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, dyn_params.airport_lockdown, f)
                     print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
                         f.flush()
@@ -1452,7 +1454,7 @@ def main():
                     if f is not None:
                         f.flush()                
                         
-                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], False, f)
+                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], False, dyn_params.airport_lockdown, f)
                     print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
                         f.flush()

@@ -79,10 +79,42 @@ class Itinerary:
         self.tourism_accom_breakfast_probability = self.params["tourism_accom_breakfast_probability"]
 
         # local
-        self.non_daily_activities_employed_distribution = self.params["non_daily_activities_employed_distribution"]
+        self.non_daily_activities_employed_distribution = self.params["non_daily_activities_employed_distribution"] # [minage, maxage, normalworkday, vacation_local, vacation_travel, sick_leave]
         self.non_daily_activities_schools_distribution = self.params["non_daily_activities_schools_distribution"]
-        self.non_daily_activities_nonworkingday_distribution = self.params["non_daily_activities_nonworkingday_distribution"]
+        self.non_daily_activities_nonworkingday_distribution = self.params["non_daily_activities_nonworkingday_distribution"] # [minage, maxage, local, travel, sick]
         self.non_daily_activities_num_days = self.params["non_daily_activities_num_days"]
+
+        if self.epi_util.dyn_params.airport_lockdown:
+            nda_employed_vacation_travel_col_index = 2 # without age range (i.e. 4-2)
+            nda_nonworkday_travel_col_index = 1 # without age range (i.e. 3-2)
+
+            # split age_ranges from frequency distribution matrix
+            nda_age_ranges = [sublst[:2] for sublst in self.non_daily_activities_employed_distribution]
+            nda_empl_sliced_arr = [sublst[2:] for sublst in self.non_daily_activities_employed_distribution]
+            nda_nonworkday_sliced_arr = [sublst[2:] for sublst in self.non_daily_activities_nonworkingday_distribution]
+
+            # convert to numpy array
+            nda_age_ranges = np.array(nda_age_ranges)
+            nda_empl_sliced_arr = np.array(nda_empl_sliced_arr)
+            nda_nonworkday_sliced_arr = np.array(nda_nonworkday_sliced_arr)
+
+            # change the second element of every row to 0
+            nda_empl_sliced_arr[:, nda_employed_vacation_travel_col_index] = 0
+            nda_nonworkday_sliced_arr[:, nda_nonworkday_travel_col_index] = 0
+
+            # normalize the array such that each row sums to 0
+            # calculate row sums and reshape
+            nda_empl_sliced_arr_row_sums = nda_empl_sliced_arr.sum(axis=1).reshape(-1, 1) # sums to 1 horizontallys
+            nda_nonworkday_sliced_arr_row_sums = nda_nonworkday_sliced_arr.sum(axis=1).reshape(-1, 1)
+
+            nda_empl_normalized_arr = nda_empl_sliced_arr / nda_empl_sliced_arr_row_sums # normalize
+            nda_nonworkday_normalized_arr = nda_nonworkday_sliced_arr / nda_nonworkday_sliced_arr_row_sums 
+
+            self.non_daily_activities_employed_distribution = []
+            self.non_daily_activities_nonworkingday_distribution = []
+            for index, age_range in enumerate(nda_age_ranges):
+                self.non_daily_activities_employed_distribution.append(np.concatenate((age_range, nda_empl_normalized_arr[index])).tolist())
+                self.non_daily_activities_nonworkingday_distribution.append(np.concatenate((age_range, nda_nonworkday_normalized_arr[index])).tolist())
 
         self.industries_working_hours = self.params["industries_working_hours"]
         self.activities_working_hours = self.params["activities_workplaces_working_hours_overrides"]
@@ -114,6 +146,10 @@ class Itinerary:
         # Calculate probability of each activity for agent
         self.activities_by_week_days_by_age_groups = {}
 
+        # 1 Bars/nightclubs, 2 food, 3 entertainment (indoor), 4 entertainment (outdoor), 5 gym, 6 sport, 7 shopping, 8 religious, 9 stay home, 10 other residence visit
+        self.entertainment_activity_ids = [1, 3, 4, 5]
+        self.non_entertainment_activity_ids = [2, 6, 7, 8, 10]
+
         for age_bracket_index, activity_probs_by_agerange_dist in enumerate(self.activities_by_agerange_distribution):
             activity_probs_for_agerange = activity_probs_by_agerange_dist[2:]
 
@@ -124,21 +160,14 @@ class Itinerary:
                 activity_by_week_days_for_age_range = [activity_id]
 
                 for day in range(1, 8):
-                    prob_product = self.activities_by_week_days_distribution[activity_index][day] * activity_prob
+                    if self.epi_util.dyn_params.entertainment_lockdown and activity_id in self.entertainment_activity_ids:
+                        prob_product = 0
+                    elif self.epi_util.dyn_params.activities_lockdown and activity_id in self.non_entertainment_activity_ids:
+                        prob_product = 0
+                    else:
+                        prob_product = self.activities_by_week_days_distribution[activity_index][day] * activity_prob
+
                     activity_by_week_days_for_age_range.append(prob_product)
-
-                # Normalize probabilities so they sum to 1
-                # total_probability = sum(activity_by_week_days_for_age_range[1:])
-
-                # normalized_activity_by_week_days_for_age_range = []
-                # if total_probability > 0:
-                #     normalized_activity_by_week_days_for_age_range.append(activity_id)
-
-                #     for joint_prob in activity_by_week_days_for_age_range[1:]:
-                #         joint_prob /= total_probability
-                #         normalized_activity_by_week_days_for_age_range.append(joint_prob)
-                # else:
-                #     normalized_activity_by_week_days_for_age_range = activity_by_week_days_for_age_range
 
                 activities_by_week_days_for_agerange.append(activity_by_week_days_for_age_range)
 
@@ -147,8 +176,8 @@ class Itinerary:
 
             sliced_arr = np.array(sliced_arr)
 
-            # Divide each element by the sum of the column (maintain sum to 1)
-            normalized_arr = sliced_arr / sliced_arr.sum(axis=0)
+            # Divide each element by the sum of the column (maintain sum to 1), i.e. distribution across days of the week
+            normalized_arr = sliced_arr / sliced_arr.sum(axis=0) # sums to 1 vertically
 
             self.activities_by_week_days_by_age_groups[age_bracket_index] = normalized_arr
 
@@ -584,7 +613,7 @@ class Itinerary:
                         # immunity_multiplier, asymptomatic_multiplier = 1, 1
                         immunity_multiplier, asymptomatic_multiplier, _ = util.calculate_vaccination_multipliers(self.vars_util.agents_vaccination_doses, agentid, simday, self.epi_util.vaccination_immunity_multiplier, self.epi_util.vaccination_asymptomatic_multiplier, self.epi_util.vaccination_exp_decay_interval)
 
-                        # sample tourist entry infection probability
+                        # sample local re-entry infection probability
                         exposed_rand = random.random()
 
                         entry_infection_probability = self.tourist_entry_infection_probability * immunity_multiplier

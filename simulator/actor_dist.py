@@ -208,7 +208,7 @@ class ActorDist:
                 
                 gc.collect()
                     
-            self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
+            self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, self.dyn_params.airport_lockdown, f)
             print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
 
             if f is not None:
@@ -252,7 +252,7 @@ class ActorDist:
             if f is not None:
                 f.flush()    
 
-            self.tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, f)
+            self.tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, self.dyn_params.airport_lockdown, f)
             
             print("sync_and_clean_tourist_data (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
             if f is not None:

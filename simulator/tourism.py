@@ -53,7 +53,7 @@ class Tourism:
 
         self.updated_cell_ids = [] # required by strat3, remote worker will use this to only send subset of data back to main process to be used with contact tracing
 
-    def initialize_foreign_arrivals_departures_for_day(self, day, f=None):
+    def initialize_foreign_arrivals_departures_for_day(self, day, airport_lockdown, f=None):
         tourist_groupids_by_day = set(self.touristsgroupsdays[day])
 
         tourist_groupids_by_nextday = []
@@ -63,24 +63,24 @@ class Tourism:
         self.tourists_arrivals_departures_for_day = {}
         if len(tourist_groupids_by_day) > 0:
             if day == 1:
-                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, f)
+                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, airport_lockdown, f)
             else:
                 self.tourists_arrivals_departures_for_day = copy(self.tourists_arrivals_departures_for_nextday)
           
         self.tourists_arrivals_departures_for_nextday = {}
         if len(tourist_groupids_by_nextday) > 0:
-            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, f)
+            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, airport_lockdown, f)
         
         return self.it_agents, self.agents_epi, self.tourists, self.cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
-    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, f):
+    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, airport_lockdown, f):
         if not is_next_day:
             self.arriving_tourists_agents_ids = []
             self.updated_cell_ids = []
         else:
             self.arriving_tourists_next_day_agents_ids = []
 
-        for tour_group_id in tourist_groupids:
+        for tour_group_id in tourist_groupids: # current tourist group ids
             tourists_group = self.touristsgroups[tour_group_id]
 
             accomtype = tourists_group["accomtype"]
@@ -90,7 +90,7 @@ class Tourism:
             purpose = tourists_group["purpose"]
             subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
 
-            if arrivalday == day or departureday == day:
+            if (arrivalday == day and not airport_lockdown) or departureday == day:
                 if arrivalday == day:
                     # sample an arrival timestep
                     arrival_ts = self.rng.choice(self.day_timesteps, size=1)[0]
@@ -340,13 +340,13 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, airport_lockdown, f=None):
         departing_tourists_agent_ids = []
         departing_tourists_group_ids = []
 
         start = time.time()
         for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
-            if not grp_arr_dep_info["arrival"]:
+            if not grp_arr_dep_info["arrival"] and (not airport_lockdown or tour_grp_id in self.tourists_active_groupids):
                 tourists_group = self.touristsgroups[tour_grp_id]
 
                 accomtype = tourists_group["accomtype"]
@@ -502,172 +502,4 @@ class Tourism:
                 del self.touristsgroups[tour_group_id]
 
         if gc_coll:
-            gc.collect()
-
-    async def sync_and_clean_tourist_data_async(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
-        departing_tourists_agent_ids = []
-
-        start = time.time()
-        for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
-            if not grp_arr_dep_info["arrival"]:
-                tourists_group = self.touristsgroups[tour_grp_id]
-
-                accomtype = tourists_group["accomtype"]
-                accominfo = tourists_group["accominfo"]
-                subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
-
-                # num_tourists_in_group = 0
-
-                for accinfoindex, accinfo in enumerate(accominfo):
-                    accomid, roomid, _ = accinfo[0], accinfo[1], accinfo[2]
-
-                    room_members = subgroupsmemberids[accinfoindex] # this room
-
-                    # num_tourists_in_group += len(room_members)
-                    for tourist_id in room_members:
-                        try:
-                            self.tourists_active_ids.remove(tourist_id)
-                        except:
-                            if tourist_id not in self.tourists_active_ids:
-                                print("cannot delete tourist_id as it doesn't exist: " + str(tourist_id))
-                                if f is not None:
-                                    f.flush()
-                                    
-                                raise
-
-                        tourist = self.tourists[tourist_id]
-                        agentid = tourist["agentid"]
-
-                        departing_tourists_agent_ids.append(agentid)
-
-                        # self.agents_static.delete(agentid)
-                        # self.agents_static.set(agentid, "age", None)
-                        # self.agents_static.set(agentid, "res_cellid", None)
-                        # self.agents_static.set(agentid, "age_bracket_index", None)
-                        # self.agents_static.set(agentid, "epi_age_bracket_index", None)
-                        # self.agents_static.set(agentid, "pub_transp_reg", None)
-
-                    # self.tourists_active_ids.extend(room_members)
-
-                    cellindex = self.rooms_by_accomid_by_accomtype[accomtype][accomid][roomid]["cellindex"]
-
-                    self.cells_accommodation[cellindex]["place"]["member_uids"] = []
-
-                self.tourists_active_groupids.remove(tour_grp_id)
-
-        self.departing_tourists_agents_ids[day] = departing_tourists_agent_ids
-        time_taken = time.time() - start
-        print("sync_and_clean_tourist_data on client: " + str(time_taken))
-        if f is not None:
-            f.flush()
-
-        # sync new tourists with remote workers and remove tourists who have left on the previous day
-        prev_day_departing_tourists_agents_ids = []
-            
-        if day-1 in self.departing_tourists_agents_ids:
-            prev_day_departing_tourists_agents_ids = self.departing_tourists_agents_ids[day-1]
-
-        if client is not None:
-            start = time.time()
-
-            futures = []
-            
-            if len(actors) == 0:
-                workers = list(client.scheduler_info()["workers"].keys()) # list()
-
-                for worker_index, worker in enumerate(workers):
-                    params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, remote_log_subfolder_name, log_file_name, worker_index)
-                    future = client.submit(tourism_dist.update_tourist_data_remote, params, workers=worker)
-                    futures.append(future)
-            else:                   
-                for worker_index, actor in enumerate(actors):
-                    if not dask_full_stateful or actor is not None: # in dask_full_stateful mode, the actor's reference to itself is not possible and instead represented by None
-                        params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
-                        # if not dask_full_stateful:
-                        #     params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, worker_index)
-                        # else:
-                        #     params = (day, self.agents_static_to_sync, prev_day_departing_tourists_agents_ids, actor[0])
-                        
-                        future = None
-                        if not dask_full_stateful:
-                            future = actor.run_update_tourist_data_remote(params)
-                        else:
-                            # if worker_index == 0: # temporary
-                            future = await actor.tourists_sync(params)
-
-                        futures.append(future)
-
-            self.agents_static_to_sync = customdict.CustomDict()
-            # self.it_agents_to_sync = customdict.CustomDict()
-            # self.agents_epi_to_sync = customdict.CustomDict()
-            
-            # results = None
-            # if not dask_full_stateful:
-            #     results = as_completed(futures)
-            # else:
-            #     results = futures
-
-            success = True
-
-            if len(actors) == 0:
-                for future in as_completed(futures):
-                    process_index, success_partial, _, _, _ = future.result()
-                      
-                    print("process_index {0}, success {1}".format(str(process_index), str(success_partial)))
-                    if f is not None:
-                        f.flush()
-
-                    future.release()  
-
-                    success &= success_partial
-            else:
-                if not dask_full_stateful:
-                    for future in as_completed(futures):
-                        process_index, success_partial = future.result()
-                        
-                        print("process_index {0}, success {1}".format(str(process_index), str(success_partial)))
-                        if f is not None:
-                            f.flush() 
-
-                    success &= success_partial
-                else:
-                    result_index = 0
-                    for result in futures:
-                        process_index, success_partial = await result.result()
-                        # result = result.result()
-                        print("process_index {0}, success {1}".format(str(result_index), str(success_partial)))
-                        if f is not None:
-                            f.flush()
-
-                        success &= success_partial
-
-                    result_index += 1
-
-            time_taken = time.time() - start
-            print("sync_and_clean_tourist_data remotely, success {0}, time_taken {1}".format(str(success), str(time_taken)))
-            if f is not None:
-                f.flush()
-
-        if len(prev_day_departing_tourists_agents_ids) > 0:
-            if f is not None:
-                f.flush()
-            start_prev_day_del = time.time()
-            for agentid in prev_day_departing_tourists_agents_ids:
-                del self.it_agents[agentid]
-                del self.agents_epi[agentid] #       
-                del self.vars_util.agents_seir_state[agentid]
-
-                if agentid in self.vars_util.agents_infection_type:
-                    del self.vars_util.agents_infection_type[agentid]
-
-                if agentid in self.vars_util.agents_infection_severity:
-                    del self.vars_util.agents_infection_severity[agentid]
-
-                self.agents_static.delete(agentid)
-                # print(f"deleted agent {agentid} from agents_static")
-    
-            del self.departing_tourists_agents_ids[day-1]
-            time_taken_prev_day_del = time.time() - start_prev_day_del
-            print(f"deleting departuring tourists from main node, time_taken: {time_taken_prev_day_del}")
-
             gc.collect()
