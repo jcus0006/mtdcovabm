@@ -5,11 +5,21 @@ import util
 from cellsclasses import CellType, SimCellType
 
 class Cells:
-    def __init__(self, agents, cells, cellindex, seed=6):
+    def __init__(self, agents, cells, cellindex, locals_ratio_to_full_pop, dask_full_stateful, seed=6):
         self.agents = agents
         self.cells = cells
         self.cellindex = cellindex
+        self.locals_ratio_to_full_pop = locals_ratio_to_full_pop
+        self.dask_full_stateful = dask_full_stateful
+        self.cell_ids_by_num_members = []
+
         np.random.seed(seed)
+
+    def add_to_cells(self, cell_type, place, num_members):
+        self.cells[self.cellindex] = { "type": cell_type, "place": place}
+
+        if self.dask_full_stateful and cell_type != CellType.Household and cell_type != CellType.Institution: # the latter are split based on residences
+            self.cell_ids_by_num_members.append([num_members, self.cellindex])
 
     # return households which is a dict of dicts, where the key is the household id, and the values are:
     # member_uids representing the residents in the household, reference_uid representing the reference person, and reference_age the reference person age
@@ -68,7 +78,8 @@ class Cells:
             households[hhid] = { "hhid": hhid, "resident_uids": np.array(member_uids), "staff_uids": np.array(this_hh_employees_uids), "reference_uid": ref_uid, "reference_age": ref_age, "visitor_uids": np.array([])}
             householdsworkplaces[hhid] = households[hhid]
 
-            self.cells[self.cellindex] = { "type": CellType.Household, "place": households[hhid]}
+            self.add_to_cells(CellType.Household, households[hhid], len(member_uids) + len(this_hh_employees_uids))
+
             householdscells[self.cellindex] = self.cells[self.cellindex]
             householdsworkplacescells[self.cellindex] = self.cells[self.cellindex]
 
@@ -106,13 +117,28 @@ class Cells:
 
         bus_drivers = []
 
-        if len(transport) > 0:       
+        if len(transport) > 0: # over-simplification, bus drivers are assigned a bus for the duration of the simulation.       
             transportation_employees_groups = [wp["member_uids"] for wp in workplaces if wp["indid"] == 8]
             transportation_employees = [emp for grp in transportation_employees_groups for emp in grp]
             transportation_employeers_drivers_pool = [uid for uid in transportation_employees if self.agents[uid]["edu"] != 5]
 
             bus_count = len(transport)
             bus_drivers = np.random.choice(transportation_employeers_drivers_pool, bus_count)
+
+            for i in range(len(bus_drivers)):
+                driver_agent_id = bus_drivers[i]
+                bus_cells = transport[i]
+                
+                bus_cell_idx = 0
+                for c_id, info in bus_cells.items():
+                    if bus_cell_idx == 0: # always the first cell
+                        info["driver_uid"] = driver_agent_id
+                        agent = self.agents[driver_agent_id]
+                        agent["busdriver"] = True
+                        agent["work_cellid"] = c_id
+
+                    break
+
 
         healthcare_workplaces_sizes = {}
         hospital_ids = []
@@ -242,8 +268,8 @@ class Cells:
                         cells_by_cellid[self.cellindex] = { "wpid": wpid, "indid": indid, "staff_uids": np.array(employees), "visitor_uids": np.array([])}
 
                         indids_by_cellid[self.cellindex] = indid
-
-                        self.cells[self.cellindex] = { "type": CellType.Workplace, "place": cells_by_cellid[self.cellindex]}
+                        
+                        self.add_to_cells(CellType.Workplace, cells_by_cellid[self.cellindex], num_employees)
 
                         if is_restaurant:
                             restaurantcells[self.cellindex] = self.cells[self.cellindex]
@@ -257,8 +283,8 @@ class Cells:
                     if is_accom:
                         cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(employees)}
 
-                        self.cells[self.cellindex] = { "type": CellType.Accommodation, "place": cells_by_cellid[self.cellindex]}
-
+                        self.add_to_cells(CellType.Accommodation, cells_by_cellid[self.cellindex], num_employees)
+                        
                         accommodationcells[self.cellindex] = self.cells[self.cellindex]
 
                         if accomid not in accommodationcells_by_accomid:
@@ -276,7 +302,7 @@ class Cells:
                     if is_hospital:
                         cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(employees)}
 
-                        self.cells[self.cellindex] = { "type": CellType.Hospital, "place": cells_by_cellid[self.cellindex]}
+                        self.add_to_cells(CellType.Hospital, cells_by_cellid[self.cellindex], num_employees)
 
                         hospitalcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -295,7 +321,7 @@ class Cells:
 
                         indids_by_cellid[self.cellindex] = indid
 
-                        self.cells[self.cellindex] = { "type": CellType.Entertainment, "place": cells_by_cellid[self.cellindex]}
+                        self.add_to_cells(CellType.Entertainment, cells_by_cellid[self.cellindex], num_employees)
 
                         if sampled_activity not in entertainmentcells:
                             entertainmentcells[int(sampled_activity)] = {}
@@ -317,7 +343,7 @@ class Cells:
                         
                         indids_by_cellid[self.cellindex] = indid
 
-                        self.cells[self.cellindex] = { "type": CellType.Airport, "place": cells_by_cellid[self.cellindex]}
+                        self.add_to_cells(CellType.Airport, cells_by_cellid[self.cellindex], num_employees)
 
                         airportcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -326,8 +352,10 @@ class Cells:
                     if len(self.agents) > 0:
                         for uid in employees:
                             agent = self.agents[uid]
-                            agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
-                            agent["work_cellid"] = self.cellindex
+                            if uid not in bus_drivers: # would have already been set previously
+                                agent["busdriver"] = False
+                                agent["work_cellid"] = self.cellindex
+
                             agent["ent_activity"] = sampled_activity
                             agent["isshiftbased"] = isshiftbased
 
@@ -361,7 +389,7 @@ class Cells:
 
                             indids_by_cellid[self.cellindex] = indid
 
-                            self.cells[self.cellindex] = { "type": CellType.Workplace, "place": cells_by_cellid[self.cellindex]}
+                            self.add_to_cells(CellType.Workplace, cells_by_cellid[self.cellindex], len(temp_members))
 
                             if is_restaurant:
                                 restaurantcells[self.cellindex] = self.cells[self.cellindex]
@@ -375,7 +403,7 @@ class Cells:
                         if is_accom:
                             cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "staff_uids": np.array(temp_members)}
 
-                            self.cells[self.cellindex] = { "type": CellType.Accommodation, "place": cells_by_cellid[self.cellindex]}
+                            self.add_to_cells(CellType.Accommodation, cells_by_cellid[self.cellindex], len(temp_members))
 
                             accommodationcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -397,7 +425,7 @@ class Cells:
                         if is_hospital:
                             cells_by_cellid[self.cellindex] = { "hospitalid": hospital_id, "staff_uids": np.array(temp_members)}
 
-                            self.cells[self.cellindex] = { "type": CellType.Hospital, "place": cells_by_cellid[self.cellindex]}
+                            self.add_to_cells(CellType.Hospital, cells_by_cellid[self.cellindex], len(temp_members))
 
                             hospitalcells[self.cellindex] = self.cells[self.cellindex]
 
@@ -416,7 +444,7 @@ class Cells:
 
                             indids_by_cellid[self.cellindex] = indid
 
-                            self.cells[self.cellindex] = { "type": CellType.Entertainment, "place": cells_by_cellid[self.cellindex]}
+                            self.add_to_cells(CellType.Entertainment, cells_by_cellid[self.cellindex], len(temp_members))
 
                             if sampled_activity not in entertainmentcells:
                                 entertainmentcells[int(sampled_activity)] = {}
@@ -438,7 +466,7 @@ class Cells:
                             
                             indids_by_cellid[self.cellindex] = indid
 
-                            self.cells[self.cellindex] = { "type": CellType.Airport, "place": cells_by_cellid[self.cellindex]}
+                            self.add_to_cells(CellType.Airport, cells_by_cellid[self.cellindex], len(temp_members))
 
                             airportcells[self.cellindex] = self.cells[self.cellindex]
                                 
@@ -447,8 +475,10 @@ class Cells:
                         if len(self.agents) > 0:
                             for uid in temp_members:
                                 agent = self.agents[uid]
-                                agent["busdriver"] = uid in bus_drivers # bus drivers still go to the designated place of work, and then are randomly allocated into the first cell of a transport bus
-                                agent["work_cellid"] = self.cellindex
+                                if uid not in bus_drivers: # would have already been set previously
+                                    agent["busdriver"] = False
+                                    agent["work_cellid"] = self.cellindex
+
                                 agent["ent_activity"] = sampled_activity
                                 agent["isshiftbased"] = isshiftbased
                         
@@ -503,7 +533,8 @@ class Cells:
             if len(nonteachingstaff) <= max_members:
                 cells_by_cellid[self.cellindex] = { "scid": scid, "non_teaching_staff_uids" : np.array(nonteachingstaff) }
                 
-                self.cells[self.cellindex] = { "type": CellType.School, "place": cells_by_cellid[self.cellindex]}
+                self.add_to_cells(CellType.School, cells_by_cellid[self.cellindex], len(nonteachingstaff))
+
                 schoolscells[self.cellindex] = self.cells[self.cellindex]
 
                 if len(self.agents) > 0:
@@ -532,7 +563,8 @@ class Cells:
 
                     cells_by_cellid[self.cellindex] = { "scid": scid, "non_teaching_staff_uids" : np.array(temp_nonteachingstaff) }
 
-                    self.cells[self.cellindex] = { "type": CellType.School, "place": cells_by_cellid[self.cellindex]}
+                    self.add_to_cells(CellType.School, cells_by_cellid[self.cellindex], len(temp_nonteachingstaff))
+
                     schoolscells[self.cellindex] = self.cells[self.cellindex]
 
                     if len(self.agents) > 0:
@@ -550,7 +582,8 @@ class Cells:
 
                 cells_by_cellid[self.cellindex] = { "scid": scid, "clid":clid, "student_uids":np.array(students), "teacher_uids":np.array(teachers)}
 
-                self.cells[self.cellindex] = { "type": CellType.Classroom, "place": cells_by_cellid[self.cellindex]}
+                self.add_to_cells(CellType.Classroom, cells_by_cellid[self.cellindex], len(students) + len(teachers))
+
                 classroomscells[self.cellindex] = self.cells[self.cellindex]
 
                 if len(self.agents) > 0:
@@ -585,6 +618,8 @@ class Cells:
     def split_institutions_by_cellsize(self, institutions, cellsize, cellsizespare):
         institutions_by_type = {}
         institutionscells = {}
+        inst_ids_by_cellid = {}
+        cell_ids_by_inst_id = {}
 
         for institution in institutions:
             institutions_by_id = {}
@@ -599,6 +634,8 @@ class Cells:
             instid = institution["instid"]
             insttypeid = institution["insttypeid"]
 
+            cell_ids_by_inst_id[instid] = []
+
             staff_resident_ratio = num_staff / num_members
 
             max_members = int(cellsize * (1 - cellsizespare))
@@ -607,8 +644,11 @@ class Cells:
             if num_members <= cellsize:
                 cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": np.array(residents), "staff_uids": np.array(staff)}
 
-                self.cells[self.cellindex] = { "type": CellType.Institution, "place": cells_by_cellid[self.cellindex]}
+                self.add_to_cells(CellType.Institution, cells_by_cellid[self.cellindex], len(residents) + len(staff))
+
                 institutionscells[self.cellindex] = self.cells[self.cellindex]
+                inst_ids_by_cellid[self.cellindex] = instid
+                cell_ids_by_inst_id[instid].append(self.cellindex)
 
                 if len(self.agents) > 0:
                     for uid in residents:
@@ -656,8 +696,11 @@ class Cells:
 
                     cells_by_cellid[self.cellindex] = { "instid": instid, "resident_uids": temp_residents, "staff_uids": temp_staff }
 
-                    self.cells[self.cellindex] = { "type": CellType.Institution, "place": cells_by_cellid[self.cellindex]}
+                    self.add_to_cells(CellType.Institution, cells_by_cellid[self.cellindex], len(temp_residents) + len(temp_staff))
+
                     institutionscells[self.cellindex] = self.cells[self.cellindex]
+                    inst_ids_by_cellid[self.cellindex] = instid
+                    cell_ids_by_inst_id[instid].append(self.cellindex)
 
                     if len(self.agents) > 0:
                         for uid in temp_residents:
@@ -682,18 +725,20 @@ class Cells:
             else:
                 institutions_by_type[insttypeid] = institutions_by_id
 
-        return institutions_by_type, institutionscells
+        return institutions_by_type, inst_ids_by_cellid, institutionscells, cell_ids_by_inst_id
     
-    def create_airport_cell(self): # this is a single cell
+    def create_airport_cell(self): # this is a single cell (but multiple venues generated from workplaces are in fact part of the airport - see documentation)
         airport_cell = {"visitor_uids":[]}
 
-        self.cells[self.cellindex] = {"type": CellType.Airport, "place": airport_cell}
+        self.add_to_cells(CellType.Airport, airport_cell, 0)
 
         return self.cells[self.cellindex]
 
     def create_transport_cells(self, buscount, cellsize, cellsizespare, bus_capacities, bus_capacities_dist): 
         transport_by_id = {}
         cells_transport = {}
+
+        buscount = round(buscount * self.locals_ratio_to_full_pop)
 
         max_members = int(cellsize * (1 - cellsizespare))
 
@@ -708,7 +753,7 @@ class Cells:
             if sampled_bus_capacity <= max_members: 
                 cells_by_cellid[self.cellindex] = {"busid": busid, "driver_uid": -1, "passenger_uids":[], "capacity": sampled_bus_capacity}
 
-                self.cells[self.cellindex] = {"type": CellType.Transport, "place": cells_by_cellid[self.cellindex]}
+                self.add_to_cells(CellType.Transport, cells_by_cellid[self.cellindex], 1) # driver
 
                 cells_transport[self.cellindex] = self.cells[self.cellindex]
 
@@ -722,7 +767,7 @@ class Cells:
                     else:
                         cells_by_cellid[self.cellindex] = { "busid": busid, "passenger_uids":[], "capacity": cell_size }
 
-                    self.cells[self.cellindex] = { "type": CellType.Transport, "place": cells_by_cellid[self.cellindex]}
+                    self.add_to_cells(CellType.Transport, cells_by_cellid[self.cellindex], 1 if index == 0 else 0)
 
                     cells_transport[self.cellindex] = self.cells[self.cellindex]
 
@@ -739,7 +784,7 @@ class Cells:
             for roomid in roomids:                        
                 cells_by_cellid[self.cellindex] = { "accomid": accomid, "accomtypeid": accomtypeid, "roomid": roomid, "roomsize": roomsize, "guest_uids": np.array([])} # guest_uids here represents tourists that are not assigned yet
 
-                self.cells[self.cellindex] = { "type": CellType.Accommodation, "place": cells_by_cellid[self.cellindex]}
+                self.add_to_cells(CellType.Accommodation, cells_by_cellid[self.cellindex], 0)
 
                 workplacescells[self.cellindex] = self.cells[self.cellindex]
                 accommodationcells[self.cellindex] = self.cells[self.cellindex]
@@ -761,7 +806,7 @@ class Cells:
         for i in range(0, total_no_rooms):
             cells_by_cellid[self.cellindex] = {"hospitalid": hospital_id, "staff_uids":np.array([]), "roomid": i, "patient_uids":np.array([])}
 
-            self.cells[self.cellindex] = { "type": CellType.Hospital, "place": cells_by_cellid[self.cellindex]}
+            self.add_to_cells(CellType.Hospital, cells_by_cellid[self.cellindex], 0)
 
             workplacescells[self.cellindex] = self.cells[self.cellindex]
             hospitalcells[self.cellindex] = self.cells[self.cellindex]
@@ -771,6 +816,8 @@ class Cells:
         return cells_by_cellid, workplacescells, hospitalcells
 
     def create_religious_cells(self, churchcount, cellsize, cellsizespare, mean_church_capacity, std_dev): # dynamic cell. data for religion as an industry was not available, so created as a form of "dynamic" contact hub       
+        churchcount = round(churchcount * self.locals_ratio_to_full_pop)
+
         sampled_church_sizes = np.round(np.random.normal(mean_church_capacity, std_dev, churchcount)).astype(int)
 
         churchcells = {}
@@ -784,7 +831,7 @@ class Cells:
             if sampled_size <= max_members:
                 cells_by_cellid[self.cellindex] = { "churchid": church_id, "visitor_uids" : [], "capacity": sampled_size }
                 
-                self.cells[self.cellindex] = { "type": CellType.Religion, "place": cells_by_cellid[self.cellindex]}
+                self.add_to_cells(CellType.Religion, cells_by_cellid[self.cellindex], 0)
                 churchcells[self.cellindex] = self.cells[self.cellindex]
 
                 self.cellindex += 1
@@ -796,7 +843,7 @@ class Cells:
                 for index, cell_size in enumerate(cell_sizes):
                     cells_by_cellid[self.cellindex] = { "churchid": church_id, "visitor_uids" : [], "capacity": cell_size }
 
-                    self.cells[self.cellindex] = { "type": CellType.Religion, "place": cells_by_cellid[self.cellindex]}
+                    self.add_to_cells(CellType.Religion, cells_by_cellid[self.cellindex], 0)
                     churchcells[self.cellindex] = self.cells[self.cellindex]
 
                     self.cellindex += 1

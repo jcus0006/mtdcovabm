@@ -1,15 +1,14 @@
 from dask.distributed import Client, SSHCluster, as_completed
 import time
 from dask_stateful_actor import Actor
-import asyncio
-import tornado.ioloop
 
 def main():
     num_workers = 1
     num_threads = None
     directory = "/home/jurgen/AppsPy/mtdcovabm/test/logs"
     log_files = ["/home/jurgen/AppsPy/mtdcovabm/test/logs/actor_stateful_test_0.txt", "/home/jurgen/AppsPy/mtdcovabm/test/logs/actor_stateful_test_1.txt"]
-    dask_nodes = ["localhost", "localhost", "192.168.1.19"]
+    # dask_nodes = ["localhost", "localhost", "192.168.1.19"]
+    dask_nodes = ["localhost", "localhost", "localhost"]
 
     cluster = SSHCluster(dask_nodes, 
                         connect_options={"known_hosts": None},
@@ -36,18 +35,21 @@ def main():
 
     print("actors created")
 
+    actors[0].set_remote_actors([None, actors[1]])
+    actors[1].set_remote_actors([actors[0], None])
+
     results = []
 
-    actor0_future = actors[0].send_message(workers_keys[1], "Hello from Actor 0 to Actor 1!", log_files[1])
+    actor0_future = actors[0].send_message(workers_keys[1], "Hello from Actor 0 to Actor 1!", log_files[1], 1)
     results.append(actor0_future)
 
-    actor1_future = actors[1].send_message(workers_keys[0], "Hello from Actor 1 to Actor 0!", log_files[0])
+    actor1_future = actors[1].send_message(workers_keys[0], "Hello from Actor 1 to Actor 0!", log_files[0], 0)
     results.append(actor1_future)
 
-    actor2_future = actors[0].send_message(workers_keys[1], {0: {"age": 20, "cellid": 0}, 1: {"age": 30, "cellid": 1}}, log_files[1])
+    actor2_future = actors[0].send_message(workers_keys[1], {0: {"age": 20, "cellid": 0}, 1: {"age": 30, "cellid": 1}}, log_files[1], 1)
     results.append(actor2_future)
 
-    actor3_future = actors[1].send_message(workers_keys[0], {2: {"age": 40, "cellid": 2}, 3: {"age": 50, "cellid": 3}}, log_files[0])
+    actor3_future = actors[1].send_message(workers_keys[0], {2: {"age": 40, "cellid": 2}, 3: {"age": 50, "cellid": 3}}, log_files[0], 0)
     results.append(actor3_future)
 
     result_index = 0

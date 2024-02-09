@@ -168,16 +168,16 @@ def sync_results_cn(day, agents_epi, vars_util, agents_epi_partial, vars_util_pa
     vars_util = util.sync_state_info_sets(day, vars_util, vars_util_partial)
     sets_time_taken = time.time() - sets_start
 
-    start_cat = time.time()
-    vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
-    cat_time_taken = time.time() - start_cat
+    # start_cat = time.time()
+    # vars_util = util.sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial)
+    # cat_time_taken = time.time() - start_cat
 
     rtt_str = ""
     if remote_time_taken is not None:
         rtt_str = str(remote_time_taken)
 
     if worker_process_index != -1:
-        print("worker {0}: remote time_taken {1}, agents sync {2}, sets sync {3}, cat sync {4}".format(str(worker_process_index), rtt_str, str(agentsids_time_taken), str(sets_time_taken), str(cat_time_taken)))
+        print("worker {0}: remote time_taken {1}, agents sync {2}, sets sync {3}".format(str(worker_process_index), rtt_str, str(agentsids_time_taken), str(sets_time_taken)))
         
         if f is not None:
             f.flush()

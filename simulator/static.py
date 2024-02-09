@@ -73,7 +73,9 @@ class Static:
 
     # this should be called at the beginning only, and tourists will not be included by default as of 26/12/2023
     # in this regard use_tourists_dict should be forced, going forward
-    def populate(self, data, n_locals, n_tourists, use_shm=True, use_agents_dict=False, use_tourists_dict=False, remote=False, dask_use_mp=False):
+    # pass dask_use_mp as True, remotely
+    # pass dask_full_stateful_local as True, locally on client
+    def populate(self, data, n_locals, n_tourists, use_shm=True, use_agents_dict=False, use_tourists_dict=False, remote=False, dask_use_mp=False, dask_full_stateful_local=False):
         start = time.time()
 
         n_total = n_locals + n_tourists
@@ -98,25 +100,28 @@ class Static:
 
             if properties is not None and len(properties) > 0:
                 if use_arrays:
-                    self.age.append(properties["age"] if "age" in properties else None)
-                    self.sc_student.append(properties["sc_student"] if "sc_student" in properties else None)
-                    self.empstatus.append(properties["empstatus"] if "empstatus" in properties else None)
-                    self.empind.append(properties["empind"] if "empind" in properties else None)
-                    self.empftpt.append(properties["empftpt"] if "empftpt" in properties else None)
                     self.res_cellid.append(properties["res_cellid"])
-                    self.work_cellid.append(properties["work_cellid"])
-                    self.school_cellid.append(properties["school_cellid"])
-                    self.age_bracket_index.append(properties["age_bracket_index"] if "age_bracket_index" in properties else None)
-                    self.epi_age_bracket_index.append(properties["epi_age_bracket_index"] if "epi_age_bracket_index" in properties else None)
-                    self.working_age_bracket_index.append(properties["working_age_bracket_index"] if "working_age_bracket_index" in properties else None)
-                    self.soc_rate.append(properties["soc_rate"] if "soc_rate" in properties else None)
-                    self.guardian_id.append(properties["guardian_id"] if "guardian_id" in properties else None)
-                    self.isshiftbased.append(properties["isshiftbased"] if "isshiftbased" in properties else None) # this is calculated in working schedule generation on first day
-                    self.pub_transp_reg.append(properties["pub_transp_reg"])
-                    self.ent_activity.append(properties["ent_activity"] if "ent_activity" in properties else None)
-                    # self.busdriver.append(None)
+
+                    if not dask_full_stateful_local:
+                        self.age.append(properties["age"] if "age" in properties else None)
+                        self.sc_student.append(properties["sc_student"] if "sc_student" in properties else None)
+                        self.empstatus.append(properties["empstatus"] if "empstatus" in properties else None)
+                        self.empind.append(properties["empind"] if "empind" in properties else None)
+                        self.empftpt.append(properties["empftpt"] if "empftpt" in properties else None)
+                        self.work_cellid.append(properties["work_cellid"])
+                        self.school_cellid.append(properties["school_cellid"])
+                        self.age_bracket_index.append(properties["age_bracket_index"] if "age_bracket_index" in properties else None)
+                        self.epi_age_bracket_index.append(properties["epi_age_bracket_index"] if "epi_age_bracket_index" in properties else None)
+                        self.working_age_bracket_index.append(properties["working_age_bracket_index"] if "working_age_bracket_index" in properties else None)
+                        self.soc_rate.append(properties["soc_rate"] if "soc_rate" in properties else None)
+                        self.guardian_id.append(properties["guardian_id"] if "guardian_id" in properties else None)
+                        self.isshiftbased.append(properties["isshiftbased"] if "isshiftbased" in properties else None) # this is calculated in working schedule generation on first day
+                        self.pub_transp_reg.append(properties["pub_transp_reg"])
+                        self.ent_activity.append(properties["ent_activity"] if "ent_activity" in properties else None)
+                        # self.busdriver.append(None)
                 else:
-                    self.static_agents_dict[id] = properties
+                    if not dask_full_stateful_local:
+                        self.static_agents_dict[id] = properties
             else:
                 if use_arrays:
                     self.age.append(None)
@@ -137,13 +142,13 @@ class Static:
                     self.ent_activity.append(None)
                     # self.busdriver.append(None)
 
-        is_arrays_based = len(self.age) > 0
+        is_arrays_based = len(self.res_cellid) > 0
 
         if is_arrays_based:
             if use_shm:
-                self.convert_to_shared_memory_readonly(loadall=True, clear_normal_memory=True)
+                self.convert_to_shared_memory_readonly(loadall=True, clear_normal_memory=True, dask_full_stateful_local=dask_full_stateful_local)
             else:
-                self.convert_to_numpy_readonly(loadall=True, clear_normal_memory=True)
+                self.convert_to_numpy_readonly(loadall=True, clear_normal_memory=True, dask_full_stateful_local=dask_full_stateful_local)
 
         time_taken = time.time() - start
         print("agents_mp populate time taken: " + str(time_taken))
@@ -198,51 +203,57 @@ class Static:
         print("agents_mp shm populate time taken: " + str(time_taken))
         # self.convert_to_ndarray()
 
-    def convert_to_shared_memory_readonly(self, loadall=False, itinerary=False, contactnetwork=False, clear_normal_memory=False):
+    def convert_to_shared_memory_readonly(self, loadall=False, itinerary=False, contactnetwork=False, clear_normal_memory=False, dask_full_stateful_local=False):
         if not loadall and not itinerary and not contactnetwork:
             loadall = True
     
         start = time.time()
 
         if loadall:
-            self.shm_age = self.generate_shared_memory_int(self.age)
-            self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
-            self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
-            self.shm_empind = self.generate_shared_memory_int(self.empind)
-            self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
-            self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
-            self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
-            self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
-            self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
-            self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
-            self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
-            self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
-            # self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
             self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
-            self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
-            self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
-            self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, "f")
+
+            if not dask_full_stateful_local:
+                self.shm_age = self.generate_shared_memory_int(self.age)
+                self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
+                self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
+                self.shm_empind = self.generate_shared_memory_int(self.empind)
+                self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
+                self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
+                self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
+                self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
+                self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
+                self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
+                self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
+                self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
+                # self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
+                self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
+                self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
+                self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, "f")
         elif contactnetwork:
             self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
-            self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
-            self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
-            self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, "f")
+
+            if not dask_full_stateful_local:
+                self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
+                self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
+                self.shm_soc_rate = self.generate_shared_memory_int(self.soc_rate, "f")
         elif itinerary:
-            self.shm_age = self.generate_shared_memory_int(self.age)
-            self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
-            self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
-            self.shm_empind = self.generate_shared_memory_int(self.empind)
-            self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
-            self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
-            self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
-            self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
-            self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
-            self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
-            self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
             self.shm_res_cellid = self.generate_shared_memory_int(self.res_cellid)
-            self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
-            self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
-            self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
+
+            if not dask_full_stateful_local:
+                self.shm_age = self.generate_shared_memory_int(self.age)
+                self.shm_sc_student = self.generate_shared_memory_int(self.sc_student)
+                self.shm_empstatus = self.generate_shared_memory_int(self.empstatus)
+                self.shm_empind = self.generate_shared_memory_int(self.empind)
+                self.shm_empftpt = self.generate_shared_memory_int(self.empftpt)
+                self.shm_ent_activity = self.generate_shared_memory_int(self.ent_activity)
+                self.shm_isshiftbased = self.generate_shared_memory_int(self.isshiftbased)
+                self.shm_guardian_id = self.generate_shared_memory_int(self.guardian_id)
+                self.shm_age_bracket_index = self.generate_shared_memory_int(self.age_bracket_index)
+                self.shm_epi_age_bracket_index = self.generate_shared_memory_int(self.epi_age_bracket_index)
+                self.shm_working_age_bracket_index = self.generate_shared_memory_int(self.working_age_bracket_index)
+                self.shm_work_cellid = self.generate_shared_memory_int(self.work_cellid)
+                self.shm_school_cellid = self.generate_shared_memory_int(self.school_cellid)
+                self.shm_pub_transp_reg = self.generate_shared_memory_int(self.pub_transp_reg)
 
         if clear_normal_memory:
             self.clear_non_shared_memory()
@@ -279,51 +290,57 @@ class Static:
     def generate_numpy_array(self, static_data):
         return np.array(static_data)
 
-    def convert_to_numpy_readonly(self, loadall=False, itinerary=False, contactnetwork=False, clear_normal_memory=False):
+    def convert_to_numpy_readonly(self, loadall=False, itinerary=False, contactnetwork=False, clear_normal_memory=False, dask_full_stateful_local=False):
         if not loadall and not itinerary and not contactnetwork:
             loadall = True
     
         start = time.time()
 
         if loadall:
-            self.shm_age = self.generate_numpy_array(self.age)
-            self.shm_sc_student = self.generate_numpy_array(self.sc_student)
-            self.shm_empstatus = self.generate_numpy_array(self.empstatus)
-            self.shm_empind = self.generate_numpy_array(self.empind)
-            self.shm_empftpt = self.generate_numpy_array(self.empftpt)
-            self.shm_work_cellid = self.generate_numpy_array(self.work_cellid)
-            self.shm_school_cellid = self.generate_numpy_array(self.school_cellid)
-            self.shm_working_age_bracket_index = self.generate_numpy_array(self.working_age_bracket_index)
-            self.shm_guardian_id = self.generate_numpy_array(self.guardian_id)
-            self.shm_pub_transp_reg = self.generate_numpy_array(self.pub_transp_reg)
-            self.shm_ent_activity = self.generate_numpy_array(self.ent_activity)
-            self.shm_isshiftbased = self.generate_numpy_array(self.isshiftbased)
-            # self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
             self.shm_res_cellid = self.generate_numpy_array(self.res_cellid)
-            self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
-            self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
-            self.shm_soc_rate = self.generate_numpy_array(self.soc_rate)
+
+            if not dask_full_stateful_local:
+                self.shm_age = self.generate_numpy_array(self.age)
+                self.shm_sc_student = self.generate_numpy_array(self.sc_student)
+                self.shm_empstatus = self.generate_numpy_array(self.empstatus)
+                self.shm_empind = self.generate_numpy_array(self.empind)
+                self.shm_empftpt = self.generate_numpy_array(self.empftpt)
+                self.shm_work_cellid = self.generate_numpy_array(self.work_cellid)
+                self.shm_school_cellid = self.generate_numpy_array(self.school_cellid)
+                self.shm_working_age_bracket_index = self.generate_numpy_array(self.working_age_bracket_index)
+                self.shm_guardian_id = self.generate_numpy_array(self.guardian_id)
+                self.shm_pub_transp_reg = self.generate_numpy_array(self.pub_transp_reg)
+                self.shm_ent_activity = self.generate_numpy_array(self.ent_activity)
+                self.shm_isshiftbased = self.generate_numpy_array(self.isshiftbased)
+                # self.shm_busdriver = self.generate_shared_memory_int(self.busdriver)
+                self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
+                self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
+                self.shm_soc_rate = self.generate_numpy_array(self.soc_rate)
         elif contactnetwork:
             self.shm_res_cellid = self.generate_numpy_array(self.res_cellid)
-            self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
-            self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
-            self.shm_soc_rate = self.generate_numpy_array(self.soc_rate)
+
+            if not dask_full_stateful_local:
+                self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
+                self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
+                self.shm_soc_rate = self.generate_numpy_array(self.soc_rate)
         elif itinerary:
-            self.shm_age = self.generate_numpy_array(self.age)
-            self.shm_sc_student = self.generate_numpy_array(self.sc_student)
-            self.shm_empstatus = self.generate_numpy_array(self.empstatus)
-            self.shm_empind = self.generate_numpy_array(self.empind)
-            self.shm_empftpt = self.generate_numpy_array(self.empftpt)
-            self.shm_ent_activity = self.generate_numpy_array(self.ent_activity)
-            self.shm_isshiftbased = self.generate_numpy_array(self.isshiftbased)
-            self.shm_guardian_id = self.generate_numpy_array(self.guardian_id)
-            self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
-            self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
-            self.shm_working_age_bracket_index = self.generate_numpy_array(self.working_age_bracket_index)
             self.shm_res_cellid = self.generate_numpy_array(self.res_cellid)
-            self.shm_work_cellid = self.generate_numpy_array(self.work_cellid)
-            self.shm_school_cellid = self.generate_numpy_array(self.school_cellid)
-            self.shm_pub_transp_reg = self.generate_numpy_array(self.pub_transp_reg)
+
+            if not dask_full_stateful_local:
+                self.shm_age = self.generate_numpy_array(self.age)
+                self.shm_sc_student = self.generate_numpy_array(self.sc_student)
+                self.shm_empstatus = self.generate_numpy_array(self.empstatus)
+                self.shm_empind = self.generate_numpy_array(self.empind)
+                self.shm_empftpt = self.generate_numpy_array(self.empftpt)
+                self.shm_ent_activity = self.generate_numpy_array(self.ent_activity)
+                self.shm_isshiftbased = self.generate_numpy_array(self.isshiftbased)
+                self.shm_guardian_id = self.generate_numpy_array(self.guardian_id)
+                self.shm_age_bracket_index = self.generate_numpy_array(self.age_bracket_index)
+                self.shm_epi_age_bracket_index = self.generate_numpy_array(self.epi_age_bracket_index)
+                self.shm_working_age_bracket_index = self.generate_numpy_array(self.working_age_bracket_index)
+                self.shm_work_cellid = self.generate_numpy_array(self.work_cellid)
+                self.shm_school_cellid = self.generate_numpy_array(self.school_cellid)
+                self.shm_pub_transp_reg = self.generate_numpy_array(self.pub_transp_reg)
 
         if clear_normal_memory:
             self.clear_non_shared_memory()

@@ -2213,7 +2213,7 @@ class Itinerary:
                         if transp_start_ts < 0:
                             transp_start_ts = 0
 
-                        potential_cells = list(self.cells_airport.keys())
+                        potential_cells = list(self.cells_transport.keys())
 
                         sampled_cell_id = self.rng.choice(potential_cells, size=1)[0]
 

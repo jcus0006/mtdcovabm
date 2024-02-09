@@ -50,18 +50,18 @@ class DynamicParams:
                 "num_agents_to_be_vaccinated": self.num_agents_to_be_vaccinated,
                 "infectious_rate": self.statistics.infectious_rate}
     
-    def refresh_dynamic_parameters(self, day, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, tourists_active_ids, vars_util, force_infectious_rate_refresh=True):
+    def refresh_dynamic_parameters(self, day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, force_infectious_rate_refresh=True, seir_states=None):
         infectious_rate_refreshed = False
 
         if force_infectious_rate_refresh:
-            self.statistics.refresh_rates(day, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, tourists_active_ids, vars_util)
+            self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
             infectious_rate_refreshed = True
 
         if len(self.masks_hygiene_distancing_infectiousrate_thresholds) == 0: # if both are present, default to infectiousrate thresholds
             self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(day, self.masks_hygiene_distancing_day_thresholds)
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, tourists_active_ids, vars_util)
+                self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
                 infectious_rate_refreshed = True
 
             self.masks_hygiene_distancing_multiplier = self.get_value_by_rate_in_threshold(self.statistics.infectious_rate, self.masks_hygiene_distancing_infectiousrate_thresholds)
@@ -70,7 +70,7 @@ class DynamicParams:
             self.vaccination_propensity = self.get_value_by_rate_in_threshold(day, self.vaccination_day_thresholds)
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, tourists_active_ids, vars_util)
+                self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
                 infectious_rate_refreshed = True
 
             self.vaccination_propensity = self.get_value_by_rate_in_threshold(self.statistics.infectious_rate, self.vaccination_infectiousrate_thresholds)        
@@ -83,7 +83,7 @@ class DynamicParams:
             self.contact_tracing_enabled = day >= contacttracing_threshold
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, tourists_active_ids, vars_util)
+                self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
                 infectious_rate_refreshed = True
             
             quarantine_threshold, testing_threshold, contacttracing_threshold = self.intervention_infectiousrate_thresholds[0], self.intervention_infectiousrate_thresholds[1], self.intervention_infectiousrate_thresholds[2]
@@ -100,7 +100,7 @@ class DynamicParams:
             self.entertainment_lockdown = day >= entertainment_threshold
         else:
             if not infectious_rate_refreshed:
-                self.statistics.refresh_rates(day, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, tourists_active_ids, vars_util)
+                self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
                 infectious_rate_refreshed = True
             
             workplaces_threshold, schools_threshold, entertainment_threshold = self.lockdown_infectiousrate_thresholds[0], self.lockdown_infectiousrate_thresholds[1], self.lockdown_infectiousrate_thresholds[2]
