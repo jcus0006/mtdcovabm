@@ -63,6 +63,8 @@ class ActorDistMP:
             f = open(log_file_name, "w")
             sys.stdout = f
 
+            interventions_totals = [0, 0, 0, 0]
+
             # util.log_memory_usage(f, "Before assigning work. ")
 
             mp_hh_inst_indices = util.split_residences_by_weight(hh_insts, self.num_processes) # to do - for the time being this assumes equal split but we may have more information about the cores of the workers
@@ -113,14 +115,17 @@ class ActorDistMP:
 
             # util.log_memory_usage(f, "After assigning work. ")
 
-            it_agents, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, workers_remote_time_taken)
+            it_agents, agents_epi, vars_util, interventions_totals, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None, workers_remote_time_taken)
                 
+            # persist new intervention counts
+            dynparams.statistics.new_tests, dynparams.statistics.new_vaccinations, dynparams.statistics.new_quarantined, dynparams.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
+
             # util.log_memory_usage(f, "After syncing results. ")
 
             main_time_taken = time.time() - main_start
             workers_remote_time_taken[-1] = main_time_taken
 
-            return self.worker_index, it_agents, agents_epi, vars_util, workers_remote_time_taken
+            return self.worker_index, it_agents, agents_epi, vars_util, interventions_totals, workers_remote_time_taken
         except Exception as e:
             # log on the node where it happened
             actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")
@@ -199,7 +204,7 @@ class ActorDistMP:
             
             # util.log_memory_usage(f, "After assigning work. ")
 
-            _, agents_epi, vars_util, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, workers_remote_time_taken)
+            _, agents_epi, vars_util, _, workers_remote_time_taken, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None, workers_remote_time_taken)
                 
             # util.log_memory_usage(f, "After syncing results. ")
 
@@ -332,6 +337,8 @@ def run_itinerary_single(params):
             itinerary_times_by_resid[hh_inst["id"]] = res_timetaken
             num_agents_itinerary += len(hh_inst["resident_uids"])
 
+        interventions_totals = [itinerary_util.new_tests, itinerary_util.new_vaccinations, itinerary_util.new_quarantined, itinerary_util.new_hospitalised]
+
         time_taken = time.time() - start
         # itinerary_sum_time_taken += time_taken
         # avg_time_taken = itinerary_sum_time_taken / day
@@ -343,7 +350,7 @@ def run_itinerary_single(params):
 
         # util.log_memory_usage(f, "After processing itinerary. ")
 
-        return worker_index, agents_dynamic, agents_epi, vars_util_mp, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
+        return worker_index, agents_dynamic, agents_epi, vars_util_mp, interventions_totals, None, None, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
         raise
     finally:

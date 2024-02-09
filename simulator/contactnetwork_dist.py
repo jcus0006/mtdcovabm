@@ -226,7 +226,7 @@ def contactnetwork_distributed(client: Client,
             else:
                 method_type = MethodType.ContactNetworkDistMP
 
-            _, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
+            _, agents_epi, vars_util, _, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
                 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))

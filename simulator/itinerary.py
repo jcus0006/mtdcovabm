@@ -143,6 +143,12 @@ class Itinerary:
         
         self.process_index = process_index
 
+        # these always start at 0 for a specific day
+        self.new_tests = 0
+        self.new_vaccinations = 0
+        self.new_quarantined = 0 # this is incremented/decremented at the start/end of quarantine, respectively, then simply added to the main stat
+        self.new_hospitalised = 0 # this is incremented/decremented at the start/end of hospitalisation, respectively, then simply added to the main stat
+
         # Calculate probability of each activity for agent
         self.activities_by_week_days_by_age_groups = {}
 
@@ -2329,6 +2335,8 @@ class Itinerary:
             # end_day, end_ts = end_day_ts[0], end_day_ts[1]
             
             if start_day == day:
+                self.new_hospitalised += 1
+
                 cancel_itinerary_beyond_hospitalisation_ts = True
 
                 hospitalisation_ts = start_ts
@@ -2378,6 +2386,8 @@ class Itinerary:
 
                         agent["itinerary_nextday"] = None
             elif end_day == day:
+                self.new_hospitalised -= 1
+
                 hospitalisation_end_day = True
                 agent_epi["hospitalisation_days"] = None
                 # agent["deleted_hospital_on"] = day
@@ -2390,6 +2400,9 @@ class Itinerary:
             # end_day, end_ts = end_day_ts[0], end_day_ts[1]
             
             if start_day == day or (hospitalisation_end_day and day <= end_day):
+                if start_day == day:
+                    self.new_quarantined += 1
+
                 cancel_itinerary_beyond_quarantine_ts = True
 
                 quarantine_ts = start_ts
@@ -2434,6 +2447,7 @@ class Itinerary:
 
                         agent["itinerary_nextday"] = None
             elif end_day == day:
+                self.new_quarantined -= 1
                 quarantine_end_day = True
                 agent_epi["quarantine_days"] = None
                 # agent["deleted_quarantine_on"] = day
@@ -2442,6 +2456,8 @@ class Itinerary:
             test_day = agent_epi["test_day"][0]
 
             if day == test_day:
+                self.new_tests += 1
+
                 reschedule_test = False
                 start_ts = agent_epi["test_day"][1]
                 
@@ -2471,6 +2487,8 @@ class Itinerary:
             vaccination_day, vaccination_ts = vaccination_day_ts[0], vaccination_day_ts[1]
             
             if day == vaccination_day:
+                self.new_vaccinations += 1
+
                 reschedule_test = False
                 start_ts = vaccination_ts
 

@@ -674,6 +674,8 @@ class Epidemiology:
         num_tests_scheduled = 0
 
         if self.dyn_params.contact_tracing_enabled and len(self.vars_util.contact_tracing_agent_ids) > 0:
+            self.dyn_params.statistics.new_contacttraced = len(self.vars_util.contact_tracing_agent_ids)
+            
             for daybackindex in range(self.contact_tracing_days_back + 1): # assume minimum is 1 + 1, i.e. 2 iterations (i.e. full today and full yesterday)
                 contact_tracing_day = day - daybackindex # if it's 48 hours, it would be 2 + 1, i.e. 2, i.e. full today, yesterday and day before yesterday
 

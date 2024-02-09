@@ -311,6 +311,8 @@ class ActorDist:
                 itinerary_times_by_resid[hh_inst["id"]] = res_time_taken
                 num_agents_itinerary += len(hh_inst["resident_uids"])
 
+            interventions_totals = [itinerary_util.new_tests, itinerary_util.new_vaccinations, itinerary_util.new_quarantined, itinerary_util.new_hospitalised]
+
             it_time_taken = time.time() - it_start
 
             main_time_taken = time.time() - main_start
@@ -329,7 +331,7 @@ class ActorDist:
             if f is not None:
                 f.flush()
 
-            return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, time_takens
+            return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, interventions_totals, time_takens
         except Exception as e:
             with open(stack_trace_log_file_name, 'w') as fi:
                 traceback.print_exc(file=fi)

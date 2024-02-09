@@ -31,7 +31,7 @@ import psutil
 
 params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 7, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "epistats_10k_365d_mp_8p_strictstrategies_debug.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "epistats_10k_7d_dask_fs_4p_interventionstotals.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -331,13 +331,12 @@ def main():
                                                                     "total_tests",
                                                                     "total_contacttraced",
                                                                     "total_quarantined",
-                                                                    "total_hospitalized",
-                                                                    "total_to_be_vaccinated",
+                                                                    "total_hospitalised",
                                                                     "new_vaccinations",
                                                                     "new_tests",
                                                                     "new_contacttraced",
                                                                     "new_quarantined",
-                                                                    "new_hospitalized",
+                                                                    "new_hospitalised",
                                                                     "average_contacts_per_person"])
     subfolder_name = params["logsubfoldername"]
 
@@ -1629,12 +1628,13 @@ def main():
                                 actor_future = actor.itineraries(touristsgroupsdays_this_day_this_worker, touristsgroupsdays_next_day_this_worker)
                                 futures.append(actor_future)
 
+                            interventions_totals = [0, 0, 0, 0]
                             for future in as_completed(futures):
                                 print("processing itineraries result")
                                 if f is not None:
                                     f.flush()
 
-                                a_worker_index, cells_accommodation_partial, arr_dep_counts, contact_tracing_agent_ids_partial, it_times_taken = future.result()                            
+                                a_worker_index, cells_accommodation_partial, arr_dep_counts, contact_tracing_agent_ids_partial, interventions_totals_partial, it_times_taken = future.result()                            
 
                                 if len(cells_accommodation_partial) > 0:
                                     for cell_id, cell_value in cells_accommodation_partial.items():
@@ -1649,6 +1649,8 @@ def main():
                                 if len(contact_tracing_agent_ids_partial) > 0:
                                     vars_util.contact_tracing_agent_ids.update(contact_tracing_agent_ids_partial)
 
+                                interventions_totals = util.sync_interventions_totals(interventions_totals, interventions_totals_partial)
+
                                 a_it_main_tt, tour_tt, a_ws_tt, a_it_tt, a_it_avg_tt = it_times_taken
 
                                 remote_tour_time_take_sum += tour_tt
@@ -1656,6 +1658,9 @@ def main():
                                 print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, avg time taken: {a_it_avg_tt}")
                                 if f is not None:
                                     f.flush()
+
+                            # persist new intervention counts
+                            dyn_params.statistics.new_tests, dyn_params.statistics.new_vaccinations, dyn_params.statistics.new_quarantined, dyn_params.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
 
                             remove_tour_time_taken_avg = remote_tour_time_take_sum / len(actors)
                             perf_timings_df.loc[day, "tourismitinerary_day"] = 0 # this is irrelevant, there is no way to calculate it

@@ -31,13 +31,12 @@ class DynamicStatistics:
         self.total_tests = 0
         self.total_contacttraced = 0
         self.total_quarantined = 0
-        self.total_hospitalized = 0
-        self.total_to_be_vaccinated = 0
+        self.total_hospitalised = 0
         self.new_vaccinations = 0
         self.new_tests = 0
         self.new_contacttraced = 0
         self.new_quarantined = 0
-        self.new_hospitalized = 0
+        self.new_hospitalised = 0
         self.average_contacts_per_person = 0
 
     def refresh_rates(self, day, act_tourists, arr_tourists, arr_nextday_tourists, dep_tourists, vars_util, seir_states=None): # optimised
@@ -110,6 +109,14 @@ class DynamicStatistics:
         
         self.total_active_population = self.n_locals + self.total_active_tourists - n_deceased
 
+        # self.new_tests, self.new_vaccinations, self.new_quarantined, self.new_hospitalised = intervention_totals
+
+        self.total_tests += self.new_tests
+        self.total_vaccinations += self.new_vaccinations
+        self.total_quarantined += self.new_quarantined
+        self.total_hospitalised += self.new_hospitalised
+        self.total_contacttraced += self.new_contacttraced
+
         self.infectious_rate = n_infectious / self.total_active_population
         self.recovery_rate = n_recovered / self.total_active_population
         self.mortality_rate = n_deceased / self.total_active_population
@@ -174,13 +181,12 @@ class DynamicStatistics:
         df.loc[day, "total_tests"] = self.total_tests
         df.loc[day, "total_contacttraced"] = self.total_contacttraced
         df.loc[day, "total_quarantined"] = self.total_quarantined
-        df.loc[day, "total_hospitalized"] = self.total_hospitalized
-        df.loc[day, "total_to_be_vaccinated"] = self.total_to_be_vaccinated
+        df.loc[day, "total_hospitalised"] = self.total_hospitalised
         df.loc[day, "new_vaccinations"] = self.new_vaccinations
         df.loc[day, "new_tests"] = self.new_tests
         df.loc[day, "new_contacttraced"] = self.new_contacttraced
         df.loc[day, "new_quarantined"] = self.new_quarantined
-        df.loc[day, "new_hospitalized"] = self.new_hospitalized
+        df.loc[day, "new_hospitalised"] = self.new_hospitalised
         df.loc[day, "average_contacts_per_person"] = round(self.average_contacts_per_person, 2)
 
         return df

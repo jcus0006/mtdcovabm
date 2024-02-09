@@ -630,6 +630,16 @@ def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
 
     return vars_util
 
+def sync_interventions_totals(interventions_totals, interventions_totals_partial):
+    new_tests, new_vaccinations, new_quarantined, new_hospitalised = interventions_totals
+    new_tests_partial, new_vaccinations_partial, new_quarantined_partial, new_hospitalised_partial = interventions_totals_partial
+    new_tests += new_tests_partial
+    new_vaccinations += new_vaccinations_partial
+    new_quarantined += new_quarantined_partial
+    new_hospitalised += new_hospitalised_partial
+    interventions_totals = [new_tests, new_vaccinations, new_quarantined, new_hospitalised]
+    return interventions_totals
+
 # load balancing
 
 def split_residences_by_weight(residences, num_partitions):

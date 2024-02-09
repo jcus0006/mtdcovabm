@@ -183,7 +183,7 @@ def contactnetwork_parallel(manager,
 
             start = time.time()
             # util.log_memory_usage(prepend_text= "Before syncing contact network results ")
-            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
+            _, agents_epi, vars_util, _, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
             # util.log_memory_usage(prepend_text= "After syncing contact network results ")
             
             time_taken = time.time() - start
