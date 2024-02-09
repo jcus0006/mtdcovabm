@@ -57,7 +57,7 @@
 		[0.10, 0.40]
 	],
 	"masks_hygiene_distancing_day_thresholds": [],
-	"lockdown_infectiousrate_thresholds": [0.25, 0.20, 0.15, 0.30, 0.40],
+	"lockdown_infectiousrate_thresholds": [0.4, 0.30, 0.25, 0.45, 0.50],
 	"lockdown_day_thresholds": []
 }
 

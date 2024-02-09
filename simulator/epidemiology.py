@@ -213,6 +213,8 @@ class Epidemiology:
 
                         agent_state_transition_by_day, agent_seir_state, agent_infection_type, agent_infection_severity, _ = self.simulate_seir_state_transition(day, exposed_agent_epi, exposed_agent_id, incremental_days, overlapping_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
 
+                        exposed_agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                        exposed_agent_epi["quarantine_days"] = agent_quarantine_days
                         # self.agents_mp.set(exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day)
                         # self.sync_queue.put(["a", exposed_agent_id, "state_transition_by_day", agent_state_transition_by_day]) # updated by ref in agent           
 
@@ -223,6 +225,8 @@ class Epidemiology:
                         # self.sync_queue.put(["v", exposed_agent_id, "agents_infection_severity", agent_infection_severity])
                         self.vars_util.agents_infection_severity[exposed_agent_id] = agent_infection_severity
 
+                        # print(f"updating agent {exposed_agent_id}, state {self.vars_util.agents_seir_state[exposed_agent_id]}, inf_type {self.vars_util.agents_infection_type[exposed_agent_id]}, inf_sev {self.vars_util.agents_infection_severity[exposed_agent_id]}")
+                        
         # print(f"vaccination multiplier total time taken {vacc_mult_time_taken}")
 
         return updated_agents_ids

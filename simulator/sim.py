@@ -96,7 +96,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_strat3_1n_3w_500k_3d_withmajorfixes_withoutstatetransition2.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "epistats_10k_365d_mp_8p_strictstrategies_debug.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -300,6 +300,8 @@ def main():
                                                                     "workplaces_lockdown",
                                                                     "schools_lockdown",
                                                                     "entertainment_lockdown",
+                                                                    "activities_lockdown",
+                                                                    "airport_lockdown",
                                                                     "masks_hygiene_distancing_multiplier",
                                                                     "vaccination_propensity",
                                                                     "last_vaccination_propensity"])
@@ -1371,6 +1373,9 @@ def main():
                 f.flush()
             
             day_start = time.time()
+
+            if day == 1:
+                dyn_params.refresh_dynamic_parameters(day, num_arrivals, num_arrivals_nextday, num_departures, tourists_active_ids, vars_util)
             
             if day > 1 and not params["use_mp"] and params["dask_cluster_restart_days"] != -1 and day % params["dask_cluster_restart_days"] == 0: # force clean-up every X days
                 restart_start = time.time()
@@ -1384,9 +1389,6 @@ def main():
 
             if params["dask_full_stateful"]:
                 dfs_reset_start = time.time()
-
-                if day == 1:
-                    dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util)
 
                 futures = []
                 for actor in actors:
@@ -1414,7 +1416,7 @@ def main():
                 if not params["dask_full_stateful"]:
                     start = time.time()
 
-                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, f)
+                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, dyn_params.airport_lockdown, f)
                     print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
                         f.flush()
@@ -1452,7 +1454,7 @@ def main():
                     if f is not None:
                         f.flush()                
                         
-                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], False, f)
+                    tourist_util.sync_and_clean_tourist_data(day, client, actors, params["remotelogsubfoldername"], params["logfilename"], False, dyn_params.airport_lockdown, f)
                     print("sync_and_clean_tourist_data (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
                         f.flush()

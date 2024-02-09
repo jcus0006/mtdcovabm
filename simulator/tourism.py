@@ -53,7 +53,7 @@ class Tourism:
 
         self.updated_cell_ids = [] # required by strat3, remote worker will use this to only send subset of data back to main process to be used with contact tracing
 
-    def initialize_foreign_arrivals_departures_for_day(self, day, f=None):
+    def initialize_foreign_arrivals_departures_for_day(self, day, airport_lockdown, f=None):
         tourist_groupids_by_day = set(self.touristsgroupsdays[day])
 
         tourist_groupids_by_nextday = []
@@ -63,25 +63,25 @@ class Tourism:
         self.tourists_arrivals_departures_for_day = {}
         if len(tourist_groupids_by_day) > 0:
             if day == 1:
-                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, f)
+                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, airport_lockdown, f)
             else:
                 self.tourists_arrivals_departures_for_day = copy(self.tourists_arrivals_departures_for_nextday)
                 self.arriving_tourists_agents_ids = copy(self.arriving_tourists_next_day_agents_ids)
           
         self.tourists_arrivals_departures_for_nextday = {}
         if len(tourist_groupids_by_nextday) > 0:
-            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, f)
+            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, airport_lockdown, f)
         
         return self.it_agents, self.agents_epi, self.tourists, self.cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
-    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, f):
-        if not is_next_day: 
+    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, airport_lockdown, f):
+        if not is_next_day:
             self.arriving_tourists_agents_ids = []
             self.updated_cell_ids = []
         else:
             self.arriving_tourists_next_day_agents_ids = []
 
-        for tour_group_id in tourist_groupids:
+        for tour_group_id in tourist_groupids: # current tourist group ids
             tourists_group = self.touristsgroups[tour_group_id]
 
             accomtype = tourists_group["accomtype"]
@@ -91,7 +91,7 @@ class Tourism:
             purpose = tourists_group["purpose"]
             subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
 
-            if arrivalday == day or departureday == day:
+            if (arrivalday == day and not airport_lockdown) or departureday == day:
                 if arrivalday == day:
                     # sample an arrival timestep
                     arrival_ts = self.rng.choice(self.day_timesteps, size=1)[0]
@@ -341,13 +341,13 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, airport_lockdown, f=None):
         departing_tourists_agent_ids = []
         departing_tourists_group_ids = []
 
         start = time.time()
         for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
-            if not grp_arr_dep_info["arrival"]:
+            if not grp_arr_dep_info["arrival"] and (not airport_lockdown or tour_grp_id in self.tourists_active_groupids):
                 tourists_group = self.touristsgroups[tour_grp_id]
 
                 accomtype = tourists_group["accomtype"]
