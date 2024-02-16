@@ -141,7 +141,7 @@ class DynamicParams:
     def get_value_by_rate_in_threshold(self, rate, params, none_val=0):
         val = None
         for index, param in enumerate(params):
-            if rate > param[0]:
+            if rate >= param[0]:
                 if index + 1 < len(params):
                     next_param = params[index+1]
 
