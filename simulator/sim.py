@@ -31,7 +31,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 7, # 365/20
+            "simulationdays": 365, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -54,7 +54,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
             "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": True,
+            "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "epistats_10k_7d_dask_fs_2_4p_interventionstotals.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "epistats_10k_365d_dask_4_strict_dates.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -302,6 +302,7 @@ def main():
                                                                     "entertainment_lockdown",
                                                                     "activities_lockdown",
                                                                     "airport_lockdown",
+                                                                    "travel_restrictions_multiplier",
                                                                     "masks_hygiene_distancing_multiplier",
                                                                     "vaccination_propensity",
                                                                     "last_vaccination_propensity"])
@@ -1415,7 +1416,7 @@ def main():
                 if not params["dask_full_stateful"]:
                     start = time.time()
 
-                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, dyn_params.airport_lockdown, f)
+                    it_agents, agents_epi, tourists, cells, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids = tourist_util.initialize_foreign_arrivals_departures_for_day(day, dyn_params.airport_lockdown, dyn_params.travel_restrictions_multiplier, f)
                     print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(day) + ", weekday " + str(weekday))
                     if f is not None:
                         f.flush()

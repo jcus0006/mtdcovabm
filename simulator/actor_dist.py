@@ -209,7 +209,7 @@ class ActorDist:
             else:
                 self.tourist_util.touristsgroupsdays = touristsgroupsdays
                     
-            self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, self.dyn_params.airport_lockdown, f)
+            self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, self.dyn_params.airport_lockdown, self.dyn_params.travel_restrictions_multiplier, f)
             print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
 
             if f is not None:
@@ -485,10 +485,9 @@ class ActorDist:
                         # send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
 
                 self.clean_cells_agents_timesteps(cells_ids)
-
                 print("cleaning cells_agents_timesteps")
                 if f is not None:
-                    f.flush()
+                    f.flush()        
             else:
                 stack_trace_log_file_name = os.path.join(self.folder_name, "sendres_cn_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
 
@@ -540,6 +539,12 @@ class ActorDist:
                     f.flush()
 
                 result_index += 1
+
+            self.clean_tourists_agents_static_to_sync()
+            
+            print("cleaning tourist_util.agents_static_to_sync")
+            if f is not None:
+                f.flush()
 
             util.log_memory_usage(f, "End of send_results ")
 
@@ -677,6 +682,9 @@ class ActorDist:
     def clean_cells_agents_timesteps(self, keys_to_del):
         for key in keys_to_del:
             del self.vars_util.cells_agents_timesteps[key]
+
+    def clean_tourists_agents_static_to_sync(self):
+        self.tourist_util.agents_static_to_sync = customdict.CustomDict()
 
     # removes any data that does not reside on this worker by default (called at the end of the simulation day)
     def clean_up_and_calculate_seir_states_daily(self):
