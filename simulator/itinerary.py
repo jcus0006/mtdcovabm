@@ -379,8 +379,8 @@ class Itinerary:
                     
                     agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(simday, agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
 
-                    agent_epi["state_transition_by_day"] = agent_state_transition_by_day
-                    agent_epi["quarantine_days"] = agent_quarantine_days
+                    # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                    # agent_epi["quarantine_days"] = agent_quarantine_days
                     
                     self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
                     self.vars_util.agents_infection_type[agentid] = inf_type
@@ -632,8 +632,8 @@ class Itinerary:
 
                             agent_state_transition_by_day, seir_state, inf_type, inf_sev, _ = self.epi_util.simulate_seir_state_transition(simday, agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days, asymptomatic_multiplier)
                             
-                            agent_epi["state_transition_by_day"] = agent_state_transition_by_day
-                            agent_epi["quarantine_days"] = agent_quarantine_days
+                            # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                            # agent_epi["quarantine_days"] = agent_quarantine_days
 
                             self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
                             self.vars_util.agents_infection_type[agentid] = inf_type
@@ -1565,8 +1565,8 @@ class Itinerary:
                                 # agent_state_transition_by_day, seir_state, infection_type, infection_severity, recovered
                                 agent_state_transition_by_day, seir_state, inf_type, inf_sev, _  = self.epi_util.simulate_seir_state_transition(simday, agent_epi, agentid, sampled_day, self.potential_timesteps, agent_state_transition_by_day, agent_epi_age_bracket_index, agent_quarantine_days)
 
-                                agent_epi["state_transition_by_day"] = agent_state_transition_by_day
-                                agent_epi["quarantine_days"] = agent_quarantine_days
+                                # agent_epi["state_transition_by_day"] = agent_state_transition_by_day
+                                # agent_epi["quarantine_days"] = agent_quarantine_days
 
                                 self.vars_util.agents_seir_state = seirstateutil.agents_seir_state_update(self.vars_util.agents_seir_state, seir_state, agentid)
                                 self.vars_util.agents_infection_type[agentid] = inf_type
