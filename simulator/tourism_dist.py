@@ -53,7 +53,7 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
         
         agents_static = dask_worker.data["agents_static"]
 
-        print("asts {0}, dep {1}".format(str(len(agents_static_to_sync)), str(len(departed_tourist_agent_ids))))
+        print("asts len {0}, dep len {1}".format(str(len(agents_static_to_sync)), str(len(departed_tourist_agent_ids))))
         if f is not None:
             f.flush()
 
