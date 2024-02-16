@@ -1375,7 +1375,7 @@ def main():
             day_start = time.time()
 
             if day == 1:
-                dyn_params.refresh_dynamic_parameters(day, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, tourists_active_ids, vars_util)
+                dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util)
             
             if day > 1 and not params["use_mp"] and params["dask_cluster_restart_days"] != -1 and day % params["dask_cluster_restart_days"] == 0: # force clean-up every X days
                 restart_start = time.time()
