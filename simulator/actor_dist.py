@@ -539,6 +539,12 @@ class ActorDist:
 
                 result_index += 1
 
+            self.clean_tourists_agents_static_to_sync()
+
+            print("cleaning tourist_util.agents_static_to_sync")
+            if f is not None:
+                f.flush()
+                
             util.log_memory_usage(f, "End of send_results ")
 
             if self.simstage == SimStage.Itinerary:
@@ -675,6 +681,9 @@ class ActorDist:
     def clean_cells_agents_timesteps(self, keys_to_del):
         for key in keys_to_del:
             del self.vars_util.cells_agents_timesteps[key]
+
+    def clean_tourists_agents_static_to_sync(self):
+        self.tourist_util.agents_static_to_sync = customdict.CustomDict()
 
     # removes any data that does not reside on this worker by default (called at the end of the simulation day)
     def clean_up_and_calculate_seir_states_daily(self):
