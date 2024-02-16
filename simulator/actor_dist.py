@@ -696,9 +696,9 @@ class ActorDist:
         stack_trace_log_file_name = ""
         stack_trace_log_file_name = os.path.join(self.folder_name, "clean_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
         
-        log_file_name = os.path.join(self.folder_name, "clean_actor_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        # log_file_name = os.path.join(self.folder_name, "clean_actor_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+        # f = open(log_file_name, "w")
+        # sys.stdout = f
 
         self.vars_util.reset_daily_structures()
 
@@ -734,12 +734,12 @@ class ActorDist:
         seir_states = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util)
 
         # gc.collect()
-        if f is not None:
-            # Close the file
-            f.close()
+        # if f is not None:
+        #     # Close the file
+        #     f.close()
 
-        if original_stdout is not None:
-            sys.stdout = original_stdout
+        # if original_stdout is not None:
+        #     sys.stdout = original_stdout
 
         return seir_states
 
