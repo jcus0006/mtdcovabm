@@ -31,7 +31,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 365, # 365/20
+            "simulationdays": 7, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -46,13 +46,13 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "visualise": False,
             "fullpop": 519562, # do not change this (only used to generate ratio)
             "fulltourpop": 2173531, # do not change this (only used to generate ratio)
-            "numprocesses": 1, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
+            "numprocesses": 8, # only used for multiprocessing, refer to dask_nodes and dask_nodes_n_workers for Dask Distributed processing
             "numthreads": -1,
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
             "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
@@ -75,7 +75,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.23
-            "dask_nodes_n_workers": [4], # 3, 11
+            "dask_nodes_n_workers": [1], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "epistats_10k_365d_dask_4_strict_dates.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "mp_8p_10k_localinfcounts_epi_normalrates_noseed.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -323,9 +323,19 @@ def main():
                                                                     "new_infectious",
                                                                     "new_recovered",
                                                                     "new_deaths",
+                                                                    "num_direct_contacts",
+                                                                    "avg_direct_contacts_per_agent",
                                                                     "infectious_rate",
                                                                     "recovery_rate",
                                                                     "mortality_rate",
+                                                                    "locals_inf_once",
+                                                                    "locals_inf_at_least_once",
+                                                                    "locals_inf_more_than_once",
+                                                                    "locals_inf_never",
+                                                                    "locals_max_inf",
+                                                                    "locals_avg_inf_counts",
+                                                                    "locals_med_inf_counts",
+                                                                    "locals_std_inf_counts",            
                                                                     "basic_reproduction_number",
                                                                     "effective_reproduction_number",
                                                                     "total_vaccinations",
@@ -337,8 +347,7 @@ def main():
                                                                     "new_tests",
                                                                     "new_contacttraced",
                                                                     "new_quarantined",
-                                                                    "new_hospitalised",
-                                                                    "average_contacts_per_person"])
+                                                                    "new_hospitalised"])
     subfolder_name = params["logsubfoldername"]
 
     current_directory = os.getcwd()
@@ -656,7 +665,7 @@ def main():
                 else:
                     lb_weight += params["itinerary_normal_weight"]
 
-                if agent["age"] < 15: # assign parent/guardian at random
+                if agent["age"] < itineraryparams["guardian_age_threshold"]: # assign parent/guardian at random
                     other_resident_ages_by_uids = {uid:agents[uid]["age"] for uid in hh_inst["resident_uids"] if uid != agentid}
 
                     other_resident_uids = list(other_resident_ages_by_uids.keys())
@@ -1375,6 +1384,7 @@ def main():
             day_start = time.time()
 
             if day == 1:
+                dyn_params.statistics.init_stage = True
                 dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util)
             
             if day > 1 and not params["use_mp"] and params["dask_cluster_restart_days"] != -1 and day % params["dask_cluster_restart_days"] == 0: # force clean-up every X days
@@ -1483,7 +1493,8 @@ def main():
                     tourists_num_departures = len(tourist_util.departing_tourists_agents_ids[day])
                     tourists_num_arrivals = len(tourist_util.arriving_tourists_agents_ids)
                     tourists_num_arrivals_nextday = len(tourist_util.arriving_tourists_next_day_agents_ids)
-            
+
+                    dyn_params.statistics.init_stage = True
                     dyn_params.refresh_dynamic_parameters(day, tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures, vars_util)
 
                     if params["logmemoryinfo"]:
@@ -1910,6 +1921,9 @@ def main():
                     #                                         params["numthreads"], 
                     #                                         params["keep_processes_open"], 
                     #                                         log_file_name)
+
+                    # calculate number of contacts per day for statistics
+                    dyn_params.statistics.num_direct_contacts = len(vars_util.directcontacts_by_simcelltype_by_day) - vars_util.directcontacts_by_simcelltype_by_day_start_marker[day]
 
                     updated_agent_ids = []
 

@@ -177,7 +177,7 @@ class ContactNetwork:
             for ag_id, st_ts, end_ts in cell_agents_timesteps:
                 if ag_id != agentid and not self.pair_already_computed_in_agentspotentialcontacts(agents_potentialcontacts, agentid, ag_id):
                     overlapping_range = self.get_overlapping_range(starttimestep, endtimestep, st_ts, end_ts)
-
+                    
                     if agentid not in agents_potentialcontacts_count:
                         agents_potentialcontacts_count[agentid] = 0
 

@@ -60,8 +60,7 @@ class Epidemiology:
         self.testing_false_positive_rate, self.testing_false_negative_rate = testing_false_positive_negative_rates[0], testing_false_positive_negative_rates[1]
         self.ignore_quarantine_rules_probability = epidemiologyparams["ignore_quarantine_rules_probability"]
         contact_tracing_params = epidemiologyparams["contact_tracing_parameters"]
-        self.contact_tracing_days_back, self.contact_tracing_positive_quarantine_prob, self.contact_tracing_secondary_quarantine_prob, self.contact_tracing_positive_test_prob, self.contact_tracing_secondary_test_prob = contact_tracing_params[0], contact_tracing_params[1], contact_tracing_params[2], contact_tracing_params[3], contact_tracing_params[4]
-        self.contact_tracing_positive_delay_days, self.contact_tracing_secondary_delay_days = contact_tracing_params[5], contact_tracing_params[6]
+        self.contact_tracing_days_back, self.contact_tracing_positive_delay_days, self.contact_tracing_secondary_delay_days = contact_tracing_params[0], contact_tracing_params[1], contact_tracing_params[2]
         contact_tracing_success_probability = epidemiologyparams["contact_tracing_success_probability"]
         self.contact_tracing_residence_probability, self.contact_tracing_work_probability, self.contact_tracing_school_probability, self.contact_tracing_community_probability = contact_tracing_success_probability[0], contact_tracing_success_probability[1], contact_tracing_success_probability[2], contact_tracing_success_probability[3]
         self.vaccination_effectiveness_parameters = epidemiologyparams["vaccination_effectiveness_parameters"]
@@ -104,8 +103,8 @@ class Epidemiology:
             #     secondary_agent_state_transition_for_day = self.vars_util.agents_seir_state_transition_for_day[secondary_agent_id]
             #     secondary_agent_new_seir_state, secondary_agent_old_seir_state, secondary_agent_state_transition_timestep = secondary_agent_state_transition_for_day[0], secondary_agent_state_transition_for_day[1], secondary_agent_state_transition_for_day[5]
 
-            if (primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible or
-                primary_agent_state == SEIRState.Susceptible and secondary_agent_state == SEIRState.Infectious): # or 
+            if ((primary_agent_state == SEIRState.Infectious and secondary_agent_state == SEIRState.Susceptible) or
+                (primary_agent_state == SEIRState.Susceptible and secondary_agent_state == SEIRState.Infectious)): # or 
                 # ((primary_agent_new_seir_state == SEIRState.Infectious or primary_agent_old_seir_state == SEIRState.Infectious) and
                 # (secondary_agent_new_seir_state == SEIRState.Susceptible or secondary_agent_old_seir_state == SEIRState.Susceptible)) or
                 # ((primary_agent_new_seir_state == SEIRState.Susceptible or primary_agent_old_seir_state == SEIRState.Susceptible) and
@@ -702,6 +701,8 @@ class Epidemiology:
                         contact_tracing_tree[agent_id] = None
 
                     directcontacts_by_simcelltype_by_day_this_day = np.array(self.vars_util.directcontacts_by_simcelltype_by_day[day_start_index:day_end_index])
+                    
+                    self.dyn_params.statistics.num_direct_contacts = len(directcontacts_by_simcelltype_by_day_this_day)
 
                     for dircon in directcontacts_by_simcelltype_by_day_this_day:
                         simcelltype, ag1_id, ag2_id = dircon[0], dircon[1], dircon[2]
@@ -802,10 +803,10 @@ class Epidemiology:
 
                                         if secondary_contact_agent is not None and len(secondary_contact_agent) > 0:
                                             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                            quarantine_scheduled, _ = self.schedule_quarantine(sec_contact_id, day, sampled_timestep, QuarantineType.PositiveContact, agent=secondary_contact_agent)
+                                            quarantine_scheduled, _ = self.schedule_quarantine(sec_contact_id, day, sampled_timestep, QuarantineType.SecondaryContact, agent=secondary_contact_agent)
 
                                             sampled_timestep = np.random.choice(self.timestep_options, size=1)[0]
-                                            test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, contact_id, day, sampled_timestep, QuarantineType.PositiveContact)
+                                            test_scheduled, _, _ = self.schedule_test(secondary_contact_agent, contact_id, day, sampled_timestep, QuarantineType.SecondaryContact)
 
                                             if quarantine_scheduled:
                                                 num_quarantine_scheduled += 1

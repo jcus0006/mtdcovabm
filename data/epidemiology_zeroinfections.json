@@ -1,11 +1,11 @@
 {
-	"initialseirstatedistribution": [0.9, 0, 0.1, 0],
+	"initialseirstatedistribution": [1, 0, 0, 0],
 	"household_infection_probability": 0.05,
-	"workplace_infection_probability": 0.01,
+	"workplace_infection_probability": 0.015,
 	"school_infection_probability": 0.03,
 	"community_infection_probability": 0.005,
 	"superspreader_infection_probability": 0.1,
-	"tourist_entry_infection_probability": 0.05,
+	"tourist_entry_infection_probability": 0,
 	"pre_exposure_days": 7,
 	"susceptibility_progression_mortality_probs_by_age": [
 		[0.34,	  0.67,		1,		 1,		  1,	   1,		1,		 1.24,	  1.47,	   1.47,   1],
@@ -24,7 +24,7 @@
 		[8.0,	2.0],
 		[18.1,	6.3],
 		[18.1,	6.3],
-		[196,	2.0]
+		[180.0, 90.0]
 	],
 	"testing_after_symptoms_probability": 0.75,
 	"testing_days_distribution_parameters": [3, 1.5],
@@ -33,36 +33,23 @@
 	"quarantine_duration_parameters": [21, 14, 14],
 	"quarantine_after_symptoms_probability": 0.75,
 	"ignore_quarantine_rules_probability": 0.05,
-	"contact_tracing_parameters": [2, 0.95, 0.9, 0.85, 0.75, 2, 3],
+	"contact_tracing_parameters": [2, 2, 3],
 	"contact_tracing_success_probability": [0.95, 0.65, 0.85, 0.25],
 	"intervention_infectiousrate_thresholds": [],
-	"intervention_day_thresholds": [0, 0, 0],
-	"vaccination_daily_parameters": [2000, 500],
+	"intervention_day_thresholds": [366, 366, 366],
+	"vaccination_daily_parameters": [3048, 1987],
 	"vaccination_effectiveness_parameters": [0.9, 0.9, 30],
 	"vaccination_infectiousrate_thresholds": [
 	],
-	"vaccination_day_thresholds": [
-									[0, 0.05], 
-									[30, 0.15], 
-									[60, 0.25], 
-									[90, 0.35], 
-									[120, 0.45], 
-									[150, 0.60],
-									[180, 0.80]
-								],
+	"vaccination_day_thresholds": [[366, 0]],
 	"masks_hygiene_distancing_infectiousrate_thresholds": [
 	],
-	"masks_hygiene_distancing_day_thresholds": [
-									[0, 0.05], 
-									[30, 0.10], 
-									[60, 0.15], 
-									[90, 0.20], 
-									[120, 0.30], 
-									[150, 0.40],
-									[180, 0.50]
+	"masks_hygiene_distancing_day_thresholds": [[366, 0]],
+	"travel_restrictions_infectiousrate_thresholds": [
 	],
+	"travel_restrictions_day_thresholds": [[366, 0]],
 	"lockdown_infectiousrate_thresholds": [],
-	"lockdown_day_thresholds": [90, 60, 30, 45, 180]
+	"lockdown_day_thresholds": [366, 366, 366, 366, 366]
 }
 
 

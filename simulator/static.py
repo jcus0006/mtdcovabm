@@ -404,7 +404,9 @@ class Static:
                 if index not in self.static_agents_dict:
                     self.static_agents_dict[index] = {}
 
-            self.static_agents_dict[index][name] = value
+            props = self.static_agents_dict[index].copy() # mutable values need to be copied, updated, then re-assigned
+            props[name] = value
+            self.static_agents_dict[index] = props
 
     # this assumes that static_agents_dict is being used (it does not consider array based)
     def set_props(self, index, props):

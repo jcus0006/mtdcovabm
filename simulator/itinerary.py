@@ -40,7 +40,7 @@ class Itinerary:
                 tourists=None,  
                 process_index=-1):
         
-        self.rng = np.random.default_rng(seed=6)
+        self.rng = np.random.default_rng() # seed=6
 
         self.one_to_two_hours = np.arange(6, 13)
 
@@ -79,6 +79,7 @@ class Itinerary:
         self.tourism_accom_breakfast_probability = self.params["tourism_accom_breakfast_probability"]
 
         # local
+        self.guardian_age_threshold = self.params["guardian_age_threshold"]
         self.non_daily_activities_employed_distribution = self.params["non_daily_activities_employed_distribution"] # [minage, maxage, normalworkday, vacation_local, vacation_travel, sick_leave]
         self.non_daily_activities_schools_distribution = self.params["non_daily_activities_schools_distribution"]
         self.non_daily_activities_nonworkingday_distribution = self.params["non_daily_activities_nonworkingday_distribution"] # [minage, maxage, local, travel, sick]
@@ -434,7 +435,7 @@ class Itinerary:
 
                 guardian = None
                 is_guardian_quarantined, is_guardian_hospitalised = False, False
-                if age < 15 and guardian_id is not None:
+                if age < self.guardian_age_threshold and guardian_id is not None:
                     if guardian_hospitalisation_days is not None and len(guardian_hospitalisation_days) > 0:
                         hosp_start_day, hosp_end_day = guardian_hospitalisation_days[0], guardian_hospitalisation_days[2]
 
@@ -540,7 +541,7 @@ class Itinerary:
                             prev_weekday = 7
 
                         sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                        min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
+                        min_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7]
                         
                         alpha, beta = alpha_weekday, beta_weekday
                         if prev_weekday == 6 or prev_weekday == 7: # weekend
@@ -1044,7 +1045,7 @@ class Itinerary:
                                 # set sleeping hours by age brackets
 
                                 sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                                min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
+                                min_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7]
                                 
                                 alpha, beta = alpha_weekday, beta_weekday
                                 if weekday == 6 or weekday == 7: # weekend
@@ -1169,7 +1170,7 @@ class Itinerary:
 
                         elif sampled_non_daily_activity == NonDailyActivity.Sick: # stay home all day, simply sample sleep - to refer to on the next day itinerary
                             sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                            min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
+                            min_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7]
                             
                             alpha, beta = alpha_weekday, beta_weekday
                             if weekday == 6 or weekday == 7: # weekend
@@ -1914,7 +1915,7 @@ class Itinerary:
                     if next_day_checkin_timestep is None:
                         # set sleeping hours by age brackets
                         sleeping_hours_by_age_group = self.sleeping_hours_by_age_groups[age_bracket_index]
-                        min_start_sleep_hour, max_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend, param_max = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7], sleeping_hours_by_age_group[8], sleeping_hours_by_age_group[9]
+                        min_start_sleep_hour, start_hour_range, alpha_weekday, beta_weekday, alpha_weekend, beta_weekend = sleeping_hours_by_age_group[2], sleeping_hours_by_age_group[3], sleeping_hours_by_age_group[4], sleeping_hours_by_age_group[5], sleeping_hours_by_age_group[6], sleeping_hours_by_age_group[7]
                         
                         alpha, beta = alpha_weekday, beta_weekday
                         if weekday == 6 or weekday == 7: # weekend

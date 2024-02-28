@@ -11,7 +11,7 @@ from dask.distributed import get_worker
 
 class Tourism:
     def __init__(self, tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
-        self.rng = np.random.default_rng(seed=6)
+        self.rng = np.random.default_rng() # seed = 6
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
         self.tourists_arrivals_departures_for_nextday = tourists_arrivals_departures_for_nextday
