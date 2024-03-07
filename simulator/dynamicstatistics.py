@@ -167,6 +167,9 @@ class DynamicStatistics:
             self.init_stage = False
 
     def calculate_seir_states_counts(self, vars_util, ignore_tourists=False, tourists_only=False):
+        if not tourists_only:
+            self.current_locals_infected = set()
+        
         n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = 0, 0, 0, 0, 0
         for id, state in vars_util.agents_seir_state.items():
             if (not tourists_only and (not ignore_tourists or id < self.n_locals)) or (tourists_only and id >= self.n_locals):

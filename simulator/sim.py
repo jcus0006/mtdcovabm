@@ -29,9 +29,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 365, # 365/20
+            "simulationdays": 7, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -51,10 +51,10 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": False,
+            "dask_full_stateful": True,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -75,7 +75,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "dask_scheduler_node": "localhost",
             "dask_scheduler_host": "localhost", # try to force dask to start the scheduler on this IP
             "dask_nodes": ["localhost"], # 192.168.1.23
-            "dask_nodes_n_workers": [1], # 3, 11
+            "dask_nodes_n_workers": [8], # 3, 11
             # "dask_scheduler_node": "localhost",
             # "dask_scheduler_host": "192.168.1.17", # try to force dask to start the scheduler on this IP
             # "dask_nodes": ["localhost", "192.168.1.18", "192.168.1.19"ssh, "192.168.1.21", "192.168.1.23"], # (to be called with numprocesses = 1) [scheduler, worker1, worker2, ...] 192.168.1.18 
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "500kagents2mtourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "mp_8p_10k_epistatname.txt"
+            "logfilename": "dask_fs_10k_7d_1n_8w_withinffix.txt" # dask_fs_10k_365d_1n_8w_regression.txt
         }
 
 # Load configuration
@@ -1376,7 +1376,7 @@ def main():
             print("simulating day {0}".format(str(day)))
             tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures = 0, 0, 0, 0
             seir_states = None # reset for every day, only incremented for dask_full_stateful flow
-            remote_tour_time_take_sum, remove_tour_time_taken_avg = 0, 0 # only used to calculate remote average time taken for tourists processing
+            remote_tour_time_take_day_sum, remote_tour_time_taken_day_avg = 0, 0 # only used to calculate remote average time taken for tourists processing
 
             if f is not None:
                 f.flush()
@@ -1665,7 +1665,7 @@ def main():
 
                                 a_it_main_tt, tour_tt, a_ws_tt, a_it_tt, a_it_avg_tt = it_times_taken
 
-                                remote_tour_time_take_sum += tour_tt
+                                remote_tour_time_take_day_sum += tour_tt
                                 
                                 print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, avg time taken: {a_it_avg_tt}")
                                 if f is not None:
@@ -1674,9 +1674,10 @@ def main():
                             # persist new intervention counts
                             dyn_params.statistics.new_tests, dyn_params.statistics.new_vaccinations, dyn_params.statistics.new_quarantined, dyn_params.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
 
-                            remove_tour_time_taken_avg = remote_tour_time_take_sum / len(actors)
-                            perf_timings_df.loc[day, "tourismitinerary_day"] = 0 # this is irrelevant, there is no way to calculate it
-                            perf_timings_df.loc[day, "tourismitinerary_avg"] = round(remove_tour_time_taken_avg, 2)
+                            remote_tour_time_taken_day_avg = remote_tour_time_take_day_sum / len(actors)
+                            tourist_itinerary_sum_time_taken += remote_tour_time_taken_day_avg
+                            perf_timings_df.loc[day, "tourismitinerary_day"] = round(remote_tour_time_taken_day_avg, 2) # calculated as average across actors
+                            perf_timings_df.loc[day, "tourismitinerary_avg"] = round(tourist_itinerary_sum_time_taken / day, 2) # calculated as running average, of average across actors
 
                             # sync results of actors
                             start_send_results = time.time()
@@ -1806,10 +1807,7 @@ def main():
                             for worker_index, actor in enumerate(actors):
                                 start_send_results_actor = time.time()
                                 actor_future = actor.send_results()
-                                success, agents_epi_partial = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
-                                if agents_epi_partial is not None:
-                                    for id, agent_epi in agents_epi_partial.items():
-                                        agents_epi[id] = agent_epi
+                                success = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
 
                                 time_taken_send_results_actor = time.time() - start_send_results_actor
                                 print(f"send_results (after CN) of actor {worker_index}, time_taken: {time_taken_send_results_actor}")
@@ -1849,6 +1847,8 @@ def main():
                     if params["dask_full_stateful"]:
                         dfs_start = time.time()
 
+                        dyn_params.statistics.current_locals_infected = set()
+
                         if seir_states is None:
                             seir_states = 0, 0, 0, 0, 0
 
@@ -1862,9 +1862,19 @@ def main():
                         success = True
                         
                         for future in as_completed(futures):
-                            seir_states_partial = future.result()
+                            seir_states_partial, current_locals_infected_partial, agents_epi_partial = future.result()
 
                             success &= seir_states_partial is not None
+
+                            # essentially this returns the last "event" scheduling for infected agents for the day; 
+                            # only drawback is unnecessary computation from concurrent processes, but there is no way around it (as one is not aware of the other)
+                            # it would also be ideal to return updated_agent_ids only, it would be much faster. 
+                            # however, this is not possible, as we do not currently have means to identify which agents_epi keys were updated from the itinerary (hence would potentially return incomplete data)
+                            if agents_epi_partial is not None: 
+                                for id, agent_epi in agents_epi_partial.items():
+                                    agents_epi[id] = agent_epi
+                            else:
+                                print("agents_epi_partial is None. this is likely to be an issue")
 
                             if seir_states_partial is not None:
                                 n_deceased_partial, n_exposed_partial, n_susceptible_partial, n_infectious_partial, n_recovered_partial = seir_states_partial
@@ -1874,6 +1884,11 @@ def main():
                                 n_susceptible += n_susceptible_partial
                                 n_infectious += n_infectious_partial
                                 n_recovered += n_recovered_partial
+                            else:
+                                print("seir_states_partial is None. this is likely to be an issue")
+
+                            if current_locals_infected_partial is not None:
+                                dyn_params.statistics.current_locals_infected.update(current_locals_infected_partial)
 
                         seir_states = n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered
                         dfs_cleanup_time_taken = time.time() - dfs_start
