@@ -551,7 +551,7 @@ class ActorDist:
                 return success
             elif self.simstage == SimStage.ContactNetwork:
                 self.updated_agent_ids = []
-                return success, self.agents_epi
+                return success # was returning agents_epi here, now will return them from clean_up_and_calculate_seir_states_daily
         except Exception as e:
             with open(stack_trace_log_file_name, 'w') as fi:
                 traceback.print_exc(file=fi)
@@ -740,7 +740,7 @@ class ActorDist:
         # if original_stdout is not None:
         #     sys.stdout = original_stdout
 
-        return seir_states
+        return seir_states, self.agents_epi
 
 class SimStage(Enum):
     TouristSync = 0

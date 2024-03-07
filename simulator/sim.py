@@ -31,7 +31,7 @@ import psutil
 
 params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 3, # 365/20
+            "simulationdays": 7, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_fs_10k_temptest_uniissues.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
+            "logfilename": "dask_fs_10k_agentsepiissues_debug.txt" # dask_strat2_1n_6w_100k_6d_preliminarytests.txt
         }
 
 # Load configuration
@@ -1367,7 +1367,7 @@ def main():
             print("simulating day {0}".format(str(day)))
             tourists_num_active, tourists_num_arrivals, tourists_num_arrivals_nextday, tourists_num_departures = 0, 0, 0, 0
             seir_states = None # reset for every day, only incremented for dask_full_stateful flow
-            remote_tour_time_take_sum, remove_tour_time_taken_avg = 0, 0 # only used to calculate remote average time taken for tourists processing
+            remote_tour_time_take_day_sum, remote_tour_time_taken_day_avg = 0, 0 # only used to calculate remote average time taken for tourists processing
 
             if f is not None:
                 f.flush()
@@ -1651,15 +1651,16 @@ def main():
 
                                 a_it_main_tt, tour_tt, a_ws_tt, a_it_tt, a_it_avg_tt = it_times_taken
 
-                                remote_tour_time_take_sum += tour_tt
+                                remote_tour_time_take_day_sum += tour_tt
                                 
                                 print(f"actor worker index {a_worker_index}, contact tracing agent ids: {len(contact_tracing_agent_ids_partial)}, time taken: {a_it_main_tt}, tourists time taken: {tour_tt}, working schedule time taken: {a_ws_tt}, itinerary time taken: {a_it_tt}, avg time taken: {a_it_avg_tt}")
                                 if f is not None:
                                     f.flush()
-
-                            remove_tour_time_taken_avg = remote_tour_time_take_sum / len(actors)
-                            perf_timings_df.loc[day, "tourismitinerary_day"] = 0 # this is irrelevant, there is no way to calculate it
-                            perf_timings_df.loc[day, "tourismitinerary_avg"] = round(remove_tour_time_taken_avg, 2)
+         
+                            remote_tour_time_taken_day_avg = remote_tour_time_take_day_sum / len(actors)
+                            tourist_itinerary_sum_time_taken += remote_tour_time_taken_day_avg
+                            perf_timings_df.loc[day, "tourismitinerary_day"] = round(remote_tour_time_taken_day_avg, 2) # calculated as average across actors
+                            perf_timings_df.loc[day, "tourismitinerary_avg"] = round(tourist_itinerary_sum_time_taken / day, 2) # calculated as running average, of average across actors
 
                             # sync results of actors
                             start_send_results = time.time()
@@ -1789,10 +1790,7 @@ def main():
                             for worker_index, actor in enumerate(actors):
                                 start_send_results_actor = time.time()
                                 actor_future = actor.send_results()
-                                success, agents_epi_partial = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
-                                if agents_epi_partial is not None:
-                                    for id, agent_epi in agents_epi_partial.items():
-                                        agents_epi[id] = agent_epi
+                                success = actor_future.result() # different pattern; compute result immediately (completely synchronous due to deadlock issue)
 
                                 time_taken_send_results_actor = time.time() - start_send_results_actor
                                 print(f"send_results (after CN) of actor {worker_index}, time_taken: {time_taken_send_results_actor}")
@@ -1845,9 +1843,19 @@ def main():
                         success = True
                         
                         for future in as_completed(futures):
-                            seir_states_partial = future.result()
+                            seir_states_partial, agents_epi_partial = future.result()
 
                             success &= seir_states_partial is not None
+                            
+                            # essentially this returns the last "event" scheduling for infected agents for the day; 
+                            # only drawback is unnecessary computation from concurrent processes, but there is no way around it (as one is not aware of the other)
+                            # it would also be ideal to return updated_agent_ids only, it would be much faster. 
+                            # however, this is not possible, as we do not currently have means to identify which agents_epi keys were updated from the itinerary (hence would potentially return incomplete data)
+                            if agents_epi_partial is not None: 
+                                for id, agent_epi in agents_epi_partial.items():
+                                    agents_epi[id] = agent_epi
+                            else:
+                                print("agents_epi_partial is None. this is likely to be an issue")
 
                             if seir_states_partial is not None:
                                 n_deceased_partial, n_exposed_partial, n_susceptible_partial, n_infectious_partial, n_recovered_partial = seir_states_partial
@@ -1857,6 +1865,8 @@ def main():
                                 n_susceptible += n_susceptible_partial
                                 n_infectious += n_infectious_partial
                                 n_recovered += n_recovered_partial
+                            else:
+                                print("seir_states_partial is None. this is likely to be an issue")
 
                         seir_states = n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered
                         dfs_cleanup_time_taken = time.time() - dfs_start
