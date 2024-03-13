@@ -49,16 +49,16 @@
 	"masks_hygiene_distancing_infectiousrate_thresholds": [
 	],
 	"masks_hygiene_distancing_day_thresholds": [
-		[1, 0.5],
-		[30, 0.7],
-		[60, 0.9]
+		[1, 0.3],
+		[30, 0.5],
+		[60, 0.7]
 	],
 	"travel_restrictions_infectiousrate_thresholds": [
 	],
 	"travel_restrictions_day_thresholds": [
-		[10, 0.5],
-		[30, 0.75],
-		[60, 0.90]
+		[10, 0.3],
+		[30, 0.5],
+		[60, 0.8]
 	],
 	"lockdown_infectiousrate_thresholds": [],
 	"lockdown_day_thresholds": [20, 14, 10, 12, 75]

@@ -29,9 +29,9 @@ from pympler import asizeof
 from copy import copy, deepcopy
 import psutil
 
-params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents2ktourists2019_decupd_v4)
+params = {  "popsubfolder": "1kagents4ktourists2019_decupd_v4", # empty takes root (was 500kagents2mtourists2019_decupd_v4 / 100kagents400ktourists2019_decupd_v4 / 10kagents40ktourists2019_decupd_v4 / 1kagents4ktourists2019_decupd_v4)
             "timestepmins": 10,
-            "simulationdays": 7, # 365/20
+            "simulationdays": 365, # 365/20
             "loadagents": True,
             "loadhouseholds": True,
             "loadinstitutions": True,
@@ -51,10 +51,10 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "proc_usepool": 3, # Pool apply_async 0, Process 1, ProcessPoolExecutor = 2, Pool IMap 3, Dask MP Scheduler = 4
             "sync_usethreads": False, # Threads True, Processes False,
             "sync_usequeue": False,
-            "use_mp": False, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
-            "use_shm": False, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
+            "use_mp": True, # if this is true, single node multiprocessing is used, if False, Dask is used (use_shm must be True - currently)
+            "use_shm": True, # use_mp_rawarray: this is applicable for any case of mp (if not using mp, it is set to False by default)
             "dask_use_mp": False, # when True, dask is used with multiprocessing in each node. if use_mp and dask_use_mp are False, dask workers are used for parallelisation each node
-            "dask_full_stateful": True,
+            "dask_full_stateful": False,
             "dask_actors_innerproc_assignment": False, # when True, assigns work based on the inner-processes within the Dask worker, when set to False, assigns work based on the number of nodes. this only works when dask_usemp = True
             "use_static_dict_tourists": True, # force this!
             "use_static_dict_locals": False,
@@ -96,7 +96,7 @@ params = {  "popsubfolder": "10kagents40ktourists2019_decupd_v4", # empty takes 
             "remotelogsubfoldername": "AppsPy/mtdcovabm/logs",
             "remotepopsubfoldername": "AppsPy/mtdcovabm/population",
             "logmemoryinfo": False,
-            "logfilename": "dask_fs_10k_7d_1n_8w_withinffix.txt" # dask_fs_10k_365d_1n_8w_regression.txt
+            "logfilename": "mp_1k_8p_dirconmarkerbug_2.txt" # dask_fs_10k_365d_1n_8w_regression.txt
         }
 
 # Load configuration
@@ -1938,7 +1938,10 @@ def main():
                     #                                         log_file_name)
 
                     # calculate number of contacts per day for statistics
-                    dyn_params.statistics.num_direct_contacts = len(vars_util.directcontacts_by_simcelltype_by_day) - vars_util.directcontacts_by_simcelltype_by_day_start_marker[day]
+                    if day in vars_util.directcontacts_by_simcelltype_by_day_start_marker:
+                        dyn_params.statistics.num_direct_contacts = len(vars_util.directcontacts_by_simcelltype_by_day) - vars_util.directcontacts_by_simcelltype_by_day_start_marker[day]
+                    else:
+                        dyn_params.statistics.num_direct_contacts = 0
 
                     updated_agent_ids = []
 
