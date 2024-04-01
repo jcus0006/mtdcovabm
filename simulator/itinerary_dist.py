@@ -44,6 +44,8 @@ def localitinerary_distributed_finegrained(client: Client,
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_stack_trace" + ".txt"
         task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
 
+        interventions_totals = [0, 0, 0, 0]
+
         delayed_computations = []
         futures = []
 
@@ -116,19 +118,22 @@ def localitinerary_distributed_finegrained(client: Client,
             futures = client.map(localitinerary_worker_res, map_params)
         
         if (dask_mode == 0 and dask_batch_size == -1) or dask_mode == 1 or dask_mode == 3:
-            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name)
+            it_agents, agents_epi, vars_util, interventions_totals, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name)
         elif dask_mode == 0 and not dask_batch_recurring:
-            it_agents, agents_epi, vars_util = handle_futures_non_recurring_batches(MethodType.ItineraryDist, day, client, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params)
+            it_agents, agents_epi, vars_util, interventions_totals = handle_futures_non_recurring_batches(day, client, futures, it_agents, agents_epi, vars_util, interventions_totals, task_results_stack_trace_log_file_name, map_params)
         elif dask_mode == 0 and dask_batch_recurring:
             for i in range(num_recursive_calls_required):
-                it_agents, agents_epi, vars_util = handle_futures_recurring_batches(MethodType.ItineraryDist, day, client, dask_batch_size, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
+                it_agents, agents_epi, vars_util, interventions_totals = handle_futures_recurring_batches(day, client, dask_batch_size, it_agents, agents_epi, vars_util, interventions_totals, task_results_stack_trace_log_file_name, map_params, safe_recurion_call_count, 0)
         else:
             for result in results:
-                agents_partial_result, agents_epi_partial_result, vars_util_partial_result = result
+                agents_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result = result
                 
                 # was sync_results_res
-                it_agents, agents_epi, vars_util = daskutil.sync_results_it(day, it_agents, agents_epi, vars_util, agents_partial_result, agents_epi_partial_result, vars_util_partial_result)
+                it_agents, agents_epi, vars_util, interventions_totals = daskutil.sync_results_it(day, it_agents, agents_epi, vars_util, interventions_totals, agents_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result)
         
+        # persist new intervention counts
+        dyn_params.statistics.new_tests, dyn_params.statistics.new_vaccinations, dyn_params.statistics.new_quarantined, dyn_params.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
+
         if not keep_workers_open:
             start = time.time()
             client.shutdown()
@@ -163,6 +168,7 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dist_stack_trace" + ".txt"
         task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
 
+        interventions_totals = [0, 0, 0, 0]
         if dask_single_item_per_task:
             for hh_insts_partial in util.yield_chunks(hh_insts, dask_chunk_size):
                 dask_params = []
@@ -211,7 +217,7 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
                 print("computed_results generation: " + str(time_taken))
 
                 start = time.time()
-                it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+                it_agents, agents_epi, vars_util, interventions_totals, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
 
                 time_taken = time.time() - start
                 print("sync results: " + str(time_taken))
@@ -266,9 +272,12 @@ def localitinerary_distributed_finegrained_chunks(client: Client,
             print("computed_results: " + str(time_taken))
 
             start = time.time()
-            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            it_agents, agents_epi, vars_util, interventions_totals, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
+
+        # persist new intervention counts
+        dyn_params.statistics.new_tests, dyn_params.statistics.new_vaccinations, dyn_params.statistics.new_quarantined, dyn_params.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
 
         if not keep_workers_open:
             start = time.time()
@@ -301,6 +310,8 @@ def localitinerary_distributed_map_batched(client: Client,
     try:
         stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_dist_stack_trace" + ".txt"
         task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
+
+        interventions_totals = [0, 0, 0, 0]
 
         dask_params = []
 
@@ -384,9 +395,12 @@ def localitinerary_distributed_map_batched(client: Client,
         start = time.time()
         # time.sleep(600)
         if dask_map_batched_results:
-            it_agents, agents_epi, vars_util = daskutil.handle_futures_batches(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            it_agents, agents_epi, vars_util, interventions_totals = daskutil.handle_futures_batches(day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
         else:
-            it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+            it_agents, agents_epi, vars_util, interventions_totals, _, _ = daskutil.handle_futures(MethodType.ItineraryDist, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, False, dask_full_array_mapping)
+
+        # persist new intervention counts
+        dyn_params.statistics.new_tests, dyn_params.statistics.new_vaccinations, dyn_params.statistics.new_quarantined, dyn_params.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
 
         time_taken = time.time() - start
         print("sync results: " + str(time_taken))
@@ -441,6 +455,8 @@ def localitinerary_distributed(client: Client,
         # task_results_stack_trace_log_file_name = log_file_name.replace(".txt", "") + "_it_main_res_task_results_stack_trace" + ".txt"
 
         # process_counter = manager.Value("i", num_processes)
+
+        interventions_totals = [0, 0, 0, 0]
 
         with performance_report(filename=dask_perf_log_file_name):
             workers = list(client.scheduler_info()["workers"].keys()) # list()
@@ -522,11 +538,11 @@ def localitinerary_distributed(client: Client,
             futures = []
 
             # mem troubleshooting
-            hh_insts_size = util.asizeof_formatted(hh_insts)
-            it_agents_size = util.asizeof_formatted(it_agents)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
-            vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
+            # hh_insts_size = util.asizeof_formatted(hh_insts)
+            # it_agents_size = util.asizeof_formatted(it_agents)
+            # agents_epi_size = util.asizeof_formatted(agents_epi)
+            # vars_util_size = util.asizeof_formatted(vars_util)
+            # print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
 
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
@@ -591,16 +607,16 @@ def localitinerary_distributed(client: Client,
                                 dynparams, 
                                 log_file_name)  
 
-                    params_size = util.asizeof_formatted(params)
-                    print(f"params for {worker_index} size: {params_size}")
+                    # params_size = util.asizeof_formatted(params)
+                    # print(f"params for {worker_index} size: {params_size}")
 
-                    hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
-                    it_agents_partial_size = util.asizeof_formatted(agents_partial)
-                    agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
-                    agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
-                    vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
-                    dyn_params_size = util.asizeof_formatted(dynparams)
-                    print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
+                    # hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
+                    # it_agents_partial_size = util.asizeof_formatted(agents_partial)
+                    # agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
+                    # agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
+                    # vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                    # dyn_params_size = util.asizeof_formatted(dynparams)
+                    # print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
                     # print("starting process index with " + str(len(hh_insts_partial)) + " residences on " + str(remote_worker_index) + " (" + worker_url + ") at " + str(time.time()))
                     # if f is not None:
                     #     f.flush()
@@ -660,7 +676,10 @@ def localitinerary_distributed(client: Client,
             else:
                 method_type = MethodType.ItineraryDistMP
 
-            it_agents, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
+            it_agents, agents_epi, vars_util, interventions_totals, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
+            
+            # persist new intervention counts
+            dynparams.statistics.new_tests, dynparams.statistics.new_vaccinations, dynparams.statistics.new_quarantined, dynparams.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))
@@ -680,7 +699,7 @@ def localitinerary_distributed(client: Client,
             traceback.print_exc(file=fi)
         raise
 
-def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
+def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, agents_epi, vars_util, interventions_totals, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count):
     if batch_size > len(map_params):
         batch_size = len(map_params)
 
@@ -697,12 +716,12 @@ def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, ag
         try:
             result = future.result()
 
-            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = result
+            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result = result
 
             # was sync_results_res
-            agents_dynamic, vars_util = daskutil.sync_results_it(day, agents_dynamic, agents_epi, vars_util, agents_dynamic_partial_result, vars_util_partial_result)
+            agents_dynamic, vars_util, interventions_totals = daskutil.sync_results_it(day, agents_dynamic, agents_epi, vars_util, interventions_totals, agents_dynamic_partial_result, vars_util_partial_result, interventions_totals_partial_result)
         
-            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None, None
+            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result = None, None, None, None
         except:
             with open(task_results_stack_trace_log_file_name, 'a') as fi:
                 traceback.print_exc(file=fi)
@@ -710,12 +729,12 @@ def handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, ag
             future.release()
 
     if len(map_params) == 0 or recursion_count == max_recursion_calls:
-        return agents_dynamic, agents_epi, vars_util
+        return agents_dynamic, agents_epi, vars_util, interventions_totals
     else:
         recursion_count += 1
-        return handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count)
+        return handle_futures_recurring_batches(day, client, batch_size, agents_dynamic, vars_util, interventions_totals, task_results_stack_trace_log_file_name, map_params, max_recursion_calls, recursion_count)
 
-def handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, agents_epi, vars_util, task_results_stack_trace_log_file_name, map_params):
+def handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, agents_epi, vars_util, interventions_totals, task_results_stack_trace_log_file_name, map_params):
     temp_futures = []
 
     if len(futures) == 0 and len(map_params) > 0: # take care of all remaining with this batch
@@ -729,12 +748,12 @@ def handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, a
         try:
             result = future.result()
 
-            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = result
+            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result = result
 
             # was sync_results_res
-            agents_dynamic, vars_util = daskutil.sync_results_it(day, agents_dynamic, agents_epi, vars_util, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result)
+            agents_dynamic, vars_util, interventions_totals = daskutil.sync_results_it(day, agents_dynamic, agents_epi, vars_util, interventions_totals, agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result)
         
-            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result = None, None
+            agents_dynamic_partial_result, agents_epi_partial_result, vars_util_partial_result, interventions_totals_partial_result = None, None, None, None
         except:
             with open(task_results_stack_trace_log_file_name, 'a') as fi:
                 traceback.print_exc(file=fi)
@@ -747,9 +766,9 @@ def handle_futures_non_recurring_batches(day, client, futures, agents_dynamic, a
                 temp_futures.append(future)
 
     if len(temp_futures) == 0 and len(map_params) == 0:
-        return agents_dynamic, agents_epi, vars_util
+        return agents_dynamic, agents_epi, vars_util, interventions_totals
     else:
-        return handle_futures_non_recurring_batches(day, client, temp_futures, agents_dynamic, vars_util, task_results_stack_trace_log_file_name, map_params)
+        return handle_futures_non_recurring_batches(day, client, temp_futures, agents_dynamic, vars_util, interventions_totals, task_results_stack_trace_log_file_name, map_params)
 
 def load_json_future(jsonstr):
     return json.loads(jsonstr, object_hook=jsonutil.jsonKeys2int)
@@ -874,8 +893,9 @@ def localitinerary_worker_res(params):
             # time_taken = time.time() - start
             # print("generate_itinerary_hh for simday " + str(day) + ", weekday " + str(weekday) + ", time taken: " + str(time_taken))
         
+        interventions_statistics = [itinerary_util.new_tests, itinerary_util.new_vaccinations, itinerary_util.new_quarantined, itinerary_util.new_hospitalised]
         # return agents_dynamic, vars_util_mp.cells_agents_timesteps, vars_util_mp.agents_seir_state, vars_util_mp.agents_infection_type, vars_util_mp.agents_infection_severity, vars_util_mp.agents_seir_state_transition_for_day, vars_util_mp.contact_tracing_agent_ids
-        return agents_dynamic, agents_epi, vars_util_mp
+        return agents_dynamic, agents_epi, vars_util_mp, interventions_statistics
     except:
         with open(stack_trace_log_file_name, 'a+') as fi: # it_res_stack_trace.txt
             traceback.print_exc(file=fi)

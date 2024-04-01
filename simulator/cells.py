@@ -13,7 +13,7 @@ class Cells:
         self.dask_full_stateful = dask_full_stateful
         self.cell_ids_by_num_members = []
 
-        np.random.seed(seed)
+        # np.random.seed(seed) # seed
 
     def add_to_cells(self, cell_type, place, num_members):
         self.cells[self.cellindex] = { "type": cell_type, "place": place}

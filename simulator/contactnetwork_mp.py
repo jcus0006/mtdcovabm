@@ -69,10 +69,10 @@ def contactnetwork_parallel(manager,
 
             imap_params, imap_results = [], []
 
-            cat_size = util.asizeof_formatted(vars_util.cells_agents_timesteps)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
-            vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"cat size: {cat_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
+            # cat_size = util.asizeof_formatted(vars_util.cells_agents_timesteps)
+            # agents_epi_size = util.asizeof_formatted(agents_epi)
+            # vars_util_size = util.asizeof_formatted(vars_util)
+            # print(f"cat size: {cat_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
 
             for process_index in range(num_processes):
                 # cells_partial = {}
@@ -133,15 +133,15 @@ def contactnetwork_parallel(manager,
 
                 params = (day, weekday, agents_epi_partial, vars_util_partial, dynparams, contact_network_sum_time_taken, process_index, process_counter, log_file_name, static_agents_dict)
 
-                params_size = util.asizeof_formatted(params)
-                print(f"params for {process_index} size: {params_size}")
+                # params_size = util.asizeof_formatted(params)
+                # print(f"params for {process_index} size: {params_size}")
 
-                cat_partial_size = util.asizeof_formatted(vars_util_partial.cells_agents_timesteps)
-                agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
-                vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
-                static_agents_dict_size = util.asizeof_formatted(static_agents_dict)
-                dyn_params_size = util.asizeof_formatted(dynparams)
-                print(f"cat size: {cat_partial_size}, agents_epi size: {agents_epi_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}, static agents dict size: {static_agents_dict_size}")
+                # cat_partial_size = util.asizeof_formatted(vars_util_partial.cells_agents_timesteps)
+                # agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
+                # vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                # static_agents_dict_size = util.asizeof_formatted(static_agents_dict)
+                # dyn_params_size = util.asizeof_formatted(dynparams)
+                # print(f"cat size: {cat_partial_size}, agents_epi size: {agents_epi_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}, static agents dict size: {static_agents_dict_size}")
                 
                 imap_params.append(params)
                 # pool.apply_async(contactnetwork_worker, args=(params,))
@@ -183,7 +183,7 @@ def contactnetwork_parallel(manager,
 
             start = time.time()
             # util.log_memory_usage(prepend_text= "Before syncing contact network results ")
-            _, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
+            _, agents_epi, vars_util, _, _, _ = daskutil.handle_futures(MethodType.ContactNetworkMP, day, imap_results, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, False, None)
             # util.log_memory_usage(prepend_text= "After syncing contact network results ")
             
             time_taken = time.time() - start

@@ -85,9 +85,14 @@ def random_group_partition(group_size, min_size, max_size, gamma_shape = 0.5, k=
     
     return group_sizes
 
-def sample_log_normal(mean, std, size, isInt=False):
-    dist_mean  = np.log(mean**2 / np.sqrt(std**2 + mean**2)) # Computes the mean of the underlying normal distribution
-    dist_sigma = np.sqrt(np.log(std**2/mean**2 + 1)) # Computes sigma for the underlying normal distribution
+def sample_log_normal(mean, std, size, isInt=False, recomputeparams=True):
+    if recomputeparams: # recompute params for cases like Covasim duration params, where the mean and std are converted into lognormal params mean and sigma
+        dist_mean  = np.log(mean**2 / np.sqrt(std**2 + mean**2)) # Computes the mean of the underlying normal distribution
+        dist_sigma = np.sqrt(np.log(std**2/mean**2 + 1)) # Computes sigma for the underlying normal distribution
+    else:
+        dist_mean = mean # use exact parameters as is for cases where parameters have already been retrospectively fitted prior to the simulation (this is not used)
+        dist_sigma = std
+
     samples = np.random.lognormal(mean=dist_mean, sigma=dist_sigma, size=size)
 
     if isInt:
@@ -101,10 +106,13 @@ def sample_log_normal(mean, std, size, isInt=False):
         else:
             return int_samples
 
+    # if isInt:
+    #     samples = np.round(samples).astype(int)
+
     if size == 1:
         return samples[0]
-    
-    return samples
+    else:
+        return samples
 
 def calculate_vaccination_multipliers(agents_vaccination_doses, agentid, current_day, vaccine_immunity, vaccine_asymptomatic, exponential_decay_interval, accum_time=None):
     immunity_multiplier = 1.0
@@ -629,6 +637,16 @@ def sync_state_info_cells_agents_timesteps(vars_util, vars_util_partial):
         vars_util.cells_agents_timesteps[cellid] += agents_timesteps
 
     return vars_util
+
+def sync_interventions_totals(interventions_totals, interventions_totals_partial):
+    new_tests, new_vaccinations, new_quarantined, new_hospitalised = interventions_totals
+    new_tests_partial, new_vaccinations_partial, new_quarantined_partial, new_hospitalised_partial = interventions_totals_partial
+    new_tests += new_tests_partial
+    new_vaccinations += new_vaccinations_partial
+    new_quarantined += new_quarantined_partial
+    new_hospitalised += new_hospitalised_partial
+    interventions_totals = [new_tests, new_vaccinations, new_quarantined, new_hospitalised]
+    return interventions_totals
 
 # load balancing
 

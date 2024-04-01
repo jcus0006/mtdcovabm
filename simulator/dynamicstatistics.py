@@ -1,6 +1,7 @@
 from epidemiologyclasses import SEIRState
 from vars import Vars
 import time
+import numpy as np
 
 class DynamicStatistics:
     def __init__(self, n_locals, n_tourists, n_tourists_initial):
@@ -22,6 +23,8 @@ class DynamicStatistics:
         self.new_infectious = 0 # ok
         self.new_recovered = 0 # ok
         self.new_deaths = 0 # ok
+        self.num_direct_contacts = 0 # ok
+        self.avg_direct_contacts_per_agent = 0 # ok
         self.infectious_rate = 0 # ok
         self.recovery_rate = 0 # ok
         self.mortality_rate = 0 # ok
@@ -31,14 +34,27 @@ class DynamicStatistics:
         self.total_tests = 0
         self.total_contacttraced = 0
         self.total_quarantined = 0
-        self.total_hospitalized = 0
-        self.total_to_be_vaccinated = 0
+        self.total_hospitalised = 0
         self.new_vaccinations = 0
         self.new_tests = 0
         self.new_contacttraced = 0
         self.new_quarantined = 0
-        self.new_hospitalized = 0
-        self.average_contacts_per_person = 0
+        self.new_hospitalised = 0
+
+        self.num_locals_infected_once = 0
+        self.num_locals_infected_at_least_once = 0
+        self.num_locals_infected_more_than_once = 0
+        self.num_locals_infected_never = 0
+        self.num_locals_max_infected = 0
+        self.avg_locals_infections = 0
+        self.med_locals_infections = 0
+        self.std_locals_infections = 0
+
+        self.locals_infected_counts = {}
+        self.current_locals_infected = set()
+        self.prev_locals_infected = set()
+
+        self.init_stage = False
 
     def refresh_rates(self, day, act_tourists, arr_tourists, arr_nextday_tourists, dep_tourists, vars_util, seir_states=None): # optimised
         start = time.time()
@@ -110,11 +126,50 @@ class DynamicStatistics:
         
         self.total_active_population = self.n_locals + self.total_active_tourists - n_deceased
 
+        if self.num_direct_contacts > 0:
+            self.avg_direct_contacts_per_agent = round(self.num_direct_contacts / self.total_active_population, 2)
+
+        # self.new_tests, self.new_vaccinations, self.new_quarantined, self.new_hospitalised = intervention_totals
+
+        self.total_tests += self.new_tests
+        self.total_vaccinations += self.new_vaccinations
+        self.total_quarantined += self.new_quarantined
+        self.total_hospitalised += self.new_hospitalised
+        self.total_contacttraced += self.new_contacttraced
+
         self.infectious_rate = n_infectious / self.total_active_population
         self.recovery_rate = n_recovered / self.total_active_population
         self.mortality_rate = n_deceased / self.total_active_population
 
+        # local infected counts
+        if not self.init_stage:
+            new_infected = self.current_locals_infected - self.prev_locals_infected # set difference
+            for id in new_infected:
+                if id not in self.locals_infected_counts:
+                    self.locals_infected_counts[id] = 1
+                else:
+                    self.locals_infected_counts[id] += 1
+            
+            self.num_locals_infected_at_least_once = len(self.locals_infected_counts)
+            self.num_locals_infected_never = self.n_locals - self.num_locals_infected_at_least_once 
+
+            locals_infected_counts = np.array(list(self.locals_infected_counts.values()) + [0 for _ in range(self.num_locals_infected_never)]) # represent zeros too
+            self.num_locals_infected_once = np.sum(locals_infected_counts == 1)
+            self.num_locals_infected_more_than_once = np.sum(locals_infected_counts > 1)
+            self.num_locals_max_infected = np.max(locals_infected_counts)
+            self.avg_locals_infections = np.mean(locals_infected_counts)
+            self.med_locals_infections = np.median(locals_infected_counts)
+            self.std_locals_infections = np.std(locals_infected_counts)
+
+            self.prev_locals_infected = self.current_locals_infected.copy()
+
+        if self.init_stage: # this can only be once, so reset to False once it runs once
+            self.init_stage = False
+
     def calculate_seir_states_counts(self, vars_util, ignore_tourists=False, tourists_only=False):
+        if not tourists_only:
+            self.current_locals_infected = set()
+        
         n_deceased, n_exposed, n_susceptible, n_infectious, n_recovered = 0, 0, 0, 0, 0
         for id, state in vars_util.agents_seir_state.items():
             if (not tourists_only and (not ignore_tourists or id < self.n_locals)) or (tourists_only and id >= self.n_locals):
@@ -127,6 +182,8 @@ class DynamicStatistics:
                         n_susceptible += 1
                     case SEIRState.Infectious:
                         n_infectious += 1
+                        if not self.init_stage and id < self.n_locals:
+                            self.current_locals_infected.add(id)
                     case SEIRState.Recovered:
                         n_recovered += 1
             else:
@@ -165,22 +222,30 @@ class DynamicStatistics:
         df.loc[day, "new_infectious"] = self.new_infectious
         df.loc[day, "new_recovered"] = self.new_recovered
         df.loc[day, "new_deaths"] = self.new_deaths
+        df.loc[day, "num_direct_contacts"] = self.num_direct_contacts
+        df.loc[day, "avg_direct_contacts_per_agent"] = self.avg_direct_contacts_per_agent
         df.loc[day, "infectious_rate"] = round(self.infectious_rate, 2)
         df.loc[day, "recovery_rate"] = round(self.recovery_rate, 2)
         df.loc[day, "mortality_rate"] = round(self.mortality_rate, 2)
+        df.loc[day, "locals_inf_once"] = self.num_locals_infected_once
+        df.loc[day, "locals_inf_at_least_once"] = self.num_locals_infected_at_least_once
+        df.loc[day, "locals_inf_more_than_once"] = self.num_locals_infected_more_than_once
+        df.loc[day, "locals_inf_never"] = self.num_locals_infected_never
+        df.loc[day, "locals_max_inf"] = self.num_locals_max_infected
+        df.loc[day, "locals_avg_inf_counts"] = round(self.avg_locals_infections, 2)
+        df.loc[day, "locals_med_inf_counts"] = round(self.med_locals_infections, 2)
+        df.loc[day, "locals_std_inf_counts"] = round(self.std_locals_infections, 2)
         df.loc[day, "basic_reproduction_number"] = round(self.basic_reproduction_number, 2)
         df.loc[day, "effective_reproduction_number"] = round(self.effective_reproduction_number, 2)
         df.loc[day, "total_vaccinations"] = self.total_vaccinations
         df.loc[day, "total_tests"] = self.total_tests
         df.loc[day, "total_contacttraced"] = self.total_contacttraced
         df.loc[day, "total_quarantined"] = self.total_quarantined
-        df.loc[day, "total_hospitalized"] = self.total_hospitalized
-        df.loc[day, "total_to_be_vaccinated"] = self.total_to_be_vaccinated
+        df.loc[day, "total_hospitalised"] = self.total_hospitalised
         df.loc[day, "new_vaccinations"] = self.new_vaccinations
         df.loc[day, "new_tests"] = self.new_tests
         df.loc[day, "new_contacttraced"] = self.new_contacttraced
         df.loc[day, "new_quarantined"] = self.new_quarantined
-        df.loc[day, "new_hospitalized"] = self.new_hospitalized
-        df.loc[day, "average_contacts_per_person"] = round(self.average_contacts_per_person, 2)
+        df.loc[day, "new_hospitalised"] = self.new_hospitalised
 
         return df

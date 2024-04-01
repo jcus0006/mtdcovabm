@@ -93,7 +93,7 @@ def update_tourist_data_remote(params, folder_name=None, dask_worker=None, it_ag
 
             # print("saved soc_rate {0}".format(str(dask_worker.data["agents_static"].get(agentid, "soc_rate"))))
 
-        print("worker {0}, staticagents len {1}, static agents ids {2}, departing_tourist_agent_ids {3}".format(str(dask_worker.id), str(len(agents_static.shm_age) + len(agents_static.static_agents_dict)), str(list(agents_static_to_sync.keys())), str(departed_tourist_agent_ids)))
+        print("worker {0}, staticagents len {1}, departing_tourist_agent_ids {2}".format(str(dask_worker.id), str(len(agents_static.shm_age) + len(agents_static.static_agents_dict)), str(departed_tourist_agent_ids)))
         if f is not None:
             f.flush()
         

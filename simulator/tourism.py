@@ -1,4 +1,5 @@
 import numpy as np
+import random
 from copy import copy
 import time
 import util, seirstateutil, tourism_dist, vars
@@ -10,7 +11,7 @@ from dask.distributed import get_worker
 
 class Tourism:
     def __init__(self, tourismparams, cells_accommodation, n_locals, tourists, agents_static, it_agents, agents_epi, vars_util, touristsgroupsdays, touristsgroups, rooms_by_accomid_by_accomtype, tourists_arrivals_departures_for_day, tourists_arrivals_departures_for_nextday, tourists_active_groupids, tourists_active_ids, age_brackets, powerlaw_distribution_parameters, visualise, sociability_rate_min, sociability_rate_max, figure_count, initial_seir_state_distribution, dask_full_stateful):
-        self.rng = np.random.default_rng(seed=6)
+        self.rng = np.random.default_rng() # seed = 6
 
         self.tourists_arrivals_departures_for_day = tourists_arrivals_departures_for_day
         self.tourists_arrivals_departures_for_nextday = tourists_arrivals_departures_for_nextday
@@ -53,7 +54,7 @@ class Tourism:
 
         self.updated_cell_ids = [] # required by strat3, remote worker will use this to only send subset of data back to main process to be used with contact tracing
 
-    def initialize_foreign_arrivals_departures_for_day(self, day, f=None):
+    def initialize_foreign_arrivals_departures_for_day(self, day, airport_lockdown, travel_restrictions_multiplier, f=None):
         tourist_groupids_by_day = set(self.touristsgroupsdays[day])
 
         tourist_groupids_by_nextday = []
@@ -63,25 +64,25 @@ class Tourism:
         self.tourists_arrivals_departures_for_day = {}
         if len(tourist_groupids_by_day) > 0:
             if day == 1:
-                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, f)
+                self.sample_arrival_departure_timesteps(day, tourist_groupids_by_day, self.tourists_arrivals_departures_for_day, False, airport_lockdown, travel_restrictions_multiplier, f)
             else:
                 self.tourists_arrivals_departures_for_day = copy(self.tourists_arrivals_departures_for_nextday)
                 self.arriving_tourists_agents_ids = copy(self.arriving_tourists_next_day_agents_ids)
           
         self.tourists_arrivals_departures_for_nextday = {}
         if len(tourist_groupids_by_nextday) > 0:
-            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, f)
+            self.sample_arrival_departure_timesteps(day+1, tourist_groupids_by_nextday, self.tourists_arrivals_departures_for_nextday, True, airport_lockdown, travel_restrictions_multiplier, f)
         
         return self.it_agents, self.agents_epi, self.tourists, self.cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids
     
-    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, f):
-        if not is_next_day: 
+    def sample_arrival_departure_timesteps(self, day, tourist_groupids, tourists_arrivals_departures, is_next_day, airport_lockdown, travel_restrictions_multiplier, f):
+        if not is_next_day:
             self.arriving_tourists_agents_ids = []
             self.updated_cell_ids = []
         else:
             self.arriving_tourists_next_day_agents_ids = []
 
-        for tour_group_id in tourist_groupids:
+        for tour_group_id in tourist_groupids: # current tourist group ids
             tourists_group = self.touristsgroups[tour_group_id]
 
             accomtype = tourists_group["accomtype"]
@@ -91,28 +92,35 @@ class Tourism:
             purpose = tourists_group["purpose"]
             subgroupsmemberids = tourists_group["subgroupsmemberids"] # rooms in accom
 
-            if arrivalday == day or departureday == day:
+            allow_entry = True
+            if (arrivalday == day and not airport_lockdown) or departureday == day:
                 if arrivalday == day:
-                    # sample an arrival timestep
-                    arrival_ts = self.rng.choice(self.day_timesteps, size=1)[0]
-                    arrival_airport_duration = util.sample_gamma_reject_out_of_range(self.incoming_duration_shape_param, self.incoming_duration_min, self.incoming_duration_max, 1, True, True)
+                    if travel_restrictions_multiplier > 0:
+                        allow_entry_rand = random.random()
+                        allow_entry = allow_entry_rand < travel_restrictions_multiplier
 
-                    tourists_arrivals_departures[tour_group_id] = {"ts": arrival_ts, "airport_duration": arrival_airport_duration, "arrival": True}
+                    if allow_entry:
+                        # sample an arrival timestep
+                        arrival_ts = self.rng.choice(self.day_timesteps, size=1)[0]
+                        arrival_airport_duration = util.sample_gamma_reject_out_of_range(self.incoming_duration_shape_param, self.incoming_duration_min, self.incoming_duration_max, 1, True, True)
 
-                    self.tourists_active_groupids.append(tour_group_id) 
-                else:
-                    if departureday - arrivalday == 1: # if only 1 day trip force departure to be in the afternoon
-                        timesteps = self.afternoon_timesteps
-                    else:
-                        timesteps = self.day_timesteps
+                        tourists_arrivals_departures[tour_group_id] = {"ts": arrival_ts, "airport_duration": arrival_airport_duration, "arrival": True}
 
-                     # sample a departure timestep
-                    departure_ts = self.rng.choice(timesteps, size=1)[0]
-                    departure_airport_duration = util.sample_gamma_reject_out_of_range(self.outgoing_duration_shape_param, self.outgoing_duration_min, self.outgoing_duration_max, 1, True, True)
+                        self.tourists_active_groupids.append(tour_group_id) 
+                else: # departure day
+                    if tour_group_id in self.tourists_active_groupids: # check if tour_group_id is actually active. might have been denied entry
+                        if departureday - arrivalday == 1: # if only 1 day trip force departure to be in the afternoon
+                            timesteps = self.afternoon_timesteps
+                        else:
+                            timesteps = self.day_timesteps
 
-                    tourists_arrivals_departures[tour_group_id] = {"ts": departure_ts, "airport_duration": departure_airport_duration, "arrival": False}
+                        # sample a departure timestep
+                        departure_ts = self.rng.choice(timesteps, size=1)[0]
+                        departure_airport_duration = util.sample_gamma_reject_out_of_range(self.outgoing_duration_shape_param, self.outgoing_duration_min, self.outgoing_duration_max, 1, True, True)
 
-                if arrivalday == day:
+                        tourists_arrivals_departures[tour_group_id] = {"ts": departure_ts, "airport_duration": departure_airport_duration, "arrival": False}
+
+                if arrivalday == day and allow_entry:
                     ages = []
                     new_agent_ids = []
                     res_cell_ids = []
@@ -341,13 +349,13 @@ class Tourism:
         else:
             return max(self.agents_static.keys()) + 1
 
-    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, f=None):
+    def sync_and_clean_tourist_data(self, day, client: Client, actors, remote_log_subfolder_name, log_file_name, dask_full_stateful, airport_lockdown, f=None):
         departing_tourists_agent_ids = []
         departing_tourists_group_ids = []
 
         start = time.time()
         for tour_grp_id, grp_arr_dep_info in self.tourists_arrivals_departures_for_day.items():
-            if not grp_arr_dep_info["arrival"]:
+            if not grp_arr_dep_info["arrival"] and (not airport_lockdown or tour_grp_id in self.tourists_active_groupids):
                 tourists_group = self.touristsgroups[tour_grp_id]
 
                 accomtype = tourists_group["accomtype"]
@@ -398,7 +406,7 @@ class Tourism:
         self.departing_tourists_agents_ids[day] = departing_tourists_agent_ids
         self.departing_tourists_group_ids[day] = departing_tourists_group_ids
         time_taken = time.time() - start
-        print("sync_and_clean_tourist_data on client: " + str(time_taken))
+        print("sync_and_clean_tourist_data on client: " + str(time_taken) + ", len_actors: " + str(len(actors)))
         if f is not None:
             f.flush()
 

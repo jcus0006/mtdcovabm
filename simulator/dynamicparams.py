@@ -14,6 +14,8 @@ class DynamicParams:
         self.vaccination_infectiousrate_thresholds = epidemiologyparams["vaccination_infectiousrate_thresholds"]
         self.intervention_day_thresholds = epidemiologyparams["intervention_day_thresholds"]
         self.intervention_infectiousrate_thresholds = epidemiologyparams["intervention_infectiousrate_thresholds"]
+        self.travel_restrictions_day_thresholds = epidemiologyparams["travel_restrictions_day_thresholds"]
+        self.travel_restrictions_infectiousrate_thresholds = epidemiologyparams["travel_restrictions_infectiousrate_thresholds"]
         self.lockdown_infectiousrate_thresholds = epidemiologyparams["lockdown_infectiousrate_thresholds"]
         self.lockdown_day_thresholds = epidemiologyparams["lockdown_day_thresholds"]
 
@@ -23,6 +25,8 @@ class DynamicParams:
         self.workplaces_lockdown = False
         self.schools_lockdown = False
         self.entertainment_lockdown = False
+        self.activities_lockdown = False
+        self.airport_lockdown = False
         self.masks_hygiene_distancing_multiplier = 0
         self.vaccination_propensity = 0
         self.last_vaccination_propensity = self.vaccination_propensity
@@ -38,7 +42,9 @@ class DynamicParams:
                 "masks_hygience_distancing_day_thresholds": self.masks_hygiene_distancing_day_thresholds, 
                 "masks_hygiene_distancing_infectiousrate_thresholds": self.masks_hygiene_distancing_infectiousrate_thresholds,
                 "vaccination_day_thresholds": self.vaccination_day_thresholds,
-                "vaccination_infectiousrate_thresholds": self.vaccination_infectiousrate_thresholds,
+                "vaccination_infectiousrate_thresholds": self.vaccination_infectiousrate_thresholds,            
+                "travel_restrictions_day_thresholds": self.travel_restrictions_day_thresholds,
+                "travel_restrictions_infectiousrate_thresholds": self.travel_restrictions_infectiousrate_thresholds,
                 "intervention_day_thresholds": self.intervention_day_thresholds,
                 "intervention_infectiousrate_thresholds": self.intervention_infectiousrate_thresholds,
                 "quarantine_enabled": self.quarantine_enabled,
@@ -92,22 +98,35 @@ class DynamicParams:
             self.testing_enabled = self.statistics.infectious_rate >= testing_threshold
             self.contact_tracing_enabled = self.statistics.infectious_rate >= contacttracing_threshold
 
-        if len(self.lockdown_infectiousrate_thresholds) == 0:
-            workplaces_threshold, schools_threshold, entertainment_threshold = self.lockdown_day_thresholds[0], self.lockdown_day_thresholds[1], self.lockdown_day_thresholds[2]
-
-            self.workplaces_lockdown = day >= workplaces_threshold
-            self.schools_lockdown = day >= schools_threshold
-            self.entertainment_lockdown = day >= entertainment_threshold
+        if len(self.travel_restrictions_infectiousrate_thresholds) == 0:
+            self.travel_restrictions_multiplier = 1 - self.get_value_by_rate_in_threshold(day, self.travel_restrictions_day_thresholds)
         else:
             if not infectious_rate_refreshed:
                 self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
                 infectious_rate_refreshed = True
             
-            workplaces_threshold, schools_threshold, entertainment_threshold = self.lockdown_infectiousrate_thresholds[0], self.lockdown_infectiousrate_thresholds[1], self.lockdown_infectiousrate_thresholds[2]
+            self.travel_restrictions_multiplier = 1 - self.get_value_by_rate_in_threshold(self.statistics.infectious_rate, self.travel_restrictions_infectiousrate_thresholds)
+
+        if len(self.lockdown_infectiousrate_thresholds) == 0:
+            workplaces_threshold, schools_threshold, entertainment_threshold, activities_threshold, airport_threshold = self.lockdown_day_thresholds[0], self.lockdown_day_thresholds[1], self.lockdown_day_thresholds[2], self.lockdown_day_thresholds[3], self.lockdown_day_thresholds[4]
+
+            self.workplaces_lockdown = day >= workplaces_threshold
+            self.schools_lockdown = day >= schools_threshold
+            self.entertainment_lockdown = day >= entertainment_threshold
+            self.activities_lockdown = day >= activities_threshold
+            self.airport_lockdown = day >= airport_threshold
+        else:
+            if not infectious_rate_refreshed:
+                self.statistics.refresh_rates(day, num_act_tourists, num_arr_tourists, num_arr_nextday_tourists, num_dep_tourists, vars_util, seir_states)
+                infectious_rate_refreshed = True
+            
+            workplaces_threshold, schools_threshold, entertainment_threshold, activities_threshold, airport_threshold = self.lockdown_infectiousrate_thresholds[0], self.lockdown_infectiousrate_thresholds[1], self.lockdown_infectiousrate_thresholds[2], self.lockdown_infectiousrate_thresholds[3], self.lockdown_infectiousrate_thresholds[4]
 
             self.workplaces_lockdown = self.statistics.infectious_rate >= workplaces_threshold
             self.schools_lockdown = self.statistics.infectious_rate >= schools_threshold
             self.entertainment_lockdown = self.statistics.infectious_rate >= entertainment_threshold
+            self.activities_lockdown = self.statistics.infectious_rate >= activities_threshold
+            self.airport_lockdown = self.statistics.infectious_rate >= airport_threshold
 
     def update_interventions_df(self, day, df):
         df.loc[day, "quarantine_enabled"] = self.quarantine_enabled
@@ -116,6 +135,9 @@ class DynamicParams:
         df.loc[day, "workplaces_lockdown"] = self.workplaces_lockdown
         df.loc[day, "schools_lockdown"] = self.schools_lockdown
         df.loc[day, "entertainment_lockdown"] = self.entertainment_lockdown
+        df.loc[day, "activities_lockdown"] = self.activities_lockdown
+        df.loc[day, "airport_lockdown"] = self.airport_lockdown
+        df.loc[day, "travel_restrictions_multiplier"] = self.travel_restrictions_multiplier
         df.loc[day, "masks_hygiene_distancing_multiplier"] = self.masks_hygiene_distancing_multiplier
         df.loc[day, "vaccination_propensity"] = self.vaccination_propensity
         df.loc[day, "last_vaccination_propensity"] = self.last_vaccination_propensity
@@ -133,7 +155,7 @@ class DynamicParams:
     def get_value_by_rate_in_threshold(self, rate, params, none_val=0):
         val = None
         for index, param in enumerate(params):
-            if rate > param[0]:
+            if rate >= param[0]:
                 if index + 1 < len(params):
                     next_param = params[index+1]
 

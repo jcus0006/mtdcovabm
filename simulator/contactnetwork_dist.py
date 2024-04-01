@@ -110,10 +110,10 @@ def contactnetwork_distributed(client: Client,
             start = time.time()
             dask_params, futures, delayed_computations = [], [], []
 
-            cat_size = util.asizeof_formatted(vars_util.cells_agents_timesteps)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
-            vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"cat size: {cat_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
+            # cat_size = util.asizeof_formatted(vars_util.cells_agents_timesteps)
+            # agents_epi_size = util.asizeof_formatted(agents_epi)
+            # vars_util_size = util.asizeof_formatted(vars_util)
+            # print(f"cat size: {cat_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
 
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
@@ -166,13 +166,13 @@ def contactnetwork_distributed(client: Client,
                 else:
                     params = (day, weekday, agents_partial, vars_util_partial, dynparams, log_file_name)
 
-                params_size = util.asizeof_formatted(params)
-                print(f"params for {worker_index} size: {params_size}")
+                # params_size = util.asizeof_formatted(params)
+                # print(f"params for {worker_index} size: {params_size}")
 
-                cat_partial_size = util.asizeof_formatted(vars_util_partial.cells_agents_timesteps)
-                vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
-                dyn_params_size = util.asizeof_formatted(dynparams)
-                print(f"cat size: {cat_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
+                # cat_partial_size = util.asizeof_formatted(vars_util_partial.cells_agents_timesteps)
+                # vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                # dyn_params_size = util.asizeof_formatted(dynparams)
+                # print(f"cat size: {cat_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
 
                 if not use_mp:
                     if dask_mode == 0:
@@ -226,7 +226,7 @@ def contactnetwork_distributed(client: Client,
             else:
                 method_type = MethodType.ContactNetworkDistMP
 
-            _, agents_epi, vars_util, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
+            _, agents_epi, vars_util, _, dask_workers_time_taken, dask_mp_processes_time_taken = daskutil.handle_futures(method_type, day, futures, None, agents_epi, vars_util, task_results_stack_trace_log_file_name, False, True, dask_full_array_mapping, f, dask_workers_time_taken, dask_mp_processes_time_taken, dask_workers_time_taken_keys)
                 
             time_taken = time.time() - start
             print("sync results: " + str(time_taken))

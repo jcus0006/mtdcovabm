@@ -88,11 +88,7 @@ def localitinerary_parallel(manager,
         if manager is not None:
             process_counter = manager.Value("i", num_processes)
 
-        # Initialize MPI
-        # comm = MPI.COMM_WORLD
-        # rank = comm.Get_rank()
-        # size = comm.Get_size()
-        # print("MPI rank {0}, size {1}".format(rank, size))
+        interventions_totals = [0, 0, 0, 0]
 
         agents_partial_results_combined, vars_util_partial_results_combined = [], []
 
@@ -150,12 +146,12 @@ def localitinerary_parallel(manager,
             imap_params = []
             imap_results = []
 
-            hh_insts_size = util.asizeof_formatted(hh_insts)
-            it_agents_size = util.asizeof_formatted(it_agents)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
-            agents_ids_by_ages_size = util.asizeof_formatted(agents_ids_by_ages)
-            vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, agents_ids_by_ages size: {agents_ids_by_ages_size}, vars_util size: {vars_util_size}")
+            # hh_insts_size = util.asizeof_formatted(hh_insts)
+            # it_agents_size = util.asizeof_formatted(it_agents)
+            # agents_epi_size = util.asizeof_formatted(agents_epi)
+            # agents_ids_by_ages_size = util.asizeof_formatted(agents_ids_by_ages)
+            # vars_util_size = util.asizeof_formatted(vars_util)
+            # print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, agents_ids_by_ages size: {agents_ids_by_ages_size}, vars_util size: {vars_util_size}")
             
             for process_index in range(num_processes):
                 # cells_partial = {}
@@ -239,17 +235,17 @@ def localitinerary_parallel(manager,
                         log_file_name,
                         static_agents_dict)  
                 
-                params_size = util.asizeof_formatted(params)
-                print(f"params for {process_index} size: {params_size}")
+                # params_size = util.asizeof_formatted(params)
+                # print(f"params for {process_index} size: {params_size}")
 
-                hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
-                it_agents_partial_size = util.asizeof_formatted(agents_partial)
-                agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
-                agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
-                vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
-                dyn_params_size = util.asizeof_formatted(dynparams)
-                static_agents_dict_size = util.asizeof_formatted(static_agents_dict)
-                print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}, static agents dict size: {static_agents_dict_size}")
+                # hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
+                # it_agents_partial_size = util.asizeof_formatted(agents_partial)
+                # agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
+                # agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
+                # vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                # dyn_params_size = util.asizeof_formatted(dynparams)
+                # static_agents_dict_size = util.asizeof_formatted(static_agents_dict)
+                # print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}, static agents dict size: {static_agents_dict_size}")
 
                 # pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
                 if proc_use_pool == 0:
@@ -327,14 +323,14 @@ def localitinerary_parallel(manager,
 
                 # util.log_memory_usage(prepend_text="Before syncing itinerary results ")
                 if proc_use_pool == 3:
-                    it_agents, agents_epi, vars_util, _, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None)
+                    it_agents, agents_epi, vars_util, interventions_totals, _, _ = daskutil.handle_futures(MethodType.ItineraryMP, day, imap_results, it_agents, agents_epi, vars_util, task_results_stack_trace_log_file_name, True, True, False, None)
                 elif proc_use_pool == 4:
                     for future in as_completed(futures):
                         result = future.result()
 
-                        process_index, agents_partial_results, vars_util_partial_results = result
+                        process_index, agents_partial_results, vars_util_partial_results, interventions_totals_partial = result
 
-                        agents_dynamic, vars_util = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial_results, vars_util_partial_results) # TODO - to base on it_agents and agents_epi
+                        agents_dynamic, vars_util, interventions_totals = sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, interventions_totals, agents_partial_results, vars_util_partial_results, interventions_totals_partial) # TODO - to base on it_agents and agents_epi
                         
                         # print("processing results for process " + str(process_index) + ". num agents ws: " + str(num_agents_ws) + ", num agents it: " + str(num_agents_it))
                         # print(working_schedule_times_by_resid_ordered)
@@ -371,7 +367,7 @@ def localitinerary_parallel(manager,
             result = localitinerary_worker(params, True)
 
             if not type(result) is dict:
-                process_index, it_agents, agents_epi, vars_util, _, _, _, _, _ = result
+                process_index, it_agents, agents_epi, vars_util, interventions_totals, _, _, _, _, _ = result
             else:
                 exception_info = result
 
@@ -379,6 +375,9 @@ def localitinerary_parallel(manager,
                     fi.write(f"Exception Type: {exception_info['type']}\n")
                     fi.write(f"Exception Message: {exception_info['message']}\n")
                     fi.write(f"Traceback: {exception_info['traceback']}\n")
+
+        # persist new intervention counts
+        dynparams.statistics.new_tests, dynparams.statistics.new_vaccinations, dynparams.statistics.new_quarantined, dynparams.statistics.new_hospitalised = interventions_totals[0], interventions_totals[1], interventions_totals[2], interventions_totals[3]
     except:
         with open(stack_trace_log_file_name, 'w') as fi2:
             traceback.print_exc(file=fi2)
@@ -386,7 +385,7 @@ def localitinerary_parallel(manager,
     finally:
         gc.collect()
 
-def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, agents_partial, vars_util_partial):
+def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynamic, vars_util, interventions_totals, agents_partial, vars_util_partial, interventions_totals_partial):
     index_start_time = time.time()
     mp_hh_inst_ids_this_proc = mp_hh_inst_indices[process_index]
 
@@ -413,7 +412,9 @@ def sync_results(day, process_index, mp_hh_inst_indices, hh_insts, agents_dynami
     time_taken_cat = time.time() - start_cat
     print("cells_agents_timesteps sync for process {0}, time taken: {1}".format(process_index, str(time_taken_cat)))
 
-    return agents_dynamic, vars_util
+    interventions_totals = util.sync_interventions_totals(interventions_totals, interventions_totals_partial)
+
+    return agents_dynamic, vars_util, interventions_totals
 
 log_file = open("output.log", "a")
 
@@ -639,13 +640,14 @@ def localitinerary_worker(params, single_proc=False):
         working_schedule_times_by_resid_ordered = {key: working_schedule_times_by_resid[key] for key in working_schedule_times_by_resid_ordered_keys}
         itinerary_times_by_resid_ordered = {key: itinerary_times_by_resid[key] for key in itinerary_times_by_resid_ordered_keys}
         
+        interventions_totals = [itinerary_util.new_tests, itinerary_util.new_vaccinations, itinerary_util.new_quarantined, itinerary_util.new_hospitalised]
         # for i in range(1000):
         #     if i in agents_dynamic:
         #         if agents_dynamic[i]["itinerary"] is None or len(agents_dynamic[i]["itinerary"]) == 0:
         #             print("itinerary_mp, itinerary is empty " + str(i))
         main_time_taken = time.time() - main_start
 
-        return node_worker_index, it_agents, agents_epi, vars_util_mp, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary, main_time_taken
+        return node_worker_index, it_agents, agents_epi, vars_util_mp, interventions_totals, working_schedule_times_by_resid_ordered, itinerary_times_by_resid_ordered, num_agents_working_schedule, num_agents_itinerary, main_time_taken
     except Exception as e:
        # log on the node where it happened
         actual_stack_trace_log_file_name = stack_trace_log_file_name.replace(".txt", "_actual.txt")

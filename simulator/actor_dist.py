@@ -209,7 +209,7 @@ class ActorDist:
             else:
                 self.tourist_util.touristsgroupsdays = touristsgroupsdays
                     
-            self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, f)
+            self.it_agents, self.agents_epi, self.tourists, cells_accommodation, self.tourists_arrivals_departures_for_day, self.tourists_arrivals_departures_for_nextday, self.tourists_active_groupids = self.tourist_util.initialize_foreign_arrivals_departures_for_day(self.day, self.dyn_params.airport_lockdown, self.dyn_params.travel_restrictions_multiplier, f)
             print("initialize_foreign_arrivals_departures_for_day (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
 
             if f is not None:
@@ -253,7 +253,7 @@ class ActorDist:
             if f is not None:
                 f.flush()    
 
-            self.tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, f)
+            self.tourist_util.sync_and_clean_tourist_data(self.day, self.client, self.remote_actors, self.logsubfoldername, self.logfilename, True, self.dyn_params.airport_lockdown, f)
             
             print("sync_and_clean_tourist_data (done) for simday " + str(self.day) + ", weekday " + str(self.weekday))
             if f is not None:
@@ -311,6 +311,8 @@ class ActorDist:
                 itinerary_times_by_resid[hh_inst["id"]] = res_time_taken
                 num_agents_itinerary += len(hh_inst["resident_uids"])
 
+            interventions_totals = [itinerary_util.new_tests, itinerary_util.new_vaccinations, itinerary_util.new_quarantined, itinerary_util.new_hospitalised]
+
             it_time_taken = time.time() - it_start
 
             main_time_taken = time.time() - main_start
@@ -329,7 +331,7 @@ class ActorDist:
             if f is not None:
                 f.flush()
 
-            return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, time_takens
+            return self.worker_index, cells_accommodation_to_send_back, arr_dep_counts, self.vars_util.contact_tracing_agent_ids, interventions_totals, time_takens
         except Exception as e:
             with open(stack_trace_log_file_name, 'w') as fi:
                 traceback.print_exc(file=fi)
@@ -483,10 +485,9 @@ class ActorDist:
                         # send_results_by_worker_id[wi] = [agents_epi_to_send, vars_util_to_send]
 
                 self.clean_cells_agents_timesteps(cells_ids)
-
                 print("cleaning cells_agents_timesteps")
                 if f is not None:
-                    f.flush()
+                    f.flush()        
             else:
                 stack_trace_log_file_name = os.path.join(self.folder_name, "sendres_cn_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
 
@@ -539,13 +540,19 @@ class ActorDist:
 
                 result_index += 1
 
+            self.clean_tourists_agents_static_to_sync()
+            
+            print("cleaning tourist_util.agents_static_to_sync")
+            if f is not None:
+                f.flush()
+
             util.log_memory_usage(f, "End of send_results ")
 
             if self.simstage == SimStage.Itinerary:
                 return success
             elif self.simstage == SimStage.ContactNetwork:
                 self.updated_agent_ids = []
-                return success, self.agents_epi
+                return success # was returning agents_epi here, now will return them from clean_up_and_calculate_seir_states_daily
         except Exception as e:
             with open(stack_trace_log_file_name, 'w') as fi:
                 traceback.print_exc(file=fi)
@@ -676,6 +683,9 @@ class ActorDist:
         for key in keys_to_del:
             del self.vars_util.cells_agents_timesteps[key]
 
+    def clean_tourists_agents_static_to_sync(self):
+        self.tourist_util.agents_static_to_sync = customdict.CustomDict()
+
     # removes any data that does not reside on this worker by default (called at the end of the simulation day)
     def clean_up_and_calculate_seir_states_daily(self):
         # n_locals = self.worker.data["n_locals"]
@@ -686,9 +696,9 @@ class ActorDist:
         stack_trace_log_file_name = ""
         stack_trace_log_file_name = os.path.join(self.folder_name, "clean_actor_stack_trace_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
         
-        log_file_name = os.path.join(self.folder_name, "clean_actor_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
-        f = open(log_file_name, "w")
-        sys.stdout = f
+        # log_file_name = os.path.join(self.folder_name, "clean_actor_" + str(self.day) + "_" + str(self.worker_index) + ".txt")
+        # f = open(log_file_name, "w")
+        # sys.stdout = f
 
         self.vars_util.reset_daily_structures()
 
@@ -724,14 +734,14 @@ class ActorDist:
         seir_states = self.dyn_params.statistics.calculate_seir_states_counts(self.vars_util)
 
         # gc.collect()
-        if f is not None:
-            # Close the file
-            f.close()
+        # if f is not None:
+        #     # Close the file
+        #     f.close()
 
-        if original_stdout is not None:
-            sys.stdout = original_stdout
+        # if original_stdout is not None:
+        #     sys.stdout = original_stdout
 
-        return seir_states
+        return seir_states, self.dyn_params.statistics.current_locals_infected, self.agents_epi
 
 class SimStage(Enum):
     TouristSync = 0

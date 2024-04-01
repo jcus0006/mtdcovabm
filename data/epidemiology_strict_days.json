@@ -1,9 +1,9 @@
 {
-	"initialseirstatedistribution": [0.998, 0, 0.002, 0],
-	"household_infection_probability": 0.1,
-	"workplace_infection_probability": 0.03,
-	"school_infection_probability": 0.06,
-	"community_infection_probability": 0.01,
+	"initialseirstatedistribution": [0.95, 0, 0.05, 0],
+	"household_infection_probability": 0.05,
+	"workplace_infection_probability": 0.015,
+	"school_infection_probability": 0.03,
+	"community_infection_probability": 0.005,
 	"superspreader_infection_probability": 0.1,
 	"tourist_entry_infection_probability": 0.05,
 	"pre_exposure_days": 7,
@@ -36,30 +36,34 @@
 	"contact_tracing_parameters": [2, 2, 3],
 	"contact_tracing_success_probability": [0.95, 0.65, 0.85, 0.25],
 	"intervention_infectiousrate_thresholds": [],
-	"intervention_day_thresholds": [15, 20, 25],
+	"intervention_day_thresholds": [1, 2, 3],
 	"vaccination_daily_parameters": [3048, 1987],
 	"vaccination_effectiveness_parameters": [0.9, 0.9, 30],
 	"vaccination_infectiousrate_thresholds": [
 	],
 	"vaccination_day_thresholds": [
-		[60, 0.2],
-		[120, 0.5],
-		[180, 0.8]
+		[40, 0.3],
+		[80, 0.6],
+		[120, 0.9]
 	],
 	"masks_hygiene_distancing_infectiousrate_thresholds": [
 	],
 	"masks_hygiene_distancing_day_thresholds": [
-		[10, 0.2],
-		[60, 0.4],
-		[100, 0.6]
+		[1, 0.3],
+		[30, 0.5],
+		[60, 0.7]
 	],
 	"travel_restrictions_infectiousrate_thresholds": [
 	],
 	"travel_restrictions_day_thresholds": [
-		[30, 0.25],
-		[60, 0.50],
-		[90, 0.75]
+		[10, 0.3],
+		[30, 0.5],
+		[60, 0.8]
 	],
 	"lockdown_infectiousrate_thresholds": [],
-	"lockdown_day_thresholds": [60, 50, 30, 40, 120]
+	"lockdown_day_thresholds": [20, 14, 10, 12, 75]
 }
+
+
+
+
