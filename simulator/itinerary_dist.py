@@ -538,11 +538,11 @@ def localitinerary_distributed(client: Client,
             futures = []
 
             # mem troubleshooting
-            hh_insts_size = util.asizeof_formatted(hh_insts)
-            it_agents_size = util.asizeof_formatted(it_agents)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
-            vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
+            # hh_insts_size = util.asizeof_formatted(hh_insts)
+            # it_agents_size = util.asizeof_formatted(it_agents)
+            # agents_epi_size = util.asizeof_formatted(agents_epi)
+            # vars_util_size = util.asizeof_formatted(vars_util)
+            # print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, vars_util size: {vars_util_size}")
 
             for worker_index in range(dask_numtasks):
                 worker_assign_start = time.time()
@@ -607,16 +607,16 @@ def localitinerary_distributed(client: Client,
                                 dynparams, 
                                 log_file_name)  
 
-                    params_size = util.asizeof_formatted(params)
-                    print(f"params for {worker_index} size: {params_size}")
+                    # params_size = util.asizeof_formatted(params)
+                    # print(f"params for {worker_index} size: {params_size}")
 
-                    hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
-                    it_agents_partial_size = util.asizeof_formatted(agents_partial)
-                    agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
-                    agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
-                    vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
-                    dyn_params_size = util.asizeof_formatted(dynparams)
-                    print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
+                    # hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
+                    # it_agents_partial_size = util.asizeof_formatted(agents_partial)
+                    # agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
+                    # agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
+                    # vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                    # dyn_params_size = util.asizeof_formatted(dynparams)
+                    # print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}")
                     # print("starting process index with " + str(len(hh_insts_partial)) + " residences on " + str(remote_worker_index) + " (" + worker_url + ") at " + str(time.time()))
                     # if f is not None:
                     #     f.flush()

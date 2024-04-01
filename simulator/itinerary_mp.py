@@ -146,12 +146,12 @@ def localitinerary_parallel(manager,
             imap_params = []
             imap_results = []
 
-            hh_insts_size = util.asizeof_formatted(hh_insts)
-            it_agents_size = util.asizeof_formatted(it_agents)
-            agents_epi_size = util.asizeof_formatted(agents_epi)
-            agents_ids_by_ages_size = util.asizeof_formatted(agents_ids_by_ages)
-            vars_util_size = util.asizeof_formatted(vars_util)
-            print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, agents_ids_by_ages size: {agents_ids_by_ages_size}, vars_util size: {vars_util_size}")
+            # hh_insts_size = util.asizeof_formatted(hh_insts)
+            # it_agents_size = util.asizeof_formatted(it_agents)
+            # agents_epi_size = util.asizeof_formatted(agents_epi)
+            # agents_ids_by_ages_size = util.asizeof_formatted(agents_ids_by_ages)
+            # vars_util_size = util.asizeof_formatted(vars_util)
+            # print(f"hh_insts size: {hh_insts_size}, it_agents size: {it_agents_size}, agents_epi size: {agents_epi_size}, agents_ids_by_ages size: {agents_ids_by_ages_size}, vars_util size: {vars_util_size}")
             
             for process_index in range(num_processes):
                 # cells_partial = {}
@@ -235,17 +235,17 @@ def localitinerary_parallel(manager,
                         log_file_name,
                         static_agents_dict)  
                 
-                params_size = util.asizeof_formatted(params)
-                print(f"params for {process_index} size: {params_size}")
+                # params_size = util.asizeof_formatted(params)
+                # print(f"params for {process_index} size: {params_size}")
 
-                hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
-                it_agents_partial_size = util.asizeof_formatted(agents_partial)
-                agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
-                agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
-                vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
-                dyn_params_size = util.asizeof_formatted(dynparams)
-                static_agents_dict_size = util.asizeof_formatted(static_agents_dict)
-                print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}, static agents dict size: {static_agents_dict_size}")
+                # hh_insts__partial_size = util.asizeof_formatted(hh_insts_partial)
+                # it_agents_partial_size = util.asizeof_formatted(agents_partial)
+                # agents_epi_partial_size = util.asizeof_formatted(agents_epi_partial)
+                # agents_ids_by_ages_partial_size = util.asizeof_formatted(agents_ids_by_ages_partial)
+                # vars_util_partial_size = util.asizeof_formatted(vars_util_partial)
+                # dyn_params_size = util.asizeof_formatted(dynparams)
+                # static_agents_dict_size = util.asizeof_formatted(static_agents_dict)
+                # print(f"hh_insts size: {hh_insts__partial_size}, it_agents size: {it_agents_partial_size}, agents_epi size: {agents_epi_partial_size}, agents_ids_by_ages size: {agents_ids_by_ages_partial_size}, vars_util size: {vars_util_partial_size}, dyn_params size: {dyn_params_size}, static agents dict size: {static_agents_dict_size}")
 
                 # pool.apply_async(localitinerary_worker, args=((sync_queue, day, weekday, weekdaystr, hh_insts_partial, itineraryparams, timestepmins, n_locals, n_tourists, locals_ratio_to_full_pop, agents_mp_it, tourists, industries, cells_breakfast_by_accomid, cells_entertainment, cells_mp, tourist_entry_infection_probability, epidemiologyparams, dynparams, tourists_active_ids, process_index, process_counter),))
                 if proc_use_pool == 0:
